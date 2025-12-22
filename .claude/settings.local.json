@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"C:\\Users\\magic\\.aaCoding\" /S /B)",
+      "Bash(cat:*)",
+      "WebSearch",
+      "Bash(pnpm install:*)",
+      "Bash(where npm:*)",
+      "Bash(npm install:*)",
+      "Bash(npx pnpm install)",
+      "Bash(npx tsc:*)",
+      "Bash(dir \"C:\\Users\\magic\\.aaCoding\\audiio\\packages\\ui\\src\\stores\")",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:developer.chrome.com)",
+      "Bash(dir \"C:\\Users\\magic\\.aaCoding\")",
+      "Bash(dir:*)",
+      "Bash(npm run build:all:*)",
+      "Bash(npm run build:*)",
+      "Bash(CSC_IDENTITY_AUTO_DISCOVERY=false npm run package:*)",
+      "Bash(npm run build:core:*)",
+      "Bash(npm run build:sdk:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npx asar:*)"
+    ]
+  }
+}

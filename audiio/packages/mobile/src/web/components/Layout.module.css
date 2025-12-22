@@ -1,0 +1,62 @@
+/**
+ * Layout styles - Mobile app shell
+ */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--color-bg-primary);
+  padding-top: var(--safe-area-top);
+}
+
+.main {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: calc(var(--nav-height) + var(--safe-area-bottom));
+}
+
+/* When player is showing, add extra padding */
+.main:has(+ .miniPlayer) {
+  padding-bottom: calc(var(--nav-height) + var(--player-height) + var(--safe-area-bottom));
+}
+
+.nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--nav-height) + var(--safe-area-bottom));
+  padding-bottom: var(--safe-area-bottom);
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  background: var(--color-bg-secondary);
+  border-top: 1px solid var(--color-bg-elevated);
+  z-index: 100;
+}
+
+.navItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: var(--spacing-sm);
+  color: var(--color-text-muted);
+  transition: color 0.2s;
+  min-width: 64px;
+}
+
+.navItem span {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.navItem.active {
+  color: var(--color-accent);
+}
+
+.navItem:active {
+  opacity: 0.7;
+}

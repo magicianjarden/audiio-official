@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Audiio - Remote Access</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: #fff;
+    }
+
+    .container {
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .logo {
+      width: 80px;
+      height: 80px;
+      margin-bottom: 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: auto;
+      margin-right: auto;
+      box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+    }
+
+    .logo svg {
+      width: 48px;
+      height: 48px;
+      fill: white;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      color: #8892b0;
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+
+    .status {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .status-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 16px;
+      border: 3px solid #667eea;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .status-text {
+      font-size: 16px;
+      color: #ccd6f6;
+      margin-bottom: 8px;
+    }
+
+    .status-hint {
+      font-size: 13px;
+      color: #8892b0;
+    }
+
+    /* Bypass password section - shown if auto-bypass fails */
+    .password-section {
+      display: none;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .password-section.show {
+      display: block;
+    }
+
+    .password-label {
+      font-size: 14px;
+      color: #8892b0;
+      margin-bottom: 12px;
+    }
+
+    .password-box {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .password-value {
+      flex: 1;
+      font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+      font-size: 18px;
+      font-weight: 600;
+      color: #667eea;
+      letter-spacing: 1px;
+    }
+
+    .copy-btn {
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .copy-btn:hover {
+      background: #764ba2;
+    }
+
+    .copy-btn:active {
+      transform: scale(0.95);
+    }
+
+    .copy-btn.copied {
+      background: #10b981;
+    }
+
+    .instructions {
+      font-size: 13px;
+      color: #8892b0;
+      line-height: 1.6;
+    }
+
+    .instructions ol {
+      text-align: left;
+      padding-left: 20px;
+    }
+
+    .instructions li {
+      margin-bottom: 8px;
+    }
+
+    .footer {
+      margin-top: 32px;
+      font-size: 12px;
+      color: #4a5568;
+    }
+
+    .footer a {
+      color: #667eea;
+      text-decoration: none;
+    }
+
+    /* Success state */
+    .success-icon {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 16px;
+      background: #10b981;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .success-icon svg {
+      width: 32px;
+      height: 32px;
+      fill: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+      </svg>
+    </div>
+
+    <h1>Audiio</h1>
+    <p class="subtitle">Remote Music Access</p>
+
+    <div class="status" id="statusSection">
+      <div class="status-icon"></div>
+      <p class="status-text">Establishing secure connection...</p>
+      <p class="status-hint">This may take a few seconds</p>
+    </div>
+
+    <div class="password-section" id="passwordSection">
+      <p class="password-label">Tunnel Security Check</p>
+      <p class="status-text" style="margin-bottom: 16px;">Enter this code on the security page:</p>
+      <div class="password-box">
+        <span class="password-value" id="passwordValue">Loading...</span>
+        <button class="copy-btn" id="copyBtn" onclick="copyPassword()">Copy</button>
+      </div>
+      <div class="instructions">
+        <ol>
+          <li>Copy the code above</li>
+          <li>Paste it in the "Endpoint IP" field</li>
+          <li>Click "Click to Submit"</li>
+        </ol>
+      </div>
+    </div>
+
+    <p class="footer">
+      Powered by <a href="#">Audiio</a> &bull; Secure tunnel by localtunnel
+    </p>
+  </div>
+
+  <script>
+    // Get tunnel password from URL params or localStorage
+    const urlParams = new URLSearchParams(window.location.search);
+    const tunnelPassword = urlParams.get('tp') || localStorage.getItem('audiio_tunnel_password');
+    const returnPath = urlParams.get('return') || '/';
+
+    // Store password for future use
+    if (tunnelPassword) {
+      localStorage.setItem('audiio_tunnel_password', tunnelPassword);
+    }
+
+    // Check if we're on the localtunnel interstitial
+    function isOnInterstitial() {
+      // Check for localtunnel's specific elements
+      return document.querySelector('form[action=""]') !== null ||
+             document.body.innerHTML.includes('loca.lt') ||
+             document.body.innerHTML.includes('Friendly Reminder');
+    }
+
+    // Try to auto-submit the password
+    function tryAutoBypass() {
+      // Look for localtunnel's password input
+      const passwordInput = document.querySelector('input[name="password"]') ||
+                           document.querySelector('input[type="text"]');
+      const submitButton = document.querySelector('button[type="submit"]') ||
+                          document.querySelector('input[type="submit"]');
+
+      if (passwordInput && submitButton && tunnelPassword) {
+        passwordInput.value = tunnelPassword;
+        submitButton.click();
+        return true;
+      }
+      return false;
+    }
+
+    // Show manual bypass instructions
+    function showManualBypass() {
+      document.getElementById('statusSection').style.display = 'none';
+      document.getElementById('passwordSection').classList.add('show');
+      document.getElementById('passwordValue').textContent = tunnelPassword || 'Not available';
+    }
+
+    // Copy password to clipboard
+    function copyPassword() {
+      const password = document.getElementById('passwordValue').textContent;
+      navigator.clipboard.writeText(password).then(() => {
+        const btn = document.getElementById('copyBtn');
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = 'Copy';
+          btn.classList.remove('copied');
+        }, 2000);
+      });
+    }
+
+    // Main logic
+    document.addEventListener('DOMContentLoaded', () => {
+      // If we're already past the interstitial (on our actual app), redirect
+      if (window.location.pathname !== '/tunnel-bypass' &&
+          window.location.pathname !== '/tunnel-bypass.html') {
+        // We're on the app, no need for bypass
+        return;
+      }
+
+      // Try auto-bypass first
+      if (!tryAutoBypass()) {
+        // If auto-bypass failed, show manual instructions after a delay
+        setTimeout(() => {
+          showManualBypass();
+        }, 3000);
+      }
+    });
+
+    // If this page is embedded in localtunnel's interstitial, try to bypass
+    if (isOnInterstitial()) {
+      tryAutoBypass();
+    }
+  </script>
+</body>
+</html>
