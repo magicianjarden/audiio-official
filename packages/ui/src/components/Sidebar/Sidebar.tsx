@@ -32,7 +32,7 @@ import {
   PlaylistIcon,
   DownloadIcon,
   AddIcon,
-  MusicNoteIcon,
+  AudiioLogoIcon,
   PluginIcon,
   SettingsIcon,
   StatsIcon,
@@ -562,7 +562,7 @@ export const Sidebar: React.FC = () => {
       style={isSidebarCollapsed ? undefined : { width: sidebarWidth }}
     >
       <div className="sidebar-logo">
-        <span className="sidebar-logo-icon"><MusicNoteIcon size={20} /></span>
+        <span className="sidebar-logo-icon"><AudiioLogoIcon size={20} /></span>
         {!isSidebarCollapsed && <span className="sidebar-logo-text">audiio</span>}
         <button
           className="sidebar-collapse-btn"

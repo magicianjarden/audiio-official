@@ -9,6 +9,12 @@
 // Types
 export type { IconProps } from './types';
 
+// Brand Icons
+export {
+  AudiioLogoIcon,
+  AudiioLogoGradientIcon,
+} from './icons/brand';
+
 // Playback Icons
 export {
   PlayIcon,

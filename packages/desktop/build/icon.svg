@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="50%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#a855f7"/>
+    </linearGradient>
+    <linearGradient id="waveGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#e0e7ff;stop-opacity:0.9"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background with rounded corners -->
+  <rect x="0" y="0" width="1024" height="1024" rx="220" ry="220" fill="url(#bgGradient)"/>
+
+  <!-- Subtle inner glow -->
+  <rect x="40" y="40" width="944" height="944" rx="190" ry="190" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2"/>
+
+  <!-- Sound wave bars - stylized audio visualization -->
+  <g fill="url(#waveGradient)">
+    <!-- Left bars -->
+    <rect x="200" y="380" width="60" height="264" rx="30"/>
+    <rect x="300" y="280" width="60" height="464" rx="30"/>
+
+    <!-- Center bars (taller) -->
+    <rect x="400" y="220" width="60" height="584" rx="30"/>
+    <rect x="500" y="180" width="60" height="664" rx="30"/>
+    <rect x="600" y="220" width="60" height="584" rx="30"/>
+
+    <!-- Right bars -->
+    <rect x="700" y="280" width="60" height="464" rx="30"/>
+    <rect x="800" y="380" width="60" height="264" rx="30"/>
+  </g>
+</svg>

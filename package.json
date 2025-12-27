@@ -22,6 +22,7 @@
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {
+    "sharp": "^0.34.5",
     "turbo": "^2.3.0",
     "typescript": "^5.7.2"
   },
