@@ -9,6 +9,8 @@
  */
 
 import { create } from 'zustand';
+import { schnorr } from '@noble/curves/secp256k1';
+import { bytesToHex } from '@noble/curves/abstract/utils';
 
 // Public Nostr relays (free to use, with valid SSL certs)
 const NOSTR_RELAYS = [
@@ -82,8 +84,11 @@ interface P2PState {
 // Message handler registry
 let messageHandler: ((type: string, payload: unknown) => void) | null = null;
 
-// Generate self ID once
-const selfId = randomId();
+// Generate secp256k1 keypair for Nostr signing
+const privateKey = schnorr.utils.randomPrivateKey();
+const publicKey = bytesToHex(schnorr.getPublicKey(privateKey));
+// For backwards compatibility, export publicKey as selfId
+const selfId = publicKey;
 
 export const useP2PStore = create<P2PState>((set, get) => ({
   status: 'disconnected',
@@ -322,7 +327,7 @@ export const useP2PStore = create<P2PState>((set, get) => ({
 }));
 
 /**
- * Send a Nostr event to the relay
+ * Send a Nostr event to the relay with proper Schnorr signature
  */
 async function sendEvent(ws: WebSocket, roomId: string, data: unknown): Promise<void> {
   const content = JSON.stringify(data);
@@ -331,24 +336,29 @@ async function sendEvent(ws: WebSocket, roomId: string, data: unknown): Promise<
 
   const tags = [
     ['d', roomId],
-    ['p', selfId]
+    ['p', publicKey]
   ];
 
+  // Create serialized event for hashing (NIP-01 format)
   const preEvent = [
     0,
-    selfId,
+    publicKey,
     created_at,
     kind,
     tags,
     content
   ];
 
-  const id = await sha256(JSON.stringify(preEvent));
-  const sig = randomId() + randomId();
+  // Hash the serialized event to get the event ID
+  const eventHash = await sha256(JSON.stringify(preEvent));
+
+  // Sign the event hash with our private key using Schnorr signature
+  const signature = schnorr.sign(eventHash, privateKey);
+  const sig = bytesToHex(signature);
 
   const event: NostrEvent = {
-    id,
-    pubkey: selfId,
+    id: eventHash,
+    pubkey: publicKey,
     created_at,
     kind,
     tags,

@@ -13,6 +13,8 @@
 
 import { EventEmitter } from 'events';
 import * as crypto from 'crypto';
+import { schnorr } from '@noble/curves/secp256k1';
+import { bytesToHex } from '@noble/curves/abstract/utils';
 
 // WebSocket import that works in both Node.js and browser
 const WebSocketImpl = typeof WebSocket !== 'undefined'
@@ -112,7 +114,8 @@ export class NostrRelay extends EventEmitter {
   private isHost = false;
   private peers = new Map<string, NostrPeer>();
   private isRunning = false;
-  private selfId: string;
+  private privateKey: Uint8Array;
+  private publicKey: string;
   private subscriptionId: string | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
@@ -120,7 +123,16 @@ export class NostrRelay extends EventEmitter {
   constructor(config: Partial<NostrRelayConfig> = {}) {
     super();
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.selfId = randomId(); // 64-char hex for Nostr pubkey compatibility
+    // Generate a proper secp256k1 keypair for Nostr
+    this.privateKey = schnorr.utils.randomPrivateKey();
+    this.publicKey = bytesToHex(schnorr.getPublicKey(this.privateKey));
+  }
+
+  /**
+   * Get own peer ID (public key)
+   */
+  getSelfId(): string {
+    return this.publicKey;
   }
 
   /**
@@ -203,7 +215,7 @@ export class NostrRelay extends EventEmitter {
   send(data: unknown, peerId?: string): void {
     this.sendMessage({
       type: 'data',
-      from: this.selfId,
+      from: this.publicKey,
       to: peerId,
       payload: data,
       timestamp: Date.now()
@@ -229,13 +241,6 @@ export class NostrRelay extends EventEmitter {
    */
   getIsRunning(): boolean {
     return this.isRunning;
-  }
-
-  /**
-   * Get own peer ID
-   */
-  getSelfId(): string {
-    return this.selfId;
   }
 
   // ========================================
@@ -329,7 +334,7 @@ export class NostrRelay extends EventEmitter {
     this.heartbeatTimer = setInterval(() => {
       if (this.ws && this.ws.readyState === 1) {
         // Send a ping message to keep connection alive
-        this.sendMessage({ type: 'ping', from: this.selfId });
+        this.sendMessage({ type: 'ping', from: this.publicKey });
         // If host, also announce presence periodically
         if (this.isHost) {
           this.announcePresence();
@@ -347,7 +352,7 @@ export class NostrRelay extends EventEmitter {
     console.log('[NostrRelay] Announcing host presence');
     this.sendMessage({
       type: 'host-announce',
-      hostId: this.selfId,
+      hostId: this.publicKey,
       authToken: this.config.authToken,
       localUrl: this.config.localUrl,
       timestamp: Date.now()
@@ -399,28 +404,29 @@ export class NostrRelay extends EventEmitter {
 
     const tags = [
       ['d', roomId], // Room identifier
-      ['p', this.selfId] // Sender ID
+      ['p', this.publicKey] // Sender ID
     ];
 
-    // Create event without id and sig first
+    // Create serialized event for hashing (NIP-01 format)
     const preEvent = [
       0, // reserved
-      this.selfId, // pubkey (using selfId as pseudo-pubkey)
+      this.publicKey, // pubkey
       created_at,
       kind,
       tags,
       content
     ];
 
-    const id = sha256(JSON.stringify(preEvent));
+    // Hash the serialized event to get the event ID
+    const eventHash = sha256(JSON.stringify(preEvent));
 
-    // Create dummy signature (Nostr relays may reject unsigned events,
-    // but many accept them for ephemeral use)
-    const sig = randomId() + randomId();
+    // Sign the event hash with our private key using Schnorr signature
+    const signature = schnorr.sign(eventHash, this.privateKey);
+    const sig = bytesToHex(signature);
 
     return {
-      id,
-      pubkey: this.selfId,
+      id: eventHash,
+      pubkey: this.publicKey,
       created_at,
       kind,
       tags,
@@ -464,7 +470,7 @@ export class NostrRelay extends EventEmitter {
 
   private handleEvent(event: NostrEvent): void {
     // Ignore our own events
-    if (event.pubkey === this.selfId) {
+    if (event.pubkey === this.publicKey) {
       console.log('[NostrRelay] Ignoring own event');
       return;
     }
@@ -483,7 +489,7 @@ export class NostrRelay extends EventEmitter {
           break;
         case 'data':
           // Check if message is for us (or broadcast)
-          if (!data.to || data.to === this.selfId) {
+          if (!data.to || data.to === this.publicKey) {
             const payload = data.payload;
             // Handle API request from P2P peer
             if (payload?.type === 'api-request') {

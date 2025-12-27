@@ -18,6 +18,7 @@
   "dependencies": {
     "@audiio/core": "*",
     "@audiio/icons": "*",
+    "@noble/curves": "^1.7.0",
     "@fastify/cors": "^10.0.1",
     "@fastify/rate-limit": "^10.0.1",
     "@fastify/static": "^8.0.0",
