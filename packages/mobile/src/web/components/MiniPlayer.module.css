@@ -1,0 +1,184 @@
+/**
+ * MiniPlayer styles
+ *
+ * Features:
+ * - Swipe gesture indicators
+ * - Playing indicator animation
+ * - Smooth transitions
+ */
+
+.container {
+  position: fixed;
+  bottom: calc(var(--nav-height) + var(--safe-area-bottom));
+  left: 0;
+  right: 0;
+  height: var(--player-height);
+  background: var(--color-bg-secondary);
+  border-top: 1px solid var(--color-bg-elevated);
+  cursor: pointer;
+  z-index: 90;
+  overflow: hidden;
+  will-change: transform;
+  touch-action: pan-y;
+}
+
+.progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  background: var(--color-accent);
+  transition: width 0.1s linear;
+}
+
+.content {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 var(--spacing-md);
+  gap: var(--spacing-md);
+}
+
+.artwork {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--color-bg-elevated);
+}
+
+.artwork img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.artworkPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+}
+
+.info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.artist {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playButton {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-primary);
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+
+.playButton:active {
+  background: var(--color-bg-hover);
+}
+
+.playButton:disabled {
+  opacity: 0.5;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-bg-elevated);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Swipe indicators */
+.swipeIndicator {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  z-index: 10;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.swipeLeft {
+  right: var(--spacing-md);
+}
+
+.swipeRight {
+  left: var(--spacing-md);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+}
+
+/* Playing indicator - animated dot */
+.playingIndicator {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.8);
+  }
+}

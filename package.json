@@ -1,0 +1,35 @@
+{
+  "name": "audiio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Unified modular music platform",
+  "workspaces": [
+    "packages/*",
+    "addons/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev --concurrency=20",
+    "dev:ui": "npm run dev --workspace=@audiio/ui",
+    "dev:desktop": "npm run dev --workspace=@audiio/desktop",
+    "dev:landing": "npm run dev --workspace=@audiio/landing",
+    "build": "turbo run build",
+    "build:core": "npm run build --workspace=@audiio/core",
+    "build:sdk": "npm run build --workspace=@audiio/sdk",
+    "build:ml": "npm run build --workspace=@audiio/ml-sdk && npm run build --workspace=@audiio/ml-core && npm run build --workspace=@audiio/algo",
+    "build:all": "npm run build:core && npm run build:sdk && npm run build:ml && turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.2"
+  },
+  "packageManager": "npm@10.9.0",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.5.0"
+  }
+}

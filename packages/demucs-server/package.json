@@ -1,0 +1,11 @@
+{
+  "name": "@audiio/demucs-server",
+  "version": "1.0.0",
+  "description": "Demucs AI vocal removal server for Audiio",
+  "private": true,
+  "scripts": {
+    "install:deps": "pip3 install -r requirements.txt",
+    "start": "python3 server.py",
+    "dev": "python3 server.py"
+  }
+}

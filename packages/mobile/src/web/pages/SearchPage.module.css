@@ -1,0 +1,235 @@
+/**
+ * Search Page styles
+ */
+
+.container {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  padding: var(--spacing-lg) var(--spacing-md) var(--spacing-md);
+  position: sticky;
+  top: 0;
+  background: var(--color-bg-primary);
+  z-index: 10;
+}
+
+.searchBar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-bg-elevated);
+}
+
+.searchBar svg {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 16px;
+  outline: none;
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.clearButton {
+  padding: var(--spacing-xs);
+  color: var(--color-text-muted);
+}
+
+.tabs {
+  display: flex;
+  padding: 0 var(--spacing-md);
+  gap: var(--spacing-sm);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tab {
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.tab.active {
+  background: var(--color-accent);
+  color: #000;
+}
+
+.content {
+  flex: 1;
+  padding: var(--spacing-md);
+}
+
+.loading,
+.placeholder,
+.noResults {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl) 0;
+  color: var(--color-text-muted);
+  gap: var(--spacing-md);
+}
+
+.placeholder svg {
+  width: 48px;
+  height: 48px;
+  opacity: 0.5;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--color-bg-elevated);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Artist List */
+.artistList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.artistItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm);
+  margin: 0 calc(-1 * var(--spacing-sm));
+  background: none;
+  border: none;
+  width: calc(100% + var(--spacing-md));
+  text-align: left;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: background 0.15s;
+}
+
+.artistItem:active {
+  background: var(--color-bg-hover);
+}
+
+.artistAvatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--color-bg-elevated);
+  flex-shrink: 0;
+}
+
+.artistAvatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatarPlaceholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, var(--color-bg-elevated), var(--color-bg-hover));
+}
+
+.artistName {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* Album List */
+.albumList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.albumItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm);
+  margin: 0 calc(-1 * var(--spacing-sm));
+  background: none;
+  border: none;
+  width: calc(100% + var(--spacing-md));
+  text-align: left;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: background 0.15s;
+}
+
+.albumItem:active {
+  background: var(--color-bg-hover);
+}
+
+.albumArtwork {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--color-bg-elevated);
+  flex-shrink: 0;
+}
+
+.albumArtwork img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.artworkPlaceholder {
+  width: 100%;
+  height: 100%;
+  background: var(--color-bg-elevated);
+}
+
+.albumInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.albumName {
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.albumArtist {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

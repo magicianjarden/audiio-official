@@ -1,0 +1,265 @@
+/**
+ * LibraryPage styles
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.refreshButton {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  transition: background 0.2s;
+}
+
+.refreshButton:active {
+  background: var(--color-bg-elevated);
+}
+
+.refreshButton:disabled {
+  opacity: 0.5;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: var(--spacing-sm);
+  padding: 0 var(--spacing-lg) var(--spacing-md);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-elevated);
+  transition: all 0.2s;
+}
+
+.tab.active {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.tab:active {
+  transform: scale(0.95);
+}
+
+.count {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* Badge for tab counts */
+.badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.2);
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab.active .badge {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Sync Banner */
+.syncBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: var(--color-warning-muted, rgba(255, 193, 7, 0.15));
+  font-size: 13px;
+  color: var(--color-warning, #ffc107);
+}
+
+.syncBanner button {
+  font-size: 13px;
+  font-weight: 600;
+  color: inherit;
+  text-decoration: underline;
+}
+
+/* Content */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+/* Loading */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-xxl) 0;
+  color: var(--color-text-secondary);
+}
+
+/* Empty State */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--spacing-xxl) var(--spacing-lg);
+  color: var(--color-text-muted);
+}
+
+.empty h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin: var(--spacing-md) 0 var(--spacing-xs);
+}
+
+.empty p {
+  font-size: 14px;
+}
+
+/* Track Section */
+.trackSection {
+  margin: 0 calc(-1 * var(--spacing-lg));
+  padding: 0 var(--spacing-lg);
+}
+
+/* Dislikes hint */
+.dislikesHint {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--spacing-md) 0;
+  padding: 0 var(--spacing-lg);
+}
+
+/* Playlists Section */
+.playlistsSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+/* Create Playlist Button */
+.createPlaylist {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  text-align: left;
+  transition: background 0.2s;
+}
+
+.createPlaylist:active {
+  background: var(--color-bg-hover);
+}
+
+.createPlaylistIcon {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.createPlaylist span {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+/* Playlist Grid */
+.playlistGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-md);
+}
+
+.playlistCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  text-align: left;
+  transition: transform 0.2s;
+}
+
+.playlistCard:active {
+  transform: scale(0.98);
+}
+
+.playlistArtwork {
+  aspect-ratio: 1;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-bg-elevated);
+}
+
+.playlistArtwork img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.playlistPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+}
+
+.playlistInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.playlistName {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playlistCount {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}

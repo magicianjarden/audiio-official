@@ -1,0 +1,169 @@
+/**
+ * Skeleton styles - Shimmer loading animations
+ */
+
+/* Base skeleton with shimmer */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-elevated) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    var(--color-bg-elevated) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Track Row */
+.trackRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.trackInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trackList {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Card */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 140px;
+  flex-shrink: 0;
+}
+
+.cardImage {
+  width: 140px;
+  height: 140px;
+}
+
+.cardTitle {
+  margin-top: 4px;
+}
+
+.cardRow {
+  display: flex;
+  gap: var(--spacing-md);
+  padding: 0 var(--spacing-md);
+  overflow-x: hidden;
+}
+
+/* Section */
+.section {
+  padding: var(--spacing-lg) 0;
+}
+
+.sectionTitle {
+  margin-bottom: var(--spacing-md);
+  margin-left: var(--spacing-md);
+}
+
+/* Artist Card */
+.artistCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 100px;
+  flex-shrink: 0;
+}
+
+.artistName {
+  margin-top: 4px;
+}
+
+/* Now Playing */
+.nowPlaying {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--spacing-lg);
+  height: 100%;
+}
+
+.nowPlayingHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: var(--spacing-xl);
+}
+
+.nowPlayingArtwork {
+  width: 85vw;
+  max-width: 380px;
+  aspect-ratio: 1;
+  margin-bottom: var(--spacing-xl);
+}
+
+.nowPlayingInfo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: var(--spacing-lg);
+}
+
+.nowPlayingControls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-lg);
+  margin-top: var(--spacing-lg);
+}
+
+/* Library */
+.library {
+  padding: var(--spacing-md);
+}
+
+.filterRow {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+  overflow-x: hidden;
+}
+
+/* Search Results */
+.searchResults {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+/* Reduce motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+}

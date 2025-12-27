@@ -1,0 +1,150 @@
+/**
+ * DatabaseSetup Component Styles
+ */
+
+.sposify-database-setup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 32px;
+  text-align: center;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.sposify-database-setup .setup-icon-container {
+  margin-bottom: 24px;
+}
+
+.sposify-database-setup .setup-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-secondary, #1a1a1a);
+  color: var(--text-secondary, #999);
+  transition: all 0.3s ease;
+}
+
+.sposify-database-setup .setup-icon svg {
+  width: 40px;
+  height: 40px;
+}
+
+.sposify-database-setup .setup-icon.downloading,
+.sposify-database-setup .setup-icon.extracting,
+.sposify-database-setup .setup-icon.building {
+  background: linear-gradient(135deg, rgba(29, 185, 84, 0.2) 0%, rgba(30, 215, 96, 0.2) 100%);
+  color: var(--accent-color, #1db954);
+}
+
+.sposify-database-setup .setup-icon.complete {
+  background: var(--accent-color, #1db954);
+  color: white;
+}
+
+.sposify-database-setup .setup-icon.error {
+  background: rgba(255, 107, 107, 0.2);
+  color: #ff6b6b;
+}
+
+.sposify-database-setup .setup-title {
+  margin: 0 0 8px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+}
+
+.sposify-database-setup .setup-message {
+  margin: 0 0 24px 0;
+  font-size: 14px;
+  color: var(--text-secondary, #999);
+}
+
+/* Progress Bar */
+.sposify-database-setup .setup-progress-container {
+  width: 100%;
+  margin-bottom: 24px;
+}
+
+.sposify-database-setup .setup-progress-bar {
+  height: 8px;
+  background: var(--surface-secondary, #1a1a1a);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.sposify-database-setup .setup-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-color, #1db954) 0%, var(--accent-secondary, #1ed760) 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.sposify-database-setup .setup-progress-stats {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--text-secondary, #999);
+}
+
+.sposify-database-setup .progress-percent {
+  font-weight: 600;
+  color: var(--accent-color, #1db954);
+}
+
+/* Complete State */
+.sposify-database-setup .setup-complete-info {
+  margin-bottom: 24px;
+}
+
+.sposify-database-setup .setup-complete-info p {
+  margin: 0;
+  color: var(--accent-color, #1db954);
+  font-weight: 500;
+}
+
+/* Error State */
+.sposify-database-setup .setup-error-info {
+  margin-bottom: 24px;
+}
+
+.sposify-database-setup .setup-error-info p {
+  margin: 0 0 16px 0;
+  color: #ff6b6b;
+}
+
+.sposify-database-setup .retry-btn {
+  padding: 10px 24px;
+  background: transparent;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 20px;
+  color: var(--text-primary, #fff);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sposify-database-setup .retry-btn:hover {
+  background: var(--surface-secondary, #1a1a1a);
+  border-color: var(--accent-color, #1db954);
+}
+
+/* Description */
+.sposify-database-setup .setup-description {
+  padding: 16px;
+  background: var(--surface-secondary, #1a1a1a);
+  border-radius: 8px;
+}
+
+.sposify-database-setup .setup-description p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary, #999);
+  line-height: 1.5;
+}

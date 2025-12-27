@@ -1,8 +1,0 @@
-flask>=2.3.0
-flask-cors>=4.0.0
-torch>=2.0.0
-torchaudio>=2.0.0
-demucs>=4.0.0
-requests>=2.31.0
-soundfile>=0.12.0
-numpy>=1.24.0

@@ -1,0 +1,217 @@
+/**
+ * Settings Page styles
+ */
+
+.container {
+  min-height: 100%;
+}
+
+.header {
+  padding: var(--spacing-lg) var(--spacing-md);
+  position: sticky;
+  top: 0;
+  background: var(--color-bg-primary);
+  z-index: 10;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.content {
+  padding: 0 var(--spacing-md) var(--spacing-xl);
+}
+
+.section {
+  margin-bottom: var(--spacing-xl);
+}
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.sectionDesc {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin-bottom: var(--spacing-sm);
+}
+
+.card {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.statusRow,
+.infoRow,
+.addonRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--color-bg-elevated);
+}
+
+.statusRow:last-child,
+.infoRow:last-child,
+.addonRow:last-child {
+  border-bottom: none;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--color-text-muted);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+}
+
+.status.connected {
+  color: var(--color-accent);
+}
+
+.status.connected .dot {
+  background: var(--color-accent);
+}
+
+.infoRow span:first-child {
+  color: var(--color-text-secondary);
+}
+
+.infoRow span:last-child {
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+
+.addonInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.addonName {
+  font-weight: 500;
+}
+
+.addonRoles {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-transform: capitalize;
+}
+
+.addonStatus {
+  font-size: 12px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+}
+
+.addonStatus.enabled {
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+}
+
+.loading,
+.empty {
+  padding: var(--spacing-lg);
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+/* Menu Card */
+.menuCard {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.menuCard:active {
+  background: var(--color-bg-elevated);
+}
+
+.menuLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.menuIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.menuIcon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.menuInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.menuTitle {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--color-text-primary);
+}
+
+.menuDesc {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.menuCard > svg {
+  width: 20px;
+  height: 20px;
+  color: var(--color-text-muted);
+}
+
+.logoutButton {
+  width: 100%;
+  padding: var(--spacing-md);
+  border-radius: var(--radius-lg);
+  background: var(--color-error);
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.logoutButton:active {
+  opacity: 0.7;
+}
+
+.logoutHint {
+  margin-top: var(--spacing-sm);
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
