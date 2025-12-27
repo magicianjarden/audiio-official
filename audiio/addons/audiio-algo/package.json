@@ -1,0 +1,39 @@
+{
+  "name": "@audiio/algo",
+  "version": "1.0.0",
+  "description": "Official Audiio ML recommendation algorithm",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@audiio/ml-sdk": "*",
+    "@tensorflow/tfjs": "^4.21.0",
+    "essentia.js": "^0.1.3",
+    "idb": "^8.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.0.0"
+  },
+  "keywords": [
+    "audiio",
+    "algorithm",
+    "ml",
+    "recommendation",
+    "music"
+  ],
+  "author": "Audiio",
+  "license": "MIT"
+}

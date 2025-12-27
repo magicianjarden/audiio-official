@@ -1,5 +1,10 @@
 /**
  * MiniPlayer styles
+ *
+ * Features:
+ * - Swipe gesture indicators
+ * - Playing indicator animation
+ * - Smooth transitions
  */
 
 .container {
@@ -13,6 +18,8 @@
   cursor: pointer;
   z-index: 90;
   overflow: hidden;
+  will-change: transform;
+  touch-action: pan-y;
 }
 
 .progress {
@@ -33,6 +40,7 @@
 }
 
 .artwork {
+  position: relative;
   width: 48px;
   height: 48px;
   border-radius: var(--radius-sm);
@@ -113,5 +121,64 @@
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Swipe indicators */
+.swipeIndicator {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  z-index: 10;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.swipeLeft {
+  right: var(--spacing-md);
+}
+
+.swipeRight {
+  left: var(--spacing-md);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+}
+
+/* Playing indicator - animated dot */
+.playingIndicator {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.8);
   }
 }

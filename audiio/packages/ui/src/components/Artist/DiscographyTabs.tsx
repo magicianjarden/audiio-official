@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { PlayIcon, MusicNoteIcon } from '../Icons/Icons';
+import { PlayIcon, MusicNoteIcon } from '@audiio/icons';
 import type { SearchAlbum } from '../../stores/search-store';
 import { useAlbumContextMenu } from '../../contexts/ContextMenuContext';
 

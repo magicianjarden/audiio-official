@@ -8,7 +8,8 @@ import {
   HeartIcon,
   HeartOutlineIcon,
   MusicNoteIcon
-} from '../Icons/Icons';
+} from '@audiio/icons';
+import { WhyButton } from '../RecommendationExplanation';
 
 interface TrackCardProps {
   track: UnifiedTrack;
@@ -24,7 +25,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onClick, onContextM
   const isCurrentTrack = currentTrack?.id === track.id;
   const trackIsLiked = isLiked(track.id);
   const artworkUrl = track.artwork?.medium ?? track.album?.artwork?.medium;
-  const artistNames = track.artists.map(a => a.name).join(', ');
+  const artistNames = track.artists?.map(a => a.name).join(', ') ?? 'Unknown Artist';
 
   const handleLikeClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -44,6 +45,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onClick, onContextM
       onContextMenu={handleContextMenu}
       style={style}
     >
+      <WhyButton track={track} />
       <div className="track-card-artwork">
         {artworkUrl ? (
           <img

@@ -1,0 +1,82 @@
+/**
+ * SwipeableRow styles - Swipe to reveal actions
+ */
+
+.container {
+  position: relative;
+  overflow: hidden;
+}
+
+.row {
+  position: relative;
+  z-index: 1;
+  background: var(--color-bg-primary);
+  will-change: transform;
+  touch-action: pan-y pinch-zoom;
+}
+
+/* Actions containers */
+.actionsLeft,
+.actionsRight {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  z-index: 0;
+}
+
+.actionsLeft {
+  left: 0;
+  justify-content: flex-start;
+}
+
+.actionsRight {
+  right: 0;
+  justify-content: flex-end;
+}
+
+/* Action button */
+.action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 72px;
+  height: 100%;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  will-change: transform, opacity;
+}
+
+.action:active {
+  opacity: 0.8;
+}
+
+.actionLabel {
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Full swipe indicator */
+.fullSwipeIndicator {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  z-index: 0;
+  will-change: opacity;
+}
+
+/* Reduce motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .row {
+    transition: transform 0.2s ease-out;
+  }
+
+  .action {
+    transition: none;
+  }
+}

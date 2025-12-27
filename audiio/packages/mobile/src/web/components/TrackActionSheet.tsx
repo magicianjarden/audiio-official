@@ -12,7 +12,7 @@ import {
   HeartOutlineIcon,
   ThumbDownIcon,
   MoreIcon
-} from './Icons';
+} from '@audiio/icons';
 import { getTrackArtwork } from '../utils/artwork';
 import type { UnifiedTrack } from '@audiio/sdk';
 import styles from './TrackActionSheet.module.css';

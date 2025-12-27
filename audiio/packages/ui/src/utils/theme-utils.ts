@@ -362,6 +362,43 @@ export async function fetchThemeFromUrl(url: string): Promise<ThemeConfig | null
 }
 
 // ========================================
+// CSS Variable Utilities
+// ========================================
+
+/**
+ * Get the current value of a CSS variable
+ * @param variableName - CSS variable name (with or without --)
+ * @param fallback - Optional fallback value
+ */
+export function getCSSVariable(variableName: string, fallback?: string): string {
+  const name = variableName.startsWith('--') ? variableName : `--${variableName}`;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback || '';
+}
+
+/**
+ * Get the current accent color from CSS variables
+ */
+export function getAccentColor(): string {
+  return getCSSVariable('--accent', '#1db954');
+}
+
+/**
+ * Get multiple CSS variables at once
+ */
+export function getCSSVariables(variableNames: string[]): Record<string, string> {
+  const result: Record<string, string> = {};
+  const style = getComputedStyle(document.documentElement);
+
+  for (const name of variableNames) {
+    const cssName = name.startsWith('--') ? name : `--${name}`;
+    result[name] = style.getPropertyValue(cssName).trim();
+  }
+
+  return result;
+}
+
+// ========================================
 // Color Utilities
 // ========================================
 

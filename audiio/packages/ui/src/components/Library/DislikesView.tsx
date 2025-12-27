@@ -3,12 +3,12 @@ import { useLibraryStore } from '../../stores/library-store';
 import { usePlayerStore } from '../../stores/player-store';
 import { useRecommendationStore, DISLIKE_REASONS } from '../../stores/recommendation-store';
 import { TrackRow } from '../TrackRow/TrackRow';
-import { ThumbDownIcon, PlayIcon } from '../Icons/Icons';
+import { ThumbDownIcon, PlayIcon, CloseIcon } from '@audiio/icons';
 
 export const DislikesView: React.FC = () => {
-  const { dislikedTracks } = useLibraryStore();
+  const { dislikedTracks, undislikeTrack } = useLibraryStore();
   const { play, setQueue, currentTrack } = usePlayerStore();
-  const { getDislikeReasons } = useRecommendationStore();
+  const { getDislikeReasons, removeDislike } = useRecommendationStore();
 
   const getReasonLabels = (trackId: string): string[] => {
     const reasons = getDislikeReasons(trackId);
@@ -31,6 +31,13 @@ export const DislikesView: React.FC = () => {
       setQueue(dislikedTracks, 0);
       play(dislikedTracks[0]!);
     }
+  };
+
+  const handleUndislike = (trackId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Remove from both stores
+    removeDislike(trackId);
+    undislikeTrack(trackId);
   };
 
   return (
@@ -71,13 +78,19 @@ export const DislikesView: React.FC = () => {
                     isPlaying={currentTrack?.id === track.id}
                     onClick={() => handlePlayTrack(index)}
                   />
-                  {reasonLabels.length > 0 && (
-                    <div className="dislike-reasons">
-                      {reasonLabels.map((label, i) => (
-                        <span key={i} className="dislike-reason-tag">{label}</span>
-                      ))}
-                    </div>
-                  )}
+                  <div className="dislike-reasons">
+                    {reasonLabels.map((label, i) => (
+                      <span key={i} className="dislike-reason-tag">{label}</span>
+                    ))}
+                    <button
+                      className="dislike-remove-btn"
+                      onClick={(e) => handleUndislike(track.id, e)}
+                      title="Remove from dislikes"
+                    >
+                      <CloseIcon size={12} />
+                      <span>Remove</span>
+                    </button>
+                  </div>
                 </div>
               );
             })}

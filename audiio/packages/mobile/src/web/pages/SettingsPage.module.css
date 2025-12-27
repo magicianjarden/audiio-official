@@ -131,6 +131,69 @@
   color: var(--color-text-muted);
 }
 
+/* Menu Card */
+.menuCard {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.menuCard:active {
+  background: var(--color-bg-elevated);
+}
+
+.menuLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.menuIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.menuIcon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.menuInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.menuTitle {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--color-text-primary);
+}
+
+.menuDesc {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.menuCard > svg {
+  width: 20px;
+  height: 20px;
+  color: var(--color-text-muted);
+}
+
 .logoutButton {
   width: 100%;
   padding: var(--spacing-md);

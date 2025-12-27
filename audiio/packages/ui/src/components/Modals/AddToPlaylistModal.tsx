@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import { useLibraryStore } from '../../stores/library-store';
-import { CloseIcon, AddIcon, PlaylistIcon, CheckIcon } from '../Icons/Icons';
+import { CloseIcon, AddIcon, PlaylistIcon, CheckIcon } from '@audiio/icons';
 
 interface AddToPlaylistModalProps {
   track: UnifiedTrack;

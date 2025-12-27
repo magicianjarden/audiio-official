@@ -4,13 +4,14 @@
  * Uses ML ranking for personalized track ordering
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { useMLRanking } from '../../../hooks';
-import { MusicNoteIcon } from '../../Icons/Icons';
+import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { MusicNoteIcon } from '@audiio/icons';
 import type { BaseSectionProps } from '../section-registry';
+import { debugLog } from '../../../utils/debug';
 
 export interface QuickPicksSectionProps extends BaseSectionProps {
   maxItems?: number;
@@ -22,87 +23,44 @@ export const QuickPicksSection: React.FC<QuickPicksSectionProps> = ({
   context,
   maxItems = 6,
 }) => {
-  const [tracks, setTracks] = useState<UnifiedTrack[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const { play, setQueue, currentTrack, isPlaying } = usePlayerStore();
   const { showContextMenu } = useTrackContextMenu();
-  const { rankTracks } = useMLRanking();
 
-  useEffect(() => {
-    let mounted = true;
+  // Embedding-based playlist generation
+  const {
+    generatePersonalizedPlaylist,
+    getTracksFromPlaylist,
+    isReady: embeddingReady,
+    tracksIndexed,
+  } = useEmbeddingPlaylist();
 
-    const fetchQuickPicks = async () => {
-      setIsLoading(true);
+  // Use embedding-based personalized playlist only
+  const tracks = useMemo(() => {
+    if (!embeddingReady) {
+      debugLog('[QuickPicks]', 'Embedding not ready');
+      return [];
+    }
 
-      try {
-        // Build queries based on user's top artists for personalized quick picks
-        const topArtists = context?.topArtists || [];
-        const queries: string[] = [];
+    if (tracksIndexed < 1) {
+      debugLog('[QuickPicks]', 'No tracks indexed');
+      return [];
+    }
 
-        // Create personalized queries from top artists
-        if (topArtists.length > 0) {
-          topArtists.slice(0, 3).forEach(artist => {
-            queries.push(`${artist} best songs`);
-          });
-        }
+    const playlist = generatePersonalizedPlaylist({
+      limit: maxItems,
+      exploration: 0.1, // Low exploration for familiar quick picks
+    });
 
-        // Add fallback queries
-        queries.push('top hits 2024', 'trending music');
+    if (!playlist || playlist.tracks.length === 0) {
+      debugLog('[QuickPicks]', 'No tracks from personalized playlist');
+      return [];
+    }
 
-        // Fetch tracks from multiple queries for variety
-        const allTracks: UnifiedTrack[] = [];
+    debugLog('[QuickPicks]', `Generated personalized: ${playlist.tracks.length} tracks (indexed: ${tracksIndexed})`);
+    return getTracksFromPlaylist(playlist);
+  }, [embeddingReady, tracksIndexed, maxItems, generatePersonalizedPlaylist, getTracksFromPlaylist]);
 
-        if (window.api?.search) {
-          // Fetch from first 2 queries for quick picks
-          for (const query of queries.slice(0, 2)) {
-            try {
-              const results = await window.api.search({ query, type: 'track' });
-              if (results?.length > 0) {
-                allTracks.push(...results.slice(0, 6)); // Get more for ML ranking
-              }
-            } catch {
-              // Continue with next query
-            }
-          }
-        }
-
-        // Deduplicate
-        if (!mounted || allTracks.length === 0) {
-          if (mounted) setIsLoading(false);
-          return;
-        }
-
-        const uniqueTracks = allTracks.filter((track, index, self) =>
-          index === self.findIndex(t => t.id === track.id)
-        );
-
-        // Apply ML ranking for personalized quick picks
-        const ranked = await rankTracks(uniqueTracks, {
-          enabled: true,
-          explorationMode: 'exploit', // Familiar tracks for quick picks
-          limit: maxItems,
-          shuffle: true,
-          shuffleIntensity: 0.15
-        });
-
-        if (mounted) {
-          setTracks(ranked.map(r => r.track));
-        }
-      } catch (error) {
-        console.error('[QuickPicksSection] Failed to fetch:', error);
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    fetchQuickPicks();
-
-    return () => {
-      mounted = false;
-    };
-  }, [context?.topArtists, maxItems, rankTracks]);
+  const isLoading = !embeddingReady;
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     setQueue(tracks, index);

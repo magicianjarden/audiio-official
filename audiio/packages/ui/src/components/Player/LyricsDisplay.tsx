@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLyricsStore } from '../../stores/lyrics-store';
 import { usePluginStore } from '../../stores/plugin-store';
+import { usePlayerStore } from '../../stores/player-store';
 import { useTranslatedLyrics } from '../../hooks/useTranslatedLyrics';
-import { ChevronUpIcon, ChevronDownIcon, BlockIcon } from '../Icons/Icons';
+import { ChevronUpIcon, ChevronDownIcon, BlockIcon, MicIcon } from '@audiio/icons';
 import { TranslationToggle } from './TranslationToggle';
+import { SingAlongLine } from '../Lyrics/SingAlongLine';
 
 interface LyricsDisplayProps {
   onSeek: (positionMs: number) => void;
@@ -18,8 +20,14 @@ export const LyricsDisplay: React.FC<LyricsDisplayProps> = ({ onSeek, compact = 
 
   const {
     isLoading,
-    error
+    error,
+    singAlongEnabled,
+    setSingAlongEnabled,
+    currentWordIndex,
+    getWordTimingsForLine
   } = useLyricsStore();
+
+  const { position } = usePlayerStore();
 
   const {
     lyrics,
@@ -118,7 +126,7 @@ export const LyricsDisplay: React.FC<LyricsDisplayProps> = ({ onSeek, compact = 
   // Show synced lyrics
   if (lyrics && lyrics.length > 0) {
     return (
-      <div className={`lyrics-display lyrics-synced ${compact ? 'compact' : ''}`}>
+      <div className={`lyrics-display lyrics-synced ${compact ? 'compact' : ''} ${singAlongEnabled ? 'sing-along-mode' : ''}`}>
         {/* Lyrics controls */}
         {!compact && (
           <div className="lyrics-controls">
@@ -145,6 +153,13 @@ export const LyricsDisplay: React.FC<LyricsDisplayProps> = ({ onSeek, compact = 
                 <ChevronDownIcon size={16} />
               </button>
             </div>
+            <button
+              className={`lyrics-singalong-btn ${singAlongEnabled ? 'active' : ''}`}
+              onClick={() => setSingAlongEnabled(!singAlongEnabled)}
+              title={singAlongEnabled ? 'Disable Sing-Along' : 'Enable Sing-Along'}
+            >
+              <MicIcon size={16} />
+            </button>
             <TranslationToggle />
           </div>
         )}
@@ -155,21 +170,36 @@ export const LyricsDisplay: React.FC<LyricsDisplayProps> = ({ onSeek, compact = 
           onScroll={handleScroll}
         >
           <div className="lyrics-content">
-            {lyrics.map((line, index) => (
-              <div
-                key={index}
-                ref={index === currentLineIndex ? activeLineRef : null}
-                className={`lyrics-line ${index === currentLineIndex ? 'active' : ''} ${
-                  index < currentLineIndex ? 'past' : ''
-                } ${index === nextLineIndex ? 'upcoming' : ''}`}
-                onClick={() => handleLineClick(index)}
-              >
-                <span className="lyrics-line-original">{line.text || '\u00A0'}</span>
-                {translationEnabled && line.translation && (
-                  <span className="lyrics-line-translation">{line.translation}</span>
-                )}
-              </div>
-            ))}
+            {lyrics.map((line, index) => {
+              const isActive = index === currentLineIndex;
+              const isPast = index < currentLineIndex;
+              const isUpcoming = index === nextLineIndex;
+              const wordTimings = singAlongEnabled ? getWordTimingsForLine(index) : [];
+
+              return (
+                <div
+                  key={index}
+                  ref={isActive ? activeLineRef : null}
+                  className={`lyrics-line ${isActive ? 'active' : ''} ${isPast ? 'past' : ''} ${isUpcoming ? 'upcoming' : ''}`}
+                  onClick={() => handleLineClick(index)}
+                >
+                  {singAlongEnabled && wordTimings.length > 0 ? (
+                    <SingAlongLine
+                      words={wordTimings}
+                      currentWordIndex={isActive ? currentWordIndex : isPast ? wordTimings.length : -1}
+                      isActive={isActive}
+                      positionMs={position}
+                      offset={offset}
+                    />
+                  ) : (
+                    <span className="lyrics-line-original">{line.text || '\u00A0'}</span>
+                  )}
+                  {translationEnabled && line.translation && (
+                    <span className="lyrics-line-translation">{line.translation}</span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

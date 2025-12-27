@@ -47,7 +47,7 @@ export class AuthManager {
   constructor(config: AuthManagerConfig = {}) {
     // Initialize device manager
     this.deviceManager = new DeviceManager({
-      defaultExpirationDays: config.defaultExpirationDays ?? 30,
+      defaultExpirationDays: config.defaultExpirationDays ?? null, // Never expires by default
       dataPath: config.dataPath
     });
 
@@ -71,6 +71,32 @@ export class AuthManager {
       this.regeneratePassphrase();
     } else {
       this.currentPassphrase = this.authData.passphrase;
+    }
+  }
+
+  /**
+   * Pair a device via QR code (no password needed)
+   * Called by AccessManager when consuming a pairing code
+   */
+  pairDevice(userAgent: string): { success: boolean; deviceToken?: string; deviceId?: string; error?: string } {
+    try {
+      // Create device token with null expiration (never expires)
+      const deviceToken = this.deviceManager.registerDevice(
+        '', // Will be auto-detected from userAgent
+        userAgent,
+        null // Never expires for QR-paired devices
+      );
+
+      console.log(`[AuthManager] Device paired via QR code: ${deviceToken.deviceId}`);
+
+      return {
+        success: true,
+        deviceToken: `${deviceToken.deviceId}:${deviceToken.token}`,
+        deviceId: deviceToken.deviceId
+      };
+    } catch (error) {
+      console.error('[AuthManager] Failed to pair device:', error);
+      return { success: false, error: 'Failed to register device' };
     }
   }
 

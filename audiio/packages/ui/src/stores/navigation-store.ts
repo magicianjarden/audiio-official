@@ -15,8 +15,10 @@ export type View =
   | 'plugins'
   | 'plugin-detail'
   | 'settings'
+  | 'stats'
   | 'artist-detail'
-  | 'album-detail';
+  | 'album-detail'
+  | `plugin-view-${string}`; // Dynamic plugin views
 
 interface NavigationState {
   currentView: View;
@@ -32,6 +34,7 @@ interface NavigationState {
 
   // Actions
   navigate: (view: View) => void;
+  navigateTo: (view: View, params?: { playlistId?: string; pluginId?: string; artistId?: string; albumId?: string }) => void;
   openPlaylist: (playlistId: string) => void;
   openPlugin: (pluginId: string) => void;
   openArtist: (artistId: string, artistData?: SearchArtist) => void;
@@ -115,9 +118,34 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
       set({ ...clearSearch, currentView: 'home', selectedArtistId: null, selectedArtistData: null });
     } else if (currentView === 'album-detail') {
       set({ ...clearSearch, currentView: 'home', selectedAlbumId: null, selectedAlbumData: null });
+    } else if (currentView === 'stats') {
+      set({ ...clearSearch, currentView: 'home' });
+    } else if (currentView.startsWith('plugin-view-')) {
+      set({ ...clearSearch, currentView: 'home' });
     } else {
       // For other views, just clear search and go home
       set({ ...clearSearch, currentView: 'home' });
+    }
+  },
+
+  // Alias for navigate with optional params (for detail views)
+  navigateTo: (view: View, params?: { playlistId?: string; pluginId?: string; artistId?: string; albumId?: string }) => {
+    if (params?.playlistId && view === 'playlist-detail') {
+      set({ currentView: view, selectedPlaylistId: params.playlistId });
+    } else if (params?.pluginId && view === 'plugin-detail') {
+      set({ currentView: view, selectedPluginId: params.pluginId });
+    } else if (params?.artistId && view === 'artist-detail') {
+      set({ currentView: view, selectedArtistId: params.artistId });
+    } else if (params?.albumId && view === 'album-detail') {
+      set({ currentView: view, selectedAlbumId: params.albumId });
+    } else {
+      set({
+        currentView: view,
+        selectedPlaylistId: null,
+        selectedPluginId: null,
+        selectedArtistId: null,
+        selectedAlbumId: null,
+      });
     }
   }
 }));

@@ -12,7 +12,7 @@ import {
   RefreshIcon,
   SunIcon,
   MoonIcon,
-} from '../Icons/Icons';
+} from '@audiio/icons';
 
 interface ThemeEditorModalProps {
   isOpen: boolean;

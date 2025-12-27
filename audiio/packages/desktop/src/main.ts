@@ -2,16 +2,18 @@
  * Audiio Desktop - Electron Main Process
  */
 
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
 import * as http from 'http';
+import { spawn, type ChildProcess } from 'child_process';
 import {
   AddonRegistry,
   SearchOrchestrator,
   TrackResolver,
   PlaybackOrchestrator,
+  MetadataOrchestrator,
   getAudioAnalyzer,
   type AudioFeatures,
   type AnalysisOptions
@@ -20,7 +22,18 @@ import { DeezerMetadataProvider } from '@audiio/deezer-metadata';
 import { YouTubeMusicProvider } from '@audiio/youtube-music';
 import { AppleMusicArtworkProvider } from '@audiio/applemusic-artwork';
 import { LRCLibProvider } from '@audiio/lrclib-lyrics';
+import { KaraokeProcessor } from '@audiio/karaoke';
 import { getLibraryBridge, type LibraryBridge } from './services/library-bridge';
+import { mlService } from './services/ml-service';
+
+// Sposify addon - lazy loaded
+let sposifyHandlersRegistered = false;
+
+// Demucs server process
+let demucsProcess: ChildProcess | null = null;
+
+// Karaoke processor
+let karaokeProcessor: KaraokeProcessor;
 
 // Mobile server - lazy loaded
 let MobileServer: any = null;
@@ -29,11 +42,26 @@ let mobileServer: any = null;
 let mobileAuthManager: any = null;
 let mobileAccessConfig: any = null;
 
+// Register local-audio as a privileged scheme for media playback
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'local-audio',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      bypassCSP: true
+    }
+  }
+]);
+
 let mainWindow: BrowserWindow | null = null;
 let registry: AddonRegistry;
 let searchOrchestrator: SearchOrchestrator;
 let trackResolver: TrackResolver;
 let playbackOrchestrator: PlaybackOrchestrator;
+let metadataOrchestrator: MetadataOrchestrator;
 let libraryBridge: LibraryBridge;
 
 // Store provider references for settings updates
@@ -46,6 +74,10 @@ const audioAnalyzer = getAudioAnalyzer();
 
 // Audio features cache (persisted across sessions)
 const audioFeaturesCache = new Map<string, AudioFeatures>();
+
+// Plugin folder watcher
+let pluginFolderWatcher: fs.FSWatcher | null = null;
+let currentPluginFolder: string | null = null;
 
 /**
  * Initialize addon providers
@@ -78,8 +110,208 @@ async function initializeAddons(): Promise<void> {
   searchOrchestrator = new SearchOrchestrator(registry);
   trackResolver = new TrackResolver(registry);
   playbackOrchestrator = new PlaybackOrchestrator(trackResolver);
+  metadataOrchestrator = new MetadataOrchestrator(registry);
+
+  // Initialize Karaoke processor
+  karaokeProcessor = new KaraokeProcessor();
+  await karaokeProcessor.initialize();
+  registry.register(karaokeProcessor);
+
+  // Subscribe to full track ready events and forward to renderer
+  // This enables push notification instead of polling
+  karaokeProcessor.onFullTrackReady((trackId, result) => {
+    console.log(`[Karaoke] Forwarding full track ready event to renderer: ${trackId}`);
+    mainWindow?.webContents.send('karaoke-full-track-ready', { trackId, result });
+  });
 
   console.log('Addons initialized:', registry.getAllAddonIds());
+}
+
+/**
+ * Start the Demucs Python server for karaoke processing
+ */
+function startDemucsServer(): void {
+  const serverPath = path.join(__dirname, '../../../demucs-server');
+
+  // Check if server directory exists
+  if (!fs.existsSync(serverPath)) {
+    console.log('[Demucs] Server directory not found:', serverPath);
+    return;
+  }
+
+  console.log('[Demucs] Starting server from:', serverPath);
+
+  // Try python3 first, fall back to python
+  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+
+  demucsProcess = spawn(pythonCmd, ['server.py'], {
+    cwd: serverPath,
+    env: { ...process.env, PORT: '8765' },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+
+  demucsProcess.stdout?.on('data', (data: Buffer) => {
+    console.log('[Demucs]', data.toString().trim());
+  });
+
+  demucsProcess.stderr?.on('data', (data: Buffer) => {
+    console.error('[Demucs]', data.toString().trim());
+  });
+
+  demucsProcess.on('error', (err) => {
+    console.error('[Demucs] Failed to start server:', err.message);
+  });
+
+  demucsProcess.on('exit', (code) => {
+    console.log('[Demucs] Server exited with code:', code);
+    demucsProcess = null;
+    // Notify renderer
+    mainWindow?.webContents.send('karaoke-availability-change', { available: false });
+  });
+
+  // Check server health after a short delay
+  setTimeout(async () => {
+    try {
+      const available = await karaokeProcessor.isAvailable();
+      console.log('[Demucs] Server available:', available);
+      // Notify renderer
+      mainWindow?.webContents.send('karaoke-availability-change', { available });
+    } catch {
+      // Server not available yet
+    }
+  }, 3000);
+}
+
+/**
+ * Initialize ML service
+ */
+async function initializeMLService(): Promise<void> {
+  try {
+    console.log('[ML] Initializing ML service...');
+
+    await mlService.initialize({
+      storagePath: app.getPath('userData'),
+      enableAutoTraining: true,
+      algorithmId: 'audiio-algo',
+    });
+
+    // Set library provider for ML service
+    if (libraryBridge) {
+      mlService.setLibraryProvider({
+        getAllTracks: () => libraryBridge.getAllTracks(),
+        getTrack: (id) => libraryBridge.getTrackById(id),
+        getLikedTracks: () => libraryBridge.getLikedTracks(),
+        getDislikedTrackIds: () => libraryBridge.getDislikedTrackIds(),
+      });
+    }
+
+    console.log('[ML] ML service initialized');
+  } catch (error) {
+    console.error('[ML] Failed to initialize ML service:', error);
+    // Don't throw - ML is optional
+  }
+}
+
+/**
+ * Set up ML IPC handlers
+ */
+function setupMLIPCHandlers(): void {
+  // Score a single track
+  ipcMain.handle('algo-score-track', async (_event, trackId: string) => {
+    try {
+      return await mlService.scoreTrack(trackId);
+    } catch (error) {
+      console.error('[ML] Score track failed:', error);
+      return null;
+    }
+  });
+
+  // Score multiple tracks
+  ipcMain.handle('algo-score-batch', async (_event, trackIds: string[]) => {
+    try {
+      return await mlService.scoreBatch(trackIds);
+    } catch (error) {
+      console.error('[ML] Score batch failed:', error);
+      return [];
+    }
+  });
+
+  // Get recommendations
+  ipcMain.handle('algo-get-recommendations', async (_event, count: number) => {
+    try {
+      return await mlService.getRecommendations(count);
+    } catch (error) {
+      console.error('[ML] Get recommendations failed:', error);
+      return [];
+    }
+  });
+
+  // Get similar tracks
+  ipcMain.handle('algo-get-similar', async (_event, trackId: string, count: number) => {
+    try {
+      return await mlService.getSimilarTracks(trackId, count);
+    } catch (error) {
+      console.error('[ML] Get similar failed:', error);
+      return [];
+    }
+  });
+
+  // Get audio features
+  ipcMain.handle('algo-get-features', async (_event, trackId: string) => {
+    try {
+      return await mlService.getAudioFeatures(trackId);
+    } catch (error) {
+      console.error('[ML] Get features failed:', error);
+      return null;
+    }
+  });
+
+  // Trigger training
+  ipcMain.handle('algo-train', async () => {
+    try {
+      return await mlService.train();
+    } catch (error) {
+      console.error('[ML] Training failed:', error);
+      return null;
+    }
+  });
+
+  // Get training status
+  ipcMain.handle('algo-training-status', () => {
+    return mlService.getTrainingStatus();
+  });
+
+  // Record user event
+  ipcMain.handle('algo-record-event', async (_event, userEvent: unknown) => {
+    try {
+      await mlService.recordEvent(userEvent as import('@audiio/ml-sdk').UserEvent);
+      return { success: true };
+    } catch (error) {
+      console.error('[ML] Record event failed:', error);
+      return { success: false };
+    }
+  });
+
+  // Check if algorithm is loaded
+  ipcMain.handle('algo-is-loaded', () => {
+    return mlService.isAlgorithmLoaded();
+  });
+
+  // Update settings
+  ipcMain.handle('algo-update-settings', async (_event, settings: Record<string, unknown>) => {
+    try {
+      mlService.updateSettings(settings);
+      return { success: true };
+    } catch (error) {
+      console.error('[ML] Update settings failed:', error);
+      return { success: false };
+    }
+  });
+
+  // Get settings
+  ipcMain.handle('algo-get-settings', () => {
+    return mlService.getSettings();
+  });
 }
 
 /**
@@ -101,6 +333,23 @@ function createWindow(): void {
     frame: true,
     backgroundColor: '#121212'
   });
+
+  // Add CORS headers for audio streams to enable Web Audio API processing
+  // This is needed for vocal removal feature to work with cross-origin audio
+  mainWindow.webContents.session.webRequest.onHeadersReceived(
+    { urls: ['*://*.googlevideo.com/*', '*://*.youtube.com/*', '*://*.ytimg.com/*'] },
+    (details, callback) => {
+      const responseHeaders = { ...details.responseHeaders };
+
+      // Add CORS headers to allow Web Audio API access
+      responseHeaders['Access-Control-Allow-Origin'] = ['*'];
+      responseHeaders['Access-Control-Allow-Methods'] = ['GET, HEAD, OPTIONS'];
+      responseHeaders['Access-Control-Allow-Headers'] = ['Range, Content-Type'];
+      responseHeaders['Access-Control-Expose-Headers'] = ['Content-Length, Content-Range'];
+
+      callback({ responseHeaders });
+    }
+  );
 
   // Load app - check for dev server first
   const devServerUrl = process.env['VITE_DEV_SERVER_URL'] || 'http://localhost:5174';
@@ -211,30 +460,22 @@ function setupIPCHandlers(): void {
   ipcMain.handle('update-addon-settings', (_event, { addonId, settings }: { addonId: string; settings: Record<string, unknown> }) => {
     console.log(`Updating addon ${addonId} settings:`, settings);
 
-    // Get the addon and update its settings
-    if (addonId === 'deezer' && deezerProvider) {
-      deezerProvider.updateSettings(settings);
-      return { success: true, addonId, settings: deezerProvider.getSettings() };
+    // Get the addon from registry and update its settings
+    const addon = registry.get(addonId) as { updateSettings?: (s: Record<string, unknown>) => void; getSettings?: () => Record<string, unknown> } | null;
+    if (addon?.updateSettings) {
+      addon.updateSettings(settings);
+      return { success: true, addonId, settings: addon.getSettings?.() || settings };
     }
 
-    if (addonId === 'applemusic-artwork' && appleMusicProvider) {
-      appleMusicProvider.updateSettings(settings);
-      return { success: true, addonId, settings: appleMusicProvider.getSettings() };
-    }
-
-    return { success: false, error: `Unknown addon: ${addonId}` };
+    return { success: false, error: `Unknown addon or addon has no settings: ${addonId}` };
   });
 
   // Get addon settings
   ipcMain.handle('get-addon-settings', (_event, addonId: string) => {
-    if (addonId === 'deezer' && deezerProvider) {
-      return deezerProvider.getSettings();
+    const addon = registry.get(addonId) as { getSettings?: () => Record<string, unknown> } | null;
+    if (addon?.getSettings) {
+      return addon.getSettings();
     }
-
-    if (addonId === 'applemusic-artwork' && appleMusicProvider) {
-      return appleMusicProvider.getSettings();
-    }
-
     return null;
   });
 
@@ -296,13 +537,9 @@ function setupIPCHandlers(): void {
   });
 
   // Artist details
-  ipcMain.handle('get-artist', async (_event, { id, source: _source }: { id: string; source?: string }) => {
+  ipcMain.handle('get-artist', async (_event, { id, source }: { id: string; source?: string }) => {
     try {
-      // Use Deezer provider directly for now
-      if (deezerProvider) {
-        return await deezerProvider.getArtist(id);
-      }
-      return null;
+      return await metadataOrchestrator.getArtist(id, source);
     } catch (error) {
       console.error('Get artist error:', error);
       throw error;
@@ -310,36 +547,21 @@ function setupIPCHandlers(): void {
   });
 
   // Album details
-  ipcMain.handle('get-album', async (_event, { id, source: _source }: { id: string; source?: string }) => {
+  ipcMain.handle('get-album', async (_event, { id, source }: { id: string; source?: string }) => {
     try {
-      // Use Deezer provider directly for now
-      if (deezerProvider) {
-        return await deezerProvider.getAlbum(id);
-      }
-      return null;
+      return await metadataOrchestrator.getAlbum(id, source);
     } catch (error) {
       console.error('Get album error:', error);
       throw error;
     }
   });
 
-  // Trending content - uses Deezer charts API for real trending data
+  // Trending content - uses metadata orchestrator for charts
   ipcMain.handle('get-trending', async () => {
     try {
-      // Use Deezer's charts API for actual trending content
-      if (deezerProvider) {
-        const charts = await deezerProvider.getCharts(20);
-        console.log(`[Trending] Fetched ${charts.tracks.length} tracks, ${charts.artists.length} artists, ${charts.albums.length} albums`);
-        return charts;
-      }
-
-      // Fallback to search if Deezer not available
-      const result = await searchOrchestrator.search('top hits 2024', { limit: 20 });
-      return {
-        tracks: result.tracks,
-        artists: result.artists || [],
-        albums: result.albums || []
-      };
+      const charts = await metadataOrchestrator.getCharts(20);
+      console.log(`[Trending] Fetched ${charts.tracks.length} tracks, ${charts.artists.length} artists, ${charts.albums.length} albums`);
+      return charts;
     } catch (error) {
       console.error('Get trending error:', error);
       return { tracks: [], artists: [], albums: [] };
@@ -347,15 +569,9 @@ function setupIPCHandlers(): void {
   });
 
   // Similar albums
-  ipcMain.handle('get-similar-albums', async (_event, { albumId, source: _source }: { albumId: string; source?: string }) => {
+  ipcMain.handle('get-similar-albums', async (_event, { albumId, source }: { albumId: string; source?: string }) => {
     try {
-      // Fallback: get album first, then search by artist/genre
-      const album = await deezerProvider?.getAlbum(albumId);
-      if (album?.artists?.[0]?.name) {
-        const result = await searchOrchestrator.search(`${album.artists[0].name} similar`, { limit: 10 });
-        return result.albums || [];
-      }
-      return [];
+      return await metadataOrchestrator.getSimilarAlbums(albumId, source, 10);
     } catch (error) {
       console.error('Get similar albums error:', error);
       return [];
@@ -363,15 +579,9 @@ function setupIPCHandlers(): void {
   });
 
   // Similar tracks
-  ipcMain.handle('get-similar-tracks', async (_event, { trackId, source: _source }: { trackId: string; source?: string }) => {
+  ipcMain.handle('get-similar-tracks', async (_event, { trackId, source }: { trackId: string; source?: string }) => {
     try {
-      // Fallback: get track first, then search similar
-      const track = await deezerProvider?.getTrack(trackId);
-      if (track?.artists?.[0]?.name) {
-        const result = await searchOrchestrator.search(`${track.artists[0].name} ${track.title} similar`, { limit: 15 });
-        return result.tracks;
-      }
-      return [];
+      return await metadataOrchestrator.getSimilarTracks(trackId, source, 15);
     } catch (error) {
       console.error('Get similar tracks error:', error);
       return [];
@@ -379,10 +589,10 @@ function setupIPCHandlers(): void {
   });
 
   // Artist latest release
-  ipcMain.handle('get-artist-latest-release', async (_event, { artistId, source: _source }: { artistId: string; source?: string }) => {
+  ipcMain.handle('get-artist-latest-release', async (_event, { artistId, source }: { artistId: string; source?: string }) => {
     try {
-      // Search for artist's recent releases
-      const artist = await deezerProvider?.getArtist(artistId);
+      // Get artist from orchestrator
+      const artist = await metadataOrchestrator.getArtist(artistId, source);
       if (artist?.name) {
         const result = await searchOrchestrator.search(`${artist.name} new album 2024`, { limit: 5 });
         if (result.albums && result.albums.length > 0) {
@@ -707,9 +917,10 @@ function setupIPCHandlers(): void {
           trackResolver,
           playback: playbackOrchestrator,
           registry,
-          metadata: deezerProvider,
+          metadata: metadataOrchestrator,
           authManager: mobileAuthManager,
-          libraryBridge
+          libraryBridge,
+          mlService
         },
         onReady: (access: any) => {
           console.log('[Mobile] onReady callback fired');
@@ -726,7 +937,24 @@ function setupIPCHandlers(): void {
       const access = await mobileServer.start();
       mobileAccessConfig = access;
 
+      // Set up device approval callback
+      mobileServer.onDeviceApprovalRequest((request: { id: string; deviceName: string; userAgent: string }) => {
+        console.log(`[Mobile] Device approval requested: ${request.deviceName}`);
+        // Send to renderer to show approval dialog
+        mainWindow?.webContents.send('mobile-device-approval-request', request);
+      });
+
+      // Set up relay event handlers
+      if (mobileServer.onRelayPeerJoined) {
+        mobileServer.onRelayPeerJoined((peer: { id: string; deviceName: string; publicKey: string }) => {
+          console.log(`[Relay] Peer joined: ${peer.deviceName}`);
+          mainWindow?.webContents.send('relay-peer-joined', peer);
+        });
+      }
+
       console.log('[Mobile] Server started successfully:', access.localUrl);
+      console.log('[Mobile] Relay active:', access.relayActive || false);
+      console.log('[Mobile] Relay code:', access.relayCode || 'N/A');
       console.log('[Mobile] QR Code available:', !!access.qrCode);
 
       return { success: true, accessConfig: access };
@@ -779,9 +1007,10 @@ function setupIPCHandlers(): void {
           trackResolver,
           playback: playbackOrchestrator,
           registry,
-          metadata: deezerProvider,
+          metadata: metadataOrchestrator,
           authManager: mobileAuthManager,
-          libraryBridge
+          libraryBridge,
+          mlService
         }
       });
 
@@ -829,9 +1058,10 @@ function setupIPCHandlers(): void {
           trackResolver,
           playback: playbackOrchestrator,
           registry,
-          metadata: deezerProvider,
+          metadata: metadataOrchestrator,
           authManager: mobileAuthManager,
-          libraryBridge
+          libraryBridge,
+          mlService
         }
       });
 
@@ -866,6 +1096,50 @@ function setupIPCHandlers(): void {
     } catch (error) {
       return { success: false, error: String(error) };
     }
+  });
+
+  // ========================================
+  // Mobile Device Approval Handlers
+  // ========================================
+
+  // Approve a device pairing request
+  ipcMain.handle('approve-mobile-device', async (_event, requestId: string) => {
+    if (!mobileServer) {
+      return { success: false, error: 'Mobile server not running' };
+    }
+
+    try {
+      const approved = mobileServer.approveDevice(requestId);
+      console.log(`[Mobile] Device approval ${requestId}: ${approved ? 'approved' : 'not found'}`);
+      return { success: approved };
+    } catch (error) {
+      console.error('[Mobile] Failed to approve device:', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Deny a device pairing request
+  ipcMain.handle('deny-mobile-device', async (_event, requestId: string) => {
+    if (!mobileServer) {
+      return { success: false, error: 'Mobile server not running' };
+    }
+
+    try {
+      const denied = mobileServer.denyDevice(requestId);
+      console.log(`[Mobile] Device denial ${requestId}: ${denied ? 'denied' : 'not found'}`);
+      return { success: denied };
+    } catch (error) {
+      console.error('[Mobile] Failed to deny device:', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Get pending approval requests
+  ipcMain.handle('get-pending-mobile-approvals', () => {
+    if (!mobileServer) {
+      return { requests: [] };
+    }
+    return { requests: mobileServer.getPendingApprovals() };
   });
 
   // ========================================
@@ -1018,6 +1292,75 @@ function setupIPCHandlers(): void {
     }
   });
 
+  // ========================================
+  // Relay Management Handlers
+  // ========================================
+
+  // Get relay status and info
+  ipcMain.handle('get-relay-status', () => {
+    if (!mobileServer) {
+      return {
+        isActive: false,
+        code: null,
+        peers: [],
+        mode: 'embedded'
+      };
+    }
+
+    const relayInfo = mobileServer.getRelayInfo?.();
+    return {
+      isActive: mobileServer.isRelayActive?.() || false,
+      code: relayInfo?.code || null,
+      publicKey: relayInfo?.publicKey || null,
+      peers: relayInfo?.peers || [],
+      mode: 'embedded'
+    };
+  });
+
+  // Get relay connection code
+  ipcMain.handle('get-relay-code', () => {
+    if (!mobileServer) {
+      return { code: null };
+    }
+    return { code: mobileServer.getRelayCode?.() || null };
+  });
+
+  // Get connected relay peers
+  ipcMain.handle('get-relay-peers', () => {
+    if (!mobileServer) {
+      return { peers: [] };
+    }
+    return { peers: mobileServer.getRelayPeers?.() || [] };
+  });
+
+  // Approve a relay peer
+  ipcMain.handle('approve-relay-peer', (_event, peerId: string) => {
+    if (!mobileServer) {
+      return { success: false, error: 'Mobile server not running' };
+    }
+    try {
+      mobileServer.approveRelayPeer?.(peerId);
+      console.log(`[Relay] Approved peer: ${peerId}`);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Deny a relay peer
+  ipcMain.handle('deny-relay-peer', (_event, peerId: string) => {
+    if (!mobileServer) {
+      return { success: false, error: 'Mobile server not running' };
+    }
+    try {
+      mobileServer.denyRelayPeer?.(peerId);
+      console.log(`[Relay] Denied peer: ${peerId}`);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
   // =============================================
   // Translation Handler (CORS-free from main process)
   // Uses MyMemory API (free, reliable) with Lingva fallback
@@ -1079,6 +1422,377 @@ function setupIPCHandlers(): void {
     }
 
     return { success: false, error: errors.join('; ') };
+  });
+
+  // =============================================
+  // Storage & Local Music Handlers
+  // =============================================
+
+  // Select folder dialog
+  ipcMain.handle('select-folder', async (_event, options?: { title?: string; defaultPath?: string }) => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: options?.title || 'Select Folder',
+      defaultPath: options?.defaultPath,
+      properties: ['openDirectory', 'createDirectory']
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+
+    return result.filePaths[0];
+  });
+
+  // Scan music folder for audio files - returns UnifiedTrack-compatible format
+  ipcMain.handle('scan-music-folder', async (_event, folderPath: string) => {
+    const audioExtensions = ['.mp3', '.flac', '.wav', '.m4a', '.aac', '.ogg', '.opus', '.wma', '.aiff'];
+    const tracks: Array<{
+      id: string;
+      title: string;
+      artists: Array<{ id: string; name: string }>;
+      album: { id: string; title: string };
+      duration: number;
+      artwork?: { small?: string; medium?: string; large?: string };
+      streamInfo: {
+        url: string;
+        format: string;
+        quality: string;
+        expiresAt: null;
+      };
+      streamSources: Array<{
+        providerId: string;
+        trackId: string;
+        available: boolean;
+      }>;
+      _meta: {
+        metadataProvider: string;
+        lastUpdated: Date;
+      };
+    }> = [];
+
+    const scanDirectory = async (dirPath: string) => {
+      try {
+        const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+
+        for (const entry of entries) {
+          const fullPath = path.join(dirPath, entry.name);
+
+          if (entry.isDirectory()) {
+            // Recursively scan subdirectories
+            await scanDirectory(fullPath);
+          } else if (entry.isFile()) {
+            const ext = path.extname(entry.name).toLowerCase();
+            if (audioExtensions.includes(ext)) {
+              // Parse filename for metadata (basic: "Artist - Title.mp3")
+              const baseName = path.basename(entry.name, ext);
+              let title = baseName;
+              let artist = 'Unknown Artist';
+              let album = path.basename(path.dirname(fullPath));
+
+              // Try to parse "Artist - Title" format
+              const dashIndex = baseName.indexOf(' - ');
+              if (dashIndex > 0) {
+                artist = baseName.substring(0, dashIndex).trim();
+                title = baseName.substring(dashIndex + 3).trim();
+              }
+
+              const trackId = `local:${Buffer.from(fullPath).toString('base64')}`;
+              const format = ext.slice(1); // Remove the dot: '.mp3' -> 'mp3'
+
+              tracks.push({
+                id: trackId,
+                title,
+                artists: [{ id: `local-artist:${Buffer.from(artist).toString('base64')}`, name: artist }],
+                album: { id: `local-album:${Buffer.from(album).toString('base64')}`, title: album },
+                duration: 0, // Would need audio metadata library for actual duration
+                artwork: undefined,
+                streamInfo: {
+                  url: `local-audio://localhost${fullPath}`,  // Use localhost as host, path starts with /
+                  format,
+                  quality: 'lossless',
+                  expiresAt: null
+                },
+                streamSources: [{
+                  providerId: 'local-file',
+                  trackId: fullPath,
+                  available: true
+                }],
+                _meta: {
+                  metadataProvider: 'local-file',
+                  lastUpdated: new Date()
+                }
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`[LocalMusic] Error scanning ${dirPath}:`, error);
+      }
+    };
+
+    console.log(`[LocalMusic] Scanning folder: ${folderPath}`);
+    await scanDirectory(folderPath);
+    console.log(`[LocalMusic] Found ${tracks.length} tracks`);
+
+    return { trackCount: tracks.length, tracks };
+  });
+
+  // Get all local tracks from configured folders
+  ipcMain.handle('get-local-tracks', async () => {
+    // This would need to read from settings and aggregate all local tracks
+    // For now, return empty - UI will manage this via settings store
+    return { tracks: [] };
+  });
+
+  // Update settings (sync from renderer to main)
+  ipcMain.handle('update-settings', (_event, { key, value }: { key: string; value: unknown }) => {
+    console.log(`[Settings] Update: ${key} =`, value);
+    // Store in userData for persistence if needed
+    // For now, just acknowledge - settings are managed by renderer localStorage
+    return { success: true };
+  });
+
+  // Get app paths for defaults
+  ipcMain.handle('get-app-paths', () => {
+    return {
+      downloads: path.join(app.getPath('downloads'), 'Audiio'),
+      userData: app.getPath('userData'),
+      music: app.getPath('music'),
+      documents: app.getPath('documents')
+    };
+  });
+
+  // =============================================
+  // Plugin Folder Handlers
+  // =============================================
+
+  // Set plugin folder and start watching
+  ipcMain.handle('set-plugin-folder', (_event, folderPath: string | null) => {
+    // Stop existing watcher
+    if (pluginFolderWatcher) {
+      pluginFolderWatcher.close();
+      pluginFolderWatcher = null;
+    }
+
+    currentPluginFolder = folderPath;
+
+    if (!folderPath) {
+      console.log('[Plugins] Plugin folder watching disabled');
+      return { success: true, watching: false };
+    }
+
+    // Ensure folder exists
+    if (!fs.existsSync(folderPath)) {
+      try {
+        fs.mkdirSync(folderPath, { recursive: true });
+      } catch (error) {
+        console.error('[Plugins] Failed to create plugin folder:', error);
+        return { success: false, error: 'Failed to create folder' };
+      }
+    }
+
+    // Start watching for new plugin files
+    try {
+      pluginFolderWatcher = fs.watch(folderPath, (eventType, filename) => {
+        if (eventType === 'rename' && filename) {
+          const fullPath = path.join(folderPath, filename);
+
+          // Check if it's a plugin file
+          if (filename.endsWith('.audiio-plugin') && fs.existsSync(fullPath)) {
+            console.log(`[Plugins] New plugin detected: ${filename}`);
+
+            // Notify renderer about new plugin
+            mainWindow?.webContents.send('plugin-detected', {
+              filename,
+              path: fullPath
+            });
+          }
+        }
+      });
+
+      console.log(`[Plugins] Watching folder: ${folderPath}`);
+      return { success: true, watching: true };
+    } catch (error) {
+      console.error('[Plugins] Failed to watch folder:', error);
+      return { success: false, error: 'Failed to watch folder' };
+    }
+  });
+
+  // Get plugin folder status
+  ipcMain.handle('get-plugin-folder-status', () => {
+    return {
+      folder: currentPluginFolder,
+      watching: pluginFolderWatcher !== null
+    };
+  });
+
+  // Install plugin from file
+  ipcMain.handle('install-plugin', async (_event, filePath: string) => {
+    try {
+      if (!fs.existsSync(filePath)) {
+        return { success: false, error: 'Plugin file not found' };
+      }
+
+      // Read plugin manifest
+      const content = await fs.promises.readFile(filePath, 'utf-8');
+      let manifest;
+
+      try {
+        manifest = JSON.parse(content);
+      } catch {
+        return { success: false, error: 'Invalid plugin manifest' };
+      }
+
+      if (!manifest.id || !manifest.name) {
+        return { success: false, error: 'Plugin missing required fields (id, name)' };
+      }
+
+      // Copy to plugins directory in userData
+      const pluginsDir = path.join(app.getPath('userData'), 'plugins');
+      if (!fs.existsSync(pluginsDir)) {
+        fs.mkdirSync(pluginsDir, { recursive: true });
+      }
+
+      const destPath = path.join(pluginsDir, `${manifest.id}.audiio-plugin`);
+      await fs.promises.copyFile(filePath, destPath);
+
+      console.log(`[Plugins] Installed plugin: ${manifest.name} (${manifest.id})`);
+
+      return {
+        success: true,
+        plugin: {
+          id: manifest.id,
+          name: manifest.name,
+          description: manifest.description || '',
+          version: manifest.version || '1.0.0',
+          path: destPath
+        }
+      };
+    } catch (error) {
+      console.error('[Plugins] Failed to install plugin:', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // List installed plugins
+  ipcMain.handle('get-installed-plugins', async () => {
+    try {
+      const pluginsDir = path.join(app.getPath('userData'), 'plugins');
+
+      if (!fs.existsSync(pluginsDir)) {
+        return { plugins: [] };
+      }
+
+      const files = await fs.promises.readdir(pluginsDir);
+      const plugins = [];
+
+      for (const file of files) {
+        if (file.endsWith('.audiio-plugin')) {
+          try {
+            const content = await fs.promises.readFile(path.join(pluginsDir, file), 'utf-8');
+            const manifest = JSON.parse(content);
+            plugins.push({
+              id: manifest.id,
+              name: manifest.name,
+              description: manifest.description || '',
+              version: manifest.version || '1.0.0',
+              path: path.join(pluginsDir, file)
+            });
+          } catch {
+            // Skip invalid plugins
+          }
+        }
+      }
+
+      return { plugins };
+    } catch (error) {
+      return { plugins: [] };
+    }
+  });
+
+  // Uninstall plugin
+  ipcMain.handle('uninstall-plugin', async (_event, pluginId: string) => {
+    try {
+      const pluginsDir = path.join(app.getPath('userData'), 'plugins');
+      const pluginPath = path.join(pluginsDir, `${pluginId}.audiio-plugin`);
+
+      if (fs.existsSync(pluginPath)) {
+        await fs.promises.unlink(pluginPath);
+        console.log(`[Plugins] Uninstalled plugin: ${pluginId}`);
+        return { success: true };
+      }
+
+      return { success: false, error: 'Plugin not found' };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // =============================================
+  // Karaoke Handlers
+  // =============================================
+
+  // Check if karaoke is available
+  ipcMain.handle('karaoke-is-available', async () => {
+    try {
+      const available = await karaokeProcessor.isAvailable();
+      return { available };
+    } catch {
+      return { available: false };
+    }
+  });
+
+  // Process a track for karaoke (get instrumental)
+  ipcMain.handle('karaoke-process-track', async (_event, { trackId, audioUrl }: { trackId: string; audioUrl: string }) => {
+    try {
+      console.log(`[Karaoke] Processing track: ${trackId}`);
+      const result = await karaokeProcessor.processTrack(trackId, audioUrl);
+      console.log(`[Karaoke] Processing complete for: ${trackId}, cached: ${result.cached}`);
+      return { success: true, result };
+    } catch (error) {
+      console.error('[Karaoke] Processing failed:', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Check if track is cached
+  ipcMain.handle('karaoke-has-cached', async (_event, trackId: string) => {
+    try {
+      const cached = await karaokeProcessor.hasCached(trackId);
+      return { cached };
+    } catch {
+      return { cached: false };
+    }
+  });
+
+  // Get cached instrumental
+  ipcMain.handle('karaoke-get-cached', async (_event, trackId: string) => {
+    try {
+      const result = await karaokeProcessor.getCached(trackId);
+      return { success: true, result };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Clear cache for a track
+  ipcMain.handle('karaoke-clear-cache', async (_event, trackId: string) => {
+    try {
+      await karaokeProcessor.clearCache(trackId);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Clear all karaoke cache
+  ipcMain.handle('karaoke-clear-all-cache', async () => {
+    try {
+      await karaokeProcessor.clearAllCache();
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
   });
 }
 
@@ -1152,11 +1866,22 @@ function downloadFile(url: string, filePath: string, onProgress: (progress: numb
 }
 
 /**
- * Forward playback events to renderer
+ * Forward playback events to renderer and record ML events
  */
 function setupPlaybackEvents(): void {
+  // Track current playback for ML event recording
+  let currentTrackData: { track: any; startTime: number } | null = null;
+
   playbackOrchestrator.on('play', (data) => {
     mainWindow?.webContents.send('playback-event', { type: 'play', ...data });
+
+    // Store track data for later event recording
+    if (data.track) {
+      currentTrackData = {
+        track: data.track,
+        startTime: Date.now()
+      };
+    }
   });
 
   playbackOrchestrator.on('pause', () => {
@@ -1169,6 +1894,70 @@ function setupPlaybackEvents(): void {
 
   playbackOrchestrator.on('trackChange', (data) => {
     mainWindow?.webContents.send('playback-event', { type: 'trackChange', ...data });
+
+    // Record ML event for previous track (skip or complete)
+    if (currentTrackData && mlService.isInitialized()) {
+      const duration = Date.now() - currentTrackData.startTime;
+      const durationSeconds = duration / 1000;
+      const track = currentTrackData.track;
+      const trackDuration = track.duration || 180; // Default 3 min if unknown
+      const completion = Math.min(durationSeconds / trackDuration, 1);
+
+      const now = new Date();
+      const context = {
+        hourOfDay: now.getHours(),
+        dayOfWeek: now.getDay(),
+        isWeekend: now.getDay() === 0 || now.getDay() === 6,
+        device: 'desktop' as const
+      };
+
+      // Convert to ML Track format
+      const mlTrack = {
+        id: track.id,
+        title: track.title,
+        artist: track.artists?.[0]?.name || 'Unknown Artist',
+        artistId: track.artists?.[0]?.id,
+        album: track.album,
+        albumId: track.albumId,
+        duration: track.duration || 0,
+        genres: track.genres,
+      };
+
+      // If less than 30 seconds, consider it a skip
+      if (durationSeconds < 30) {
+        mlService.recordEvent({
+          type: 'skip',
+          timestamp: Date.now(),
+          track: mlTrack,
+          skipPosition: durationSeconds,
+          skipPercentage: completion,
+          earlySkip: true,
+          context
+        }).catch(err => console.error('[ML] Failed to record skip event:', err));
+      } else {
+        // Consider it a listen (partial or complete)
+        mlService.recordEvent({
+          type: 'listen',
+          timestamp: Date.now(),
+          track: mlTrack,
+          duration: durationSeconds,
+          completion,
+          completed: completion >= 0.8,
+          source: { type: 'queue' as const },
+          context
+        }).catch(err => console.error('[ML] Failed to record listen event:', err));
+      }
+    }
+
+    // Update current track if new track is starting
+    if (data.track) {
+      currentTrackData = {
+        track: data.track,
+        startTime: Date.now()
+      };
+    } else {
+      currentTrackData = null;
+    }
   });
 
   playbackOrchestrator.on('error', (data) => {
@@ -1176,18 +1965,189 @@ function setupPlaybackEvents(): void {
   });
 }
 
+/**
+ * Connect library events to ML service for learning
+ */
+function setupMLLibraryEvents(): void {
+  if (!libraryBridge || !mlService.isInitialized()) {
+    console.log('[ML] Skipping library event setup - services not ready');
+    return;
+  }
+
+  // Listen for library changes and record relevant ML events
+  libraryBridge.onLibraryChange((data) => {
+    // Note: Individual like/dislike events are handled via IPC in library-bridge.ts
+    // This callback receives batch updates, useful for sync notifications
+    if (data.likedTracks) {
+      console.log(`[ML] Library updated: ${data.likedTracks.length} liked tracks`);
+    }
+  });
+
+  // Add IPC listeners for like/dislike events to record ML events
+  ipcMain.on('library-track-liked', (_event, track) => {
+    if (mlService.isInitialized() && track?.id) {
+      const mlTrack = {
+        id: track.id,
+        title: track.title,
+        artist: track.artists?.[0]?.name || 'Unknown Artist',
+        artistId: track.artists?.[0]?.id,
+        album: track.album,
+        albumId: track.albumId,
+        duration: track.duration || 0,
+        genres: track.genres,
+      };
+
+      mlService.recordEvent({
+        type: 'like',
+        timestamp: Date.now(),
+        track: mlTrack,
+        strength: 1 // Normal like
+      }).catch(err => console.error('[ML] Failed to record like event:', err));
+    }
+  });
+
+  // Note: 'unlike' is not a standard ML event type, so we skip recording it
+  // The preference learning system handles it internally
+
+  // Track dislikes with reasons
+  ipcMain.on('library-track-disliked', (_event, data) => {
+    if (mlService.isInitialized() && data?.track?.id) {
+      const track = data.track;
+      const mlTrack = {
+        id: track.id,
+        title: track.title,
+        artist: track.artists?.[0]?.name || 'Unknown Artist',
+        artistId: track.artists?.[0]?.id,
+        album: track.album,
+        albumId: track.albumId,
+        duration: track.duration || 0,
+        genres: track.genres,
+      };
+
+      // Map reasons to standard dislike reason
+      const reasonMap: Record<string, string> = {
+        'not_my_taste': 'not_my_taste',
+        'heard_too_much': 'heard_too_much',
+        'bad_quality': 'bad_audio_quality',
+        'wrong_mood': 'wrong_mood',
+        'dont_like_artist': 'dont_like_artist',
+        'too_long': 'too_long',
+        'too_short': 'too_short',
+        'explicit': 'explicit_content',
+        'wrong_genre': 'wrong_genre',
+      };
+      const primaryReason = data.reasons?.[0] || 'other';
+      const reason = (reasonMap[primaryReason] || 'other') as 'not_my_taste' | 'heard_too_much' | 'bad_audio_quality' | 'wrong_mood' | 'dont_like_artist' | 'too_long' | 'too_short' | 'explicit_content' | 'wrong_genre' | 'other';
+
+      mlService.recordEvent({
+        type: 'dislike',
+        timestamp: Date.now(),
+        track: mlTrack,
+        reason,
+        feedback: data.reasons?.join(', ')
+      }).catch(err => console.error('[ML] Failed to record dislike event:', err));
+    }
+  });
+
+  console.log('[ML] Library event recording configured');
+}
+
+/**
+ * Initialize Sposify addon handlers
+ */
+async function initializeSposify(): Promise<void> {
+  try {
+    // Dynamically import to avoid bundling issues if not installed
+    const { registerSposifyHandlers, setMainWindow } = await import('@audiio/sposify');
+    registerSposifyHandlers(app.getPath('userData'));
+    if (mainWindow) {
+      setMainWindow(mainWindow);
+    }
+    sposifyHandlersRegistered = true;
+    console.log('[Sposify] Handlers registered');
+  } catch (error) {
+    // Sposify addon not installed - this is fine
+    console.log('[Sposify] Addon not available:', (error as Error).message);
+  }
+}
+
 // App lifecycle
 app.whenReady().then(async () => {
   try {
+    // Register custom protocol for local audio files
+    protocol.handle('local-audio', async (request) => {
+      // URL format: local-audio://localhost/path/to/file.mp3
+      // Parse the URL to extract the pathname
+      const url = new URL(request.url);
+      let filePath = decodeURIComponent(url.pathname);
+      // On Windows, remove leading slash from /C:/path/to/file
+      if (process.platform === 'win32' && filePath.match(/^\/[A-Za-z]:/)) {
+        filePath = filePath.slice(1);
+      }
+      console.log('[LocalAudio] Request URL:', request.url);
+      console.log('[LocalAudio] Serving file:', filePath);
+
+      try {
+        // Check if file exists
+        await fs.promises.access(filePath);
+
+        // Read the file
+        const data = await fs.promises.readFile(filePath);
+        const ext = path.extname(filePath).toLowerCase();
+
+        // Determine MIME type
+        const mimeTypes: Record<string, string> = {
+          '.mp3': 'audio/mpeg',
+          '.flac': 'audio/flac',
+          '.wav': 'audio/wav',
+          '.m4a': 'audio/mp4',
+          '.aac': 'audio/aac',
+          '.ogg': 'audio/ogg',
+          '.opus': 'audio/opus',
+          '.wma': 'audio/x-ms-wma',
+          '.aiff': 'audio/aiff'
+        };
+
+        const mimeType = mimeTypes[ext] || 'audio/mpeg';
+        console.log('[LocalAudio] Serving with MIME type:', mimeType);
+
+        return new Response(data, {
+          status: 200,
+          headers: {
+            'Content-Type': mimeType,
+            'Content-Length': data.length.toString(),
+            'Accept-Ranges': 'bytes'
+          }
+        });
+      } catch (error) {
+        console.error('[LocalAudio] Error serving file:', error);
+        return new Response('File not found', { status: 404 });
+      }
+    });
+    console.log('[LocalAudio] Protocol handler registered');
+
     await initializeAddons();
 
     // Initialize library bridge
     libraryBridge = getLibraryBridge();
     console.log('[LibraryBridge] Initialized');
 
+    // Initialize ML service (after library bridge)
+    await initializeMLService();
+
+    // Start Demucs server for karaoke
+    startDemucsServer();
+
     setupIPCHandlers();
+    setupMLIPCHandlers();
     createWindow();
     setupPlaybackEvents();
+
+    // Initialize Sposify addon (after window creation)
+    await initializeSposify();
+
+    // Connect library events to ML service for learning
+    setupMLLibraryEvents();
   } catch (error) {
     console.error('Failed to initialize app:', error);
     app.quit();
@@ -1208,6 +2168,17 @@ app.on('activate', () => {
 
 // Cleanup on quit
 app.on('before-quit', async () => {
+  // Stop Demucs server if running
+  if (demucsProcess) {
+    try {
+      demucsProcess.kill();
+      demucsProcess = null;
+      console.log('[Demucs] Server stopped on quit');
+    } catch (error) {
+      console.error('[Demucs] Error stopping server:', error);
+    }
+  }
+
   // Stop mobile server if running
   if (mobileServer) {
     try {
@@ -1218,10 +2189,38 @@ app.on('before-quit', async () => {
     }
   }
 
+  // Cleanup ML service
+  if (mlService.isInitialized()) {
+    try {
+      await mlService.dispose();
+      console.log('[ML] Service disposed on quit');
+    } catch (error) {
+      console.error('[ML] Error disposing service:', error);
+    }
+  }
+
   // Cleanup library bridge
   if (libraryBridge) {
     libraryBridge.destroy();
     console.log('[LibraryBridge] Destroyed on quit');
+  }
+
+  // Cleanup plugin folder watcher
+  if (pluginFolderWatcher) {
+    pluginFolderWatcher.close();
+    pluginFolderWatcher = null;
+    console.log('[Plugins] Folder watcher stopped on quit');
+  }
+
+  // Cleanup Sposify handlers
+  if (sposifyHandlersRegistered) {
+    try {
+      const { unregisterSposifyHandlers } = await import('@audiio/sposify');
+      unregisterSposifyHandlers();
+      console.log('[Sposify] Handlers unregistered on quit');
+    } catch (error) {
+      // Ignore - addon may not be available
+    }
   }
 
   // Dispose addons

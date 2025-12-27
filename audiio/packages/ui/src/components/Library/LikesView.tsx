@@ -2,7 +2,7 @@ import React from 'react';
 import { useLibraryStore } from '../../stores/library-store';
 import { usePlayerStore } from '../../stores/player-store';
 import { TrackRow } from '../TrackRow/TrackRow';
-import { HeartIcon, HeartOutlineIcon, PlayIcon } from '../Icons/Icons';
+import { HeartIcon, HeartOutlineIcon, PlayIcon } from '@audiio/icons';
 
 export const LikesView: React.FC = () => {
   const { likedTracks } = useLibraryStore();

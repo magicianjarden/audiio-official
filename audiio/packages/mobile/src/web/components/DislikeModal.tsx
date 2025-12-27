@@ -3,7 +3,7 @@
  */
 
 import React, { useState } from 'react';
-import { ThumbDownIcon, CloseIcon } from './Icons';
+import { ThumbDownIcon, CloseIcon } from '@audiio/icons';
 import { DISLIKE_REASONS, type DislikeReason } from '../stores/library-store';
 import styles from './DislikeModal.module.css';
 

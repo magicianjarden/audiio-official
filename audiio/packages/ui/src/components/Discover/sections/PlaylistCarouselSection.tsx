@@ -8,7 +8,8 @@ import { useNavigationStore } from '../../../stores/navigation-store';
 import { useLibraryStore } from '../../../stores/library-store';
 import { BaseSectionWrapper } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
-import { PlayIcon, ChevronLeftIcon, ChevronRightIcon, MusicNoteIcon } from '../../Icons/Icons';
+import { PlayIcon, ChevronLeftIcon, ChevronRightIcon, MusicNoteIcon } from '@audiio/icons';
+import { debugLog } from '../../../utils/debug';
 
 export interface PlaylistData {
   id: string;
@@ -118,7 +119,7 @@ export const PlaylistCarouselSection: React.FC<PlaylistCarouselSectionProps> = (
       setView('playlist-detail');
     } else {
       // For curated playlists, could navigate to a search or special view
-      console.log('Open curated playlist:', playlist.id);
+      debugLog('[PlaylistCarousel]', `Open curated playlist: ${playlist.id}`);
     }
   };
 

@@ -9,7 +9,7 @@ import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
 import { BaseSectionWrapper, useSectionTracks } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
-import { PlayIcon, PauseIcon, MusicNoteIcon } from '../../Icons/Icons';
+import { PlayIcon, PauseIcon, MusicNoteIcon } from '@audiio/icons';
 
 export interface MiniPlayerSectionProps extends BaseSectionProps {
   tracks?: UnifiedTrack[];

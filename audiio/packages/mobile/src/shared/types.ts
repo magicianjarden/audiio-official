@@ -7,27 +7,23 @@ export interface AccessConfig {
   token: string;
   /** Local network URL */
   localUrl: string;
-  /** Remote tunnel URL (if enabled) */
-  tunnelUrl?: string;
-  /** Tunnel bypass password (for localtunnel) */
-  tunnelPassword?: string;
   /** QR code data URL for easy mobile access */
   qrCode?: string;
   /** When the session was created */
   createdAt: number;
   /** Session expiry (0 = never) */
   expiresAt?: number;
+  /** One-time pairing code for instant device trust */
+  pairingCode?: string;
+  /** P2P connection code (e.g. BLUE-TIGER-42) - works from anywhere! */
+  p2pCode?: string;
+  /** Whether P2P is active */
+  p2pActive?: boolean;
 }
 
 export interface ServerConfig {
   /** Port for local server */
   port: number;
-  /** Enable remote tunnel access */
-  enableTunnel: boolean;
-  /** Tunnel provider */
-  tunnelProvider: 'localtunnel' | 'cloudflare' | 'ngrok';
-  /** Custom subdomain for tunnel (if supported) */
-  tunnelSubdomain?: string;
   /** Rate limit requests per minute */
   rateLimit: number;
   /** Max concurrent streams */
@@ -141,8 +137,6 @@ export interface DesktopPlaybackState {
 
 export const DEFAULT_SERVER_CONFIG: ServerConfig = {
   port: 8484,
-  enableTunnel: false,
-  tunnelProvider: 'localtunnel',
   rateLimit: 100,
   maxStreams: 3,
   streamQuality: 'medium'

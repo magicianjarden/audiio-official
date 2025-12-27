@@ -3,6 +3,7 @@
  */
 
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { UnifiedTrack } from '@audiio/core';
 
 type PlayerMode = 'mini' | 'full';
@@ -16,6 +17,15 @@ interface UIState {
   isLyricsPanelExpanded: boolean;
   queueAnchorRect: DOMRect | null;
   dislikeModalTrack: UnifiedTrack | null;
+
+  // Sidebar state
+  isSidebarCollapsed: boolean;
+  sidebarWidth: number;
+  isPlaylistsExpanded: boolean;
+
+  // Create modal state
+  isCreatePlaylistModalOpen: boolean;
+  isCreateFolderModalOpen: boolean;
 
   // Actions
   expandPlayer: () => void;
@@ -32,76 +42,157 @@ interface UIState {
   toggleLyricsPanelExpanded: () => void;
   openDislikeModal: (track: UnifiedTrack) => void;
   closeDislikeModal: () => void;
+
+  // Create modal actions
+  openCreatePlaylistModal: () => void;
+  closeCreatePlaylistModal: () => void;
+  openCreateFolderModal: () => void;
+  closeCreateFolderModal: () => void;
+
+  // Sidebar actions
+  toggleSidebar: () => void;
+  collapseSidebar: () => void;
+  expandSidebar: () => void;
+  setSidebarWidth: (width: number) => void;
+  togglePlaylistsExpanded: () => void;
 }
 
 export type { PlayerMode };
 
-export const useUIStore = create<UIState>((set, get) => ({
-  // Initial state
-  playerMode: 'mini',
-  isQueueOpen: false,
-  isLyricsVisible: false,
-  isLyricsPanelOpen: false,
-  isLyricsPanelExpanded: false,
-  queueAnchorRect: null,
+export const useUIStore = create<UIState>()(
+  persist(
+    (set, get) => ({
+      // Initial state
+      playerMode: 'mini',
+      isQueueOpen: false,
+      isLyricsVisible: false,
+      isLyricsPanelOpen: false,
+      isLyricsPanelExpanded: false,
+      queueAnchorRect: null,
+      dislikeModalTrack: null,
 
-  // Actions
-  expandPlayer: () => {
-    set({ playerMode: 'full', isQueueOpen: false, isLyricsPanelOpen: false });
-  },
+      // Sidebar state
+      isSidebarCollapsed: false,
+      sidebarWidth: 260,
+      isPlaylistsExpanded: true,
 
-  collapsePlayer: () => {
-    set({ playerMode: 'mini' });
-  },
+      // Create modal state
+      isCreatePlaylistModalOpen: false,
+      isCreateFolderModalOpen: false,
 
-  togglePlayer: () => {
-    const { playerMode } = get();
-    if (playerMode === 'mini') {
-      set({ playerMode: 'full', isQueueOpen: false, isLyricsPanelOpen: false });
-    } else {
-      set({ playerMode: 'mini' });
+      // Actions
+      expandPlayer: () => {
+        set({ playerMode: 'full', isQueueOpen: false, isLyricsPanelOpen: false });
+      },
+
+      collapsePlayer: () => {
+        set({ playerMode: 'mini' });
+      },
+
+      togglePlayer: () => {
+        const { playerMode } = get();
+        if (playerMode === 'mini') {
+          set({ playerMode: 'full', isQueueOpen: false, isLyricsPanelOpen: false });
+        } else {
+          set({ playerMode: 'mini' });
+        }
+      },
+
+      openQueue: (anchorRect) => {
+        set({ isQueueOpen: true, queueAnchorRect: anchorRect, isLyricsPanelOpen: false });
+      },
+
+      closeQueue: () => {
+        set({ isQueueOpen: false, queueAnchorRect: null });
+      },
+
+      toggleQueue: (anchorRect) => {
+        const { isQueueOpen } = get();
+        if (isQueueOpen) {
+          set({ isQueueOpen: false, queueAnchorRect: null });
+        } else if (anchorRect) {
+          set({ isQueueOpen: true, queueAnchorRect: anchorRect, isLyricsPanelOpen: false });
+        }
+      },
+
+      toggleLyrics: () => {
+        set(state => ({ isLyricsVisible: !state.isLyricsVisible }));
+      },
+
+      setLyricsVisible: (visible) => {
+        set({ isLyricsVisible: visible });
+      },
+
+      toggleLyricsPanel: () => {
+        const { isLyricsPanelOpen } = get();
+        set({ isLyricsPanelOpen: !isLyricsPanelOpen, isQueueOpen: false });
+      },
+
+      openLyricsPanel: () => {
+        set({ isLyricsPanelOpen: true, isQueueOpen: false });
+      },
+
+      closeLyricsPanel: () => {
+        set({ isLyricsPanelOpen: false, isLyricsPanelExpanded: false });
+      },
+
+      toggleLyricsPanelExpanded: () => {
+        set(state => ({ isLyricsPanelExpanded: !state.isLyricsPanelExpanded }));
+      },
+
+      openDislikeModal: (track) => {
+        set({ dislikeModalTrack: track });
+      },
+
+      closeDislikeModal: () => {
+        set({ dislikeModalTrack: null });
+      },
+
+      // Create modal actions
+      openCreatePlaylistModal: () => {
+        set({ isCreatePlaylistModalOpen: true });
+      },
+
+      closeCreatePlaylistModal: () => {
+        set({ isCreatePlaylistModalOpen: false });
+      },
+
+      openCreateFolderModal: () => {
+        set({ isCreateFolderModalOpen: true });
+      },
+
+      closeCreateFolderModal: () => {
+        set({ isCreateFolderModalOpen: false });
+      },
+
+      // Sidebar actions
+      toggleSidebar: () => {
+        set(state => ({ isSidebarCollapsed: !state.isSidebarCollapsed }));
+      },
+
+      collapseSidebar: () => {
+        set({ isSidebarCollapsed: true });
+      },
+
+      expandSidebar: () => {
+        set({ isSidebarCollapsed: false });
+      },
+
+      setSidebarWidth: (width: number) => {
+        set({ sidebarWidth: Math.max(200, Math.min(400, width)) });
+      },
+
+      togglePlaylistsExpanded: () => {
+        set(state => ({ isPlaylistsExpanded: !state.isPlaylistsExpanded }));
+      }
+    }),
+    {
+      name: 'audiio-ui',
+      partialize: (state) => ({
+        sidebarWidth: state.sidebarWidth,
+        isSidebarCollapsed: state.isSidebarCollapsed,
+        isPlaylistsExpanded: state.isPlaylistsExpanded,
+      })
     }
-  },
-
-  openQueue: (anchorRect) => {
-    set({ isQueueOpen: true, queueAnchorRect: anchorRect, isLyricsPanelOpen: false });
-  },
-
-  closeQueue: () => {
-    set({ isQueueOpen: false, queueAnchorRect: null });
-  },
-
-  toggleQueue: (anchorRect) => {
-    const { isQueueOpen } = get();
-    if (isQueueOpen) {
-      set({ isQueueOpen: false, queueAnchorRect: null });
-    } else if (anchorRect) {
-      set({ isQueueOpen: true, queueAnchorRect: anchorRect, isLyricsPanelOpen: false });
-    }
-  },
-
-  toggleLyrics: () => {
-    set(state => ({ isLyricsVisible: !state.isLyricsVisible }));
-  },
-
-  setLyricsVisible: (visible) => {
-    set({ isLyricsVisible: visible });
-  },
-
-  toggleLyricsPanel: () => {
-    const { isLyricsPanelOpen } = get();
-    set({ isLyricsPanelOpen: !isLyricsPanelOpen, isQueueOpen: false });
-  },
-
-  openLyricsPanel: () => {
-    set({ isLyricsPanelOpen: true, isQueueOpen: false });
-  },
-
-  closeLyricsPanel: () => {
-    set({ isLyricsPanelOpen: false, isLyricsPanelExpanded: false });
-  },
-
-  toggleLyricsPanelExpanded: () => {
-    set(state => ({ isLyricsPanelExpanded: !state.isLyricsPanelExpanded }));
-  }
-}));
+  )
+);

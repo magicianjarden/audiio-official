@@ -10,7 +10,8 @@ import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
 import { useTrendingStore, type TrendingTrack, type DailyTrending } from '../../../stores/trending-store';
 import { BaseSectionWrapper } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
-import { PlayIcon, MusicNoteIcon, TrendingUpIcon, TrendingDownIcon, MinusIcon } from '../../Icons/Icons';
+import { PlayIcon, MusicNoteIcon, TrendingUpIcon, TrendingDownIcon, MinusIcon } from '@audiio/icons';
+import { debugLog, debugError } from '../../../utils/debug';
 
 export interface WeeklyRotationSectionProps extends BaseSectionProps {
   dailyData?: DailyTrending[];
@@ -90,7 +91,7 @@ export const WeeklyRotationSection: React.FC<WeeklyRotationSectionProps> = ({
         // Get updated weekly data
         setWeeklyData(getWeeklyTrending());
       } catch (err) {
-        console.error('[WeeklyRotation] Failed to fetch data:', err);
+        debugError('[WeeklyRotation]', 'Failed to fetch data:', err);
       } finally {
         setIsLoading(false);
       }
@@ -106,7 +107,7 @@ export const WeeklyRotationSection: React.FC<WeeklyRotationSectionProps> = ({
   const handleTrackClick = (track: TrendingTrack) => {
     // In a real implementation, we'd convert TrendingTrack to UnifiedTrack
     // For now, create a minimal playable track
-    console.log('Play trending track:', track.id);
+    debugLog('[WeeklyRotation]', `Play trending track: ${track.id}`);
   };
 
   const handleDayClick = (date: string) => {

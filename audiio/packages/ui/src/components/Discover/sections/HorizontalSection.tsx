@@ -9,7 +9,7 @@ import { TrackCard } from '../TrackCard';
 import { useNavigationStore } from '../../../stores/navigation-store';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu, useArtistContextMenu, useAlbumContextMenu } from '../../../contexts/ContextMenuContext';
-import { MusicNoteIcon } from '../../Icons/Icons';
+import { MusicNoteIcon } from '@audiio/icons';
 
 export interface HorizontalSectionProps {
   id: string;

@@ -1,6 +1,9 @@
 /**
  * Lyrics store - manages lyrics fetching and syncing
  * Uses LRCLib API for synced lyrics
+ *
+ * Also provides word-level timing for sing-along mode by interpolating
+ * word positions based on line duration and word lengths.
  */
 
 import { create } from 'zustand';
@@ -8,6 +11,18 @@ import { create } from 'zustand';
 export interface LyricLine {
   time: number; // Time in milliseconds
   text: string;
+}
+
+export interface WordTiming {
+  word: string;
+  startTime: number;
+  endTime: number;
+  lineIndex: number;
+  wordIndex: number;
+}
+
+export interface LineWithWords extends LyricLine {
+  words: WordTiming[];
 }
 
 interface LyricsState {
@@ -21,6 +36,11 @@ interface LyricsState {
   offset: number; // Offset in milliseconds for sync adjustment
   nextLineIndex: number; // For upcoming line preview
 
+  // Sing-along mode state
+  singAlongEnabled: boolean;
+  linesWithWords: LineWithWords[] | null;
+  currentWordIndex: number; // Current word within current line
+
   // Actions
   fetchLyrics: (artist: string, track: string, trackId: string) => Promise<void>;
   updateCurrentLine: (positionMs: number) => void;
@@ -29,6 +49,14 @@ interface LyricsState {
   setOffset: (offset: number) => void;
   adjustOffset: (delta: number) => void;
   resetOffset: () => void;
+
+  // Sing-along actions
+  setSingAlongEnabled: (enabled: boolean) => void;
+  updateCurrentWord: (positionMs: number) => void;
+  getWordTimingsForLine: (lineIndex: number) => WordTiming[];
+
+  // Atomic update for seeking - updates line AND word together
+  updatePositionAtomic: (positionMs: number) => void;
 }
 
 /**
@@ -60,6 +88,98 @@ function parseLRC(lrc: string): LyricLine[] {
   lines.sort((a, b) => a.time - b.time);
 
   return lines;
+}
+
+/**
+ * Interpolate word timings for a line based on word lengths
+ * Words are distributed proportionally by character count within the line duration
+ */
+function interpolateWordTiming(
+  line: LyricLine,
+  lineIndex: number,
+  nextLineTime: number | null,
+  trackDuration?: number
+): WordTiming[] {
+  const text = line.text.trim();
+  if (!text) return [];
+
+  const words = text.split(/\s+/);
+  if (words.length === 0) return [];
+
+  // Calculate line duration
+  // Use next line time, or estimate 5 seconds if last line
+  const defaultDuration = 5000;
+  const lineDuration = nextLineTime !== null
+    ? Math.min(nextLineTime - line.time, 10000) // Cap at 10 seconds
+    : Math.min(trackDuration ? trackDuration - line.time : defaultDuration, 10000);
+
+  // Calculate total characters (for proportional timing)
+  const totalChars = words.reduce((sum, word) => sum + word.length, 0);
+  if (totalChars === 0) return [];
+
+  // Small gap between words (50ms)
+  const wordGap = Math.min(50, lineDuration / (words.length * 4));
+  const availableDuration = lineDuration - (wordGap * (words.length - 1));
+
+  let currentTime = line.time;
+  const wordTimings: WordTiming[] = [];
+
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    if (!word) continue;
+
+    // Duration proportional to word length
+    const wordDuration = (word.length / totalChars) * availableDuration;
+
+    wordTimings.push({
+      word,
+      startTime: currentTime,
+      endTime: currentTime + wordDuration,
+      lineIndex,
+      wordIndex: i
+    });
+
+    currentTime += wordDuration + wordGap;
+  }
+
+  return wordTimings;
+}
+
+/**
+ * Generate word timings for all lyrics lines
+ */
+function generateLinesWithWords(lyrics: LyricLine[], trackDuration?: number): LineWithWords[] {
+  return lyrics.map((line, index) => {
+    const nextLine = lyrics[index + 1];
+    const nextLineTime = nextLine ? nextLine.time : null;
+
+    return {
+      ...line,
+      words: interpolateWordTiming(line, index, nextLineTime, trackDuration)
+    };
+  });
+}
+
+/**
+ * Binary search to find the current word index within a line
+ */
+function findCurrentWordIndex(words: WordTiming[], positionMs: number): number {
+  if (words.length === 0) return -1;
+
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    if (word && positionMs >= word.startTime && positionMs < word.endTime) {
+      return i;
+    }
+  }
+
+  // If past all words, return last word
+  const lastWord = words[words.length - 1];
+  if (lastWord && positionMs >= lastWord.endTime) {
+    return words.length - 1;
+  }
+
+  return -1;
 }
 
 /**
@@ -97,6 +217,11 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   currentTrackId: null,
   offset: 0,
 
+  // Sing-along mode state
+  singAlongEnabled: false,
+  linesWithWords: null,
+  currentWordIndex: -1,
+
   // Actions
   fetchLyrics: async (artist, track, trackId) => {
     // Don't refetch if already loaded for this track
@@ -127,11 +252,15 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
       // Prefer synced lyrics, fall back to plain
       if (data.syncedLyrics) {
         const parsedLyrics = parseLRC(data.syncedLyrics);
+        // Generate word timings for sing-along mode
+        const linesWithWords = generateLinesWithWords(parsedLyrics, data.duration ? data.duration * 1000 : undefined);
         set({
           lyrics: parsedLyrics,
+          linesWithWords,
           plainLyrics: data.plainLyrics || null,
           isLoading: false,
-          currentLineIndex: -1
+          currentLineIndex: -1,
+          currentWordIndex: -1
         });
       } else if (data.plainLyrics) {
         set({
@@ -171,8 +300,10 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     set({
       lyrics: null,
       plainLyrics: null,
+      linesWithWords: null,
       currentLineIndex: -1,
       nextLineIndex: -1,
+      currentWordIndex: -1,
       error: null,
       currentTrackId: null
     });
@@ -198,5 +329,71 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
 
   resetOffset: () => {
     set({ offset: 0 });
+  },
+
+  // Sing-along actions
+  setSingAlongEnabled: (enabled) => {
+    set({ singAlongEnabled: enabled });
+  },
+
+  updateCurrentWord: (positionMs) => {
+    const { linesWithWords, currentLineIndex, offset, singAlongEnabled } = get();
+    if (!singAlongEnabled || !linesWithWords || currentLineIndex < 0) {
+      if (get().currentWordIndex !== -1) {
+        set({ currentWordIndex: -1 });
+      }
+      return;
+    }
+
+    const currentLine = linesWithWords[currentLineIndex];
+    if (!currentLine || !currentLine.words.length) {
+      if (get().currentWordIndex !== -1) {
+        set({ currentWordIndex: -1 });
+      }
+      return;
+    }
+
+    const adjustedPosition = positionMs + offset;
+    const newWordIndex = findCurrentWordIndex(currentLine.words, adjustedPosition);
+
+    if (newWordIndex !== get().currentWordIndex) {
+      set({ currentWordIndex: newWordIndex });
+    }
+  },
+
+  getWordTimingsForLine: (lineIndex) => {
+    const { linesWithWords } = get();
+    if (!linesWithWords || lineIndex < 0 || lineIndex >= linesWithWords.length) {
+      return [];
+    }
+    return linesWithWords[lineIndex]?.words ?? [];
+  },
+
+  // Atomic update for seeking - prevents race conditions between line/word updates
+  updatePositionAtomic: (positionMs) => {
+    const { lyrics, linesWithWords, offset, singAlongEnabled } = get();
+    if (!lyrics) return;
+
+    const adjustedPosition = positionMs + offset;
+
+    // Find current line
+    const newLineIndex = findCurrentLineIndex(lyrics, adjustedPosition);
+    const nextIndex = newLineIndex < lyrics.length - 1 ? newLineIndex + 1 : -1;
+
+    // Find current word within line (if sing-along enabled)
+    let newWordIndex = -1;
+    if (singAlongEnabled && linesWithWords && newLineIndex >= 0) {
+      const currentLine = linesWithWords[newLineIndex];
+      if (currentLine?.words.length) {
+        newWordIndex = findCurrentWordIndex(currentLine.words, adjustedPosition);
+      }
+    }
+
+    // Single atomic update to prevent visual glitches
+    set({
+      currentLineIndex: newLineIndex,
+      nextLineIndex: nextIndex,
+      currentWordIndex: newWordIndex
+    });
   }
 }));

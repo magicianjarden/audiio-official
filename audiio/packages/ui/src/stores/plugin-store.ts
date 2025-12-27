@@ -5,16 +5,20 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type PluginCategory = 'metadata' | 'streaming' | 'lyrics' | 'scrobbling' | 'other';
+export type PluginCategory = 'metadata' | 'streaming' | 'lyrics' | 'translation' | 'scrobbling' | 'analysis' | 'audio' | 'other';
 
 // Map UI plugin IDs to actual addon IDs in the main process
 const pluginToAddonId: Record<string, string> = {
   'deezer-metadata': 'deezer',
   'youtube-music': 'youtube-music',
   'lrclib-lyrics': 'lrclib-lyrics',
+  'libretranslate': 'libretranslate',
   'lastfm-scrobbler': 'lastfm-scrobbler',
   'spotify-metadata': 'spotify-metadata',
   'applemusic-artwork': 'applemusic-artwork',
+  'audiio-algo': 'audiio-algo',
+  'sposify': 'sposify',
+  'karaoke': 'karaoke',
 };
 
 // Helper to notify main process of plugin state changes
@@ -233,6 +237,29 @@ const defaultPlugins: Plugin[] = [
     ]
   },
   {
+    id: 'libretranslate',
+    name: 'Lyrics Translation',
+    description: 'Translates non-English lyrics to English using free translation APIs. Supports Japanese, Korean, Spanish, French, German, Chinese, and more.',
+    version: '1.0.0',
+    author: 'Audiio Team',
+    category: 'translation',
+    enabled: true,
+    installed: true,
+    privacyAccess: [
+      { type: 'network', label: 'Network Access', description: 'Sends lyrics to translation APIs (MyMemory, Lingva)', required: true },
+      { type: 'playback', label: 'Playback Info', description: 'Reads current lyrics for translation', required: true },
+      { type: 'storage', label: 'Translation Cache', description: 'Caches translations locally for faster access', required: false },
+    ],
+    settingsDefinitions: [
+      { key: 'autoTranslate', label: 'Auto-Translate', description: 'Automatically translate when non-English lyrics are detected', type: 'boolean', default: false },
+      { key: 'showOriginal', label: 'Show Original', description: 'Display original lyrics alongside translations', type: 'boolean', default: true },
+    ],
+    settings: {
+      autoTranslate: false,
+      showOriginal: true,
+    }
+  },
+  {
     id: 'lastfm-scrobbler',
     name: 'Last.fm Scrobbler',
     description: 'Scrobble your listening history to Last.fm. Track your music taste and get personalized recommendations.',
@@ -301,6 +328,118 @@ const defaultPlugins: Plugin[] = [
       analyzeEnergy: true,
       cacheResults: true,
     }
+  },
+  {
+    id: 'audiio-algo',
+    name: 'Audiio Algorithm',
+    description: 'Official Audiio recommendation algorithm with neural network scoring, real-time audio analysis, emotion detection, lyrics sentiment analysis, and intelligent queue management.',
+    version: '1.0.0',
+    author: 'Audiio Team',
+    category: 'analysis',
+    enabled: true,
+    installed: true,
+    privacyAccess: [
+      { type: 'playback', label: 'Playback History', description: 'Tracks listening patterns and preferences for personalized recommendations', required: true },
+      { type: 'library', label: 'Library Access', description: 'Reads your music library to analyze and score tracks', required: true },
+      { type: 'storage', label: 'Model Storage', description: 'Stores trained ML models and feature caches locally', required: true },
+    ],
+    settingsDefinitions: [
+      // Audio Analysis
+      { key: 'enableAudioAnalysis', label: 'Audio Analysis', description: 'Analyze audio for BPM, key, and energy using Essentia WASM', type: 'boolean', default: true },
+      { key: 'audioAnalysisQuality', label: 'Analysis Quality', description: 'Higher quality uses more resources but is more accurate', type: 'select', default: 'balanced', options: [
+        { value: 'fast', label: 'Fast' },
+        { value: 'balanced', label: 'Balanced' },
+        { value: 'accurate', label: 'Accurate' },
+      ]},
+      // Emotion Detection
+      { key: 'enableEmotionDetection', label: 'Emotion Detection', description: 'Detect mood and emotion from audio using ML', type: 'boolean', default: true },
+      // Lyrics Analysis
+      { key: 'enableLyricsAnalysis', label: 'Lyrics Analysis', description: 'Analyze lyrics for sentiment and themes', type: 'boolean', default: true },
+      // Fingerprinting
+      { key: 'enableFingerprinting', label: 'Audio Fingerprinting', description: 'Enable Chromaprint fingerprinting for track identification', type: 'boolean', default: true },
+      { key: 'autoIdentifyUnknown', label: 'Auto-Identify Unknown', description: 'Automatically identify tracks without metadata', type: 'boolean', default: false },
+      // Similarity
+      { key: 'enableEmbeddings', label: 'Similarity Search', description: 'Generate embeddings for track similarity', type: 'boolean', default: true },
+      // Scoring
+      { key: 'explorationLevel', label: 'Exploration Level', description: 'How often to recommend new artists and genres', type: 'select', default: 'balanced', options: [
+        { value: 'low', label: 'Stick to favorites' },
+        { value: 'balanced', label: 'Balanced' },
+        { value: 'high', label: 'Discover new music' },
+      ]},
+      { key: 'enableSessionFlow', label: 'Session Flow', description: 'Consider energy and mood transitions between tracks', type: 'boolean', default: true },
+      { key: 'enableTemporalMatching', label: 'Time-Based Matching', description: 'Match music to time of day patterns', type: 'boolean', default: true },
+      { key: 'timeOfDayMode', label: 'Time-of-Day Intensity', description: 'How strongly to weight time-based recommendations', type: 'select', default: 'auto', options: [
+        { value: 'off', label: 'Off' },
+        { value: 'auto', label: 'Auto (Recommended)' },
+        { value: 'strong', label: 'Strong' },
+      ]},
+      // Training
+      { key: 'autoTrain', label: 'Auto-Train', description: 'Automatically retrain model with new listening data', type: 'boolean', default: true },
+      { key: 'trainOnIdle', label: 'Train When Idle', description: 'Train model when app is idle to avoid performance impact', type: 'boolean', default: true },
+    ],
+    settings: {
+      enableAudioAnalysis: true,
+      audioAnalysisQuality: 'balanced',
+      enableEmotionDetection: true,
+      enableLyricsAnalysis: true,
+      enableFingerprinting: true,
+      autoIdentifyUnknown: false,
+      enableEmbeddings: true,
+      explorationLevel: 'balanced',
+      enableSessionFlow: true,
+      enableTemporalMatching: true,
+      timeOfDayMode: 'auto',
+      autoTrain: true,
+      trainOnIdle: true,
+    }
+  },
+  {
+    id: 'sposify',
+    name: 'Sposify',
+    description: 'Import your Spotify data, enrich tracks with pre-computed audio features, match local files by ISRC, and discover millions of curated playlists from Anna\'s Archive.',
+    version: '1.0.0',
+    author: 'Audiio Team',
+    category: 'metadata',
+    enabled: true,
+    installed: true,
+    privacyAccess: [
+      { type: 'library', label: 'Library Access', description: 'Access your music library to match and enrich tracks', required: true },
+      { type: 'storage', label: 'Local Storage', description: 'Read Spotify export files and store matched data', required: true },
+    ],
+    settingsDefinitions: [
+      { key: 'autoMatchOnImport', label: 'Auto-match on Import', description: 'Automatically match imported tracks to the Sposify database', type: 'boolean', default: true },
+      { key: 'importHistoryAsListens', label: 'Import History as Listens', description: 'Add streaming history to your recommendation profile', type: 'boolean', default: true },
+      { key: 'minMatchConfidence', label: 'Minimum Match Confidence', description: 'Only accept matches above this confidence level (%)', type: 'number', default: 70, min: 50, max: 100 },
+      { key: 'enableFuzzyMatching', label: 'Fuzzy Matching', description: 'Use fuzzy string matching for tracks without exact matches', type: 'boolean', default: true },
+      { key: 'autoEnrichLocalFiles', label: 'Auto-enrich Local Files', description: 'Automatically add audio features to matched local files', type: 'boolean', default: false },
+      { key: 'playlistPrefix', label: 'Playlist Prefix', description: 'Prefix for imported Spotify playlists', type: 'select', default: '[Spotify] ', options: [
+        { value: '', label: 'No prefix' },
+        { value: '[Spotify] ', label: '[Spotify]' },
+        { value: '[Import] ', label: '[Import]' },
+      ]},
+    ],
+    settings: {
+      autoMatchOnImport: true,
+      importHistoryAsListens: true,
+      minMatchConfidence: 70,
+      enableFuzzyMatching: true,
+      autoEnrichLocalFiles: false,
+      playlistPrefix: '[Spotify] ',
+    }
+  },
+  {
+    id: 'karaoke',
+    name: 'Karaoke Mode',
+    description: 'AI-powered vocal removal using Demucs. Remove vocals from any track to sing along. Requires local Demucs server.',
+    version: '1.0.0',
+    author: 'Audiio Team',
+    category: 'audio',
+    enabled: true,
+    installed: true,
+    privacyAccess: [
+      { type: 'network', label: 'Local Processing', description: 'Sends audio to local Demucs server for vocal separation', required: true },
+      { type: 'playback', label: 'Playback Info', description: 'Reads current track to process and swap audio source', required: true },
+    ],
   },
 ];
 

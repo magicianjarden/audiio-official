@@ -1,9 +1,20 @@
 /**
  * Search store - manages search state with multi-type results
+ * Enhanced with smart search (fuzzy matching + natural language filters)
  */
 
 import { create } from 'zustand';
 import type { UnifiedTrack } from '@audiio/core';
+import {
+  SmartSearch,
+  parseQuery,
+  type ParsedQuery,
+  type QueryFilter,
+  type SmartSearchResult,
+} from '../services/search';
+
+// Re-export for convenience
+export type { ParsedQuery, QueryFilter, SmartSearchResult };
 
 export interface SearchArtist {
   id: string;
@@ -27,6 +38,8 @@ interface SearchResults {
   tracks: UnifiedTrack[];
   artists: SearchArtist[];
   albums: SearchAlbum[];
+  /** Local library matches from smart search */
+  localTracks: SmartSearchResult[];
 }
 
 interface SearchState {
@@ -34,23 +47,40 @@ interface SearchState {
   results: SearchResults;
   isSearching: boolean;
   error: string | null;
-  activeFilter: 'all' | 'tracks' | 'artists' | 'albums';
+  activeFilter: 'all' | 'tracks' | 'artists' | 'albums' | 'local' | 'lyrics';
+  /** Parsed query with extracted filters */
+  parsedQuery: ParsedQuery | null;
+  /** Smart search instance for local library */
+  smartSearch: SmartSearch;
+  /** Suggestions for autocomplete */
+  suggestions: string[];
 
   setQuery: (query: string) => void;
-  setActiveFilter: (filter: 'all' | 'tracks' | 'artists' | 'albums') => void;
+  setActiveFilter: (filter: 'all' | 'tracks' | 'artists' | 'albums' | 'local' | 'lyrics') => void;
   search: (query: string) => Promise<void>;
+  searchLocal: (query: string, tracks: UnifiedTrack[]) => SmartSearchResult[];
+  updateLocalIndex: (tracks: UnifiedTrack[]) => void;
+  getSuggestions: (partial: string) => string[];
   clear: () => void;
 }
 
-export const useSearchStore = create<SearchState>((set) => ({
+// Create smart search instance
+const smartSearchInstance = new SmartSearch();
+
+export const useSearchStore = create<SearchState>((set, get) => ({
   query: '',
-  results: { tracks: [], artists: [], albums: [] },
+  results: { tracks: [], artists: [], albums: [], localTracks: [] },
   isSearching: false,
   error: null,
   activeFilter: 'all',
+  parsedQuery: null,
+  smartSearch: smartSearchInstance,
+  suggestions: [],
 
   setQuery: (query) => {
-    set({ query });
+    const parsedQuery = parseQuery(query);
+    const suggestions = query.length >= 2 ? smartSearchInstance.getSuggestions(query) : [];
+    set({ query, parsedQuery, suggestions });
   },
 
   setActiveFilter: (filter) => {
@@ -59,11 +89,12 @@ export const useSearchStore = create<SearchState>((set) => ({
 
   search: async (query) => {
     if (!query.trim()) {
-      set({ results: { tracks: [], artists: [], albums: [] }, isSearching: false });
+      set({ results: { tracks: [], artists: [], albums: [], localTracks: [] }, isSearching: false });
       return;
     }
 
-    set({ isSearching: true, error: null, query });
+    const parsedQuery = parseQuery(query);
+    set({ isSearching: true, error: null, query, parsedQuery });
 
     try {
       if (window.api) {
@@ -174,20 +205,35 @@ export const useSearchStore = create<SearchState>((set) => ({
           }
         }
 
+        // Also search local library with smart search
+        const localResults = smartSearchInstance.search(query, { limit: 20 });
+
+        const trackResults = tracks || [];
+
         set({
           results: {
-            tracks: tracks || [],
+            tracks: trackResults,
             artists: finalArtists.slice(0, 12),
-            albums: finalAlbums.slice(0, 12)
+            albums: finalAlbums.slice(0, 12),
+            localTracks: localResults,
           },
           isSearching: false
         });
+
+        // Dispatch event for embedding system to index search results
+        if (trackResults.length > 0) {
+          window.dispatchEvent(
+            new CustomEvent('audiio:search-results', {
+              detail: { tracks: trackResults },
+            })
+          );
+        }
       } else {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Development mode - only do local search
+        const localResults = smartSearchInstance.search(query, { limit: 50 });
         set({
-          results: { tracks: [], artists: [], albums: [] },
+          results: { tracks: [], artists: [], albums: [], localTracks: localResults },
           isSearching: false,
-          error: 'Search not available in development mode'
         });
       }
     } catch (error) {
@@ -198,7 +244,29 @@ export const useSearchStore = create<SearchState>((set) => ({
     }
   },
 
+  searchLocal: (query, tracks) => {
+    // One-off local search with provided tracks
+    const tempSearcher = new SmartSearch(tracks);
+    return tempSearcher.search(query);
+  },
+
+  updateLocalIndex: (tracks) => {
+    // Update the smart search index with new tracks
+    smartSearchInstance.updateIndex(tracks);
+  },
+
+  getSuggestions: (partial) => {
+    return smartSearchInstance.getSuggestions(partial);
+  },
+
   clear: () => {
-    set({ query: '', results: { tracks: [], artists: [], albums: [] }, error: null, activeFilter: 'all' });
+    set({
+      query: '',
+      results: { tracks: [], artists: [], albums: [], localTracks: [] },
+      error: null,
+      activeFilter: 'all',
+      parsedQuery: null,
+      suggestions: [],
+    });
   }
 }));

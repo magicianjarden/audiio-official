@@ -1,6 +1,7 @@
 /**
  * LibreTranslate Client - API client for free translation services
  * Uses IPC in Electron to avoid CORS issues
+ * Optimized for speed with parallel requests
  */
 
 import type { SupportedLanguage } from './translation-cache';
@@ -8,8 +9,9 @@ import type { SupportedLanguage } from './translation-cache';
 // Check if running in Electron with IPC available
 const isElectron = typeof window !== 'undefined' && 'api' in window && typeof (window as any).api?.translateText === 'function';
 
-// Configuration
-const RATE_LIMIT_DELAY = 150; // 150ms between requests to avoid rate limits
+// Configuration - optimized for speed
+const CONCURRENCY_LIMIT = 5; // Max parallel requests
+const MIN_DELAY_BETWEEN_BATCHES = 50; // Small delay between batches to avoid rate limits
 const BATCH_SIZE = 10; // Max lines per batch request
 
 interface IPCTranslateResult {
@@ -19,7 +21,6 @@ interface IPCTranslateResult {
 }
 
 class LibreTranslateClient {
-  private lastRequestTime = 0;
 
   /**
    * Translate a single text string
@@ -30,11 +31,8 @@ class LibreTranslateClient {
     source: SupportedLanguage,
     target: string = 'en'
   ): Promise<string> {
-    await this.rateLimit();
-
     // Use IPC in Electron (no CORS issues)
     if (isElectron) {
-      console.log(`[Translation] Translating via IPC: "${text.substring(0, 30)}..."`);
       const result = await (window as any).api.translateText(text, source, target) as IPCTranslateResult;
       if (result.success && result.translatedText) {
         return result.translatedText;
@@ -43,13 +41,12 @@ class LibreTranslateClient {
     }
 
     // Not in Electron - can't translate (CORS)
-    console.warn('[Translation] IPC not available, translation disabled');
     throw new Error('Translation requires Electron - not available in browser dev mode');
   }
 
   /**
-   * Translate multiple texts in batch
-   * Serializes with rate limiting
+   * Translate multiple texts in parallel batches
+   * Uses concurrency control for speed without overwhelming the API
    */
   async translateBatch(
     texts: string[],
@@ -57,26 +54,48 @@ class LibreTranslateClient {
     target: string = 'en',
     onProgress?: (completed: number, total: number) => void
   ): Promise<string[]> {
-    const results: string[] = [];
+    const results: string[] = new Array(texts.length).fill('');
     const total = texts.length;
+    let completed = 0;
 
+    // Filter and track which indices need translation
+    const toTranslate: { index: number; text: string }[] = [];
     for (let i = 0; i < texts.length; i++) {
       const text = texts[i];
-      if (!text || text.trim().length === 0) {
-        results.push('');
-        onProgress?.(i + 1, total);
-        continue;
+      if (text && text.trim().length > 0) {
+        toTranslate.push({ index: i, text });
+      } else {
+        completed++;
       }
+    }
 
+    onProgress?.(completed, total);
+
+    // Process in parallel with concurrency limit
+    const translateOne = async (item: { index: number; text: string }) => {
       try {
-        const translated = await this.translate(text, source, target);
-        results.push(translated);
+        const translated = await this.translate(item.text, source, target);
+        results[item.index] = translated;
       } catch (error) {
-        console.warn(`[Translation] Failed for line ${i}:`, error);
-        results.push(''); // Empty string for failed translations
+        console.warn(`[Translation] Failed for line ${item.index}:`, error);
+        results[item.index] = '';
       }
+      completed++;
+      onProgress?.(completed, total);
+    };
 
-      onProgress?.(i + 1, total);
+    // Process with concurrency control
+    const chunks: { index: number; text: string }[][] = [];
+    for (let i = 0; i < toTranslate.length; i += CONCURRENCY_LIMIT) {
+      chunks.push(toTranslate.slice(i, i + CONCURRENCY_LIMIT));
+    }
+
+    for (const chunk of chunks) {
+      await Promise.all(chunk.map(translateOne));
+      // Small delay between batches to be nice to the API
+      if (chunks.indexOf(chunk) < chunks.length - 1) {
+        await this.sleep(MIN_DELAY_BETWEEN_BATCHES);
+      }
     }
 
     return results;
@@ -87,17 +106,6 @@ class LibreTranslateClient {
    */
   isAvailable(): boolean {
     return isElectron;
-  }
-
-  private async rateLimit(): Promise<void> {
-    const now = Date.now();
-    const timeSinceLastRequest = now - this.lastRequestTime;
-
-    if (timeSinceLastRequest < RATE_LIMIT_DELAY) {
-      await this.sleep(RATE_LIMIT_DELAY - timeSinceLastRequest);
-    }
-
-    this.lastRequestTime = Date.now();
   }
 
   private sleep(ms: number): Promise<void> {

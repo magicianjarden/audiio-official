@@ -29,3 +29,31 @@ export {
 export { useDownloadProgress } from './useDownloadProgress';
 
 export { useLibraryBridge } from './useLibraryBridge';
+
+export {
+  useGlobalKeyboardShortcuts,
+  GlobalShortcutManager
+} from './useKeyboardShortcuts';
+
+export {
+  useSkipTracking,
+  SkipTrackingManager
+} from './useSkipTracking';
+
+export {
+  useRecommendationExplanation,
+  type ExplanationFactor,
+  type TrackExplanation
+} from './useRecommendationExplanation';
+
+export { useKaraoke } from './useKaraoke';
+export { useKaraokeAudio } from './useKaraokeAudio';
+
+export {
+  useEmbeddingPlaylist,
+  useMoodPlaylist,
+  useGenrePlaylist,
+  useSimilarTracks,
+  type EmbeddingPlaylistOptions,
+  type PlaylistResult,
+} from './useEmbeddingPlaylist';

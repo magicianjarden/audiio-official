@@ -10,6 +10,7 @@ import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
 import { useMLRanking } from '../../../hooks';
 import type { BaseSectionProps } from '../section-registry';
+import { debugError } from '../../../utils/debug';
 
 export interface TrendingTracksSectionProps extends BaseSectionProps {
   maxItems?: number;
@@ -87,7 +88,7 @@ export const TrendingTracksSection: React.FC<TrendingTracksSectionProps> = ({
           setTracks(ranked.map(r => r.track));
         }
       } catch (error) {
-        console.error('[TrendingTracksSection] Failed to fetch:', error);
+        debugError('[TrendingTracksSection]', 'Failed to fetch:', error);
       } finally {
         if (mounted) {
           setIsLoading(false);

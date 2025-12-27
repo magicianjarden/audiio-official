@@ -9,7 +9,8 @@ import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
 import { BaseSectionWrapper, useSectionTracks } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
-import { PlayIcon, MusicNoteIcon } from '../../Icons/Icons';
+import { PlayIcon, MusicNoteIcon } from '@audiio/icons';
+import { getAccentColor, getCSSVariable } from '../../../utils/theme-utils';
 
 export interface SplitFeatureSectionProps extends BaseSectionProps {
   leftTrack?: UnifiedTrack;
@@ -21,6 +22,7 @@ export interface SplitFeatureSectionProps extends BaseSectionProps {
 
 // Extract dominant color from image
 async function extractColor(imageUrl: string): Promise<string> {
+  const fallbackColor = getAccentColor();
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -31,7 +33,7 @@ async function extractColor(imageUrl: string): Promise<string> {
         canvas.height = 50;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          resolve('#1db954');
+          resolve(fallbackColor);
           return;
         }
         ctx.drawImage(img, 0, 0, 50, 50);
@@ -45,10 +47,10 @@ async function extractColor(imageUrl: string): Promise<string> {
         const pixels = data.length / 4;
         resolve(`rgb(${Math.round(r / pixels)}, ${Math.round(g / pixels)}, ${Math.round(b / pixels)})`);
       } catch {
-        resolve('#1db954');
+        resolve(fallbackColor);
       }
     };
-    img.onerror = () => resolve('#1db954');
+    img.onerror = () => resolve(fallbackColor);
     img.src = imageUrl;
   });
 }
@@ -79,8 +81,8 @@ export const SplitFeatureSection: React.FC<SplitFeatureSectionProps> = ({
   const leftTrack = propLeftTrack ?? tracks[0];
   const rightTrack = propRightTrack ?? tracks[1];
 
-  const [leftColor, setLeftColor] = useState('#1db954');
-  const [rightColor, setRightColor] = useState('#9b59b6');
+  const [leftColor, setLeftColor] = useState(() => getAccentColor());
+  const [rightColor, setRightColor] = useState(() => getCSSVariable('--color-access-metadata', '#9b59b6'));
 
   // Extract colors from artwork
   useEffect(() => {

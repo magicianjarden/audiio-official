@@ -5,6 +5,8 @@ import { useLibraryStore } from '../../stores/library-store';
 import { usePlayerStore } from '../../stores/player-store';
 import { useRecommendationStore } from '../../stores/recommendation-store';
 import { useNavigationStore } from '../../stores/navigation-store';
+import { useSmartQueueStore, type RadioSeed } from '../../stores/smart-queue-store';
+import { showSuccessToast } from '../../stores/toast-store';
 import {
   PlayIcon,
   QueueIcon,
@@ -17,7 +19,9 @@ import {
   BlockIcon,
   ChevronRightIcon,
   MusicNoteIcon,
-} from '../Icons/Icons';
+  NextIcon,
+  RadioIcon,
+} from '@audiio/icons';
 
 interface ContextMenuProps {
   entity: ContextMenuEntity;
@@ -41,10 +45,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const [showPlaylistSubmenu, setShowPlaylistSubmenu] = useState(false);
   const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const { play, addToQueue } = usePlayerStore();
-  const { isLiked, toggleLike, playlists, addToPlaylist, startDownload } = useLibraryStore();
+  const { play, addToQueue, playNext } = usePlayerStore();
+  const { isLiked, toggleLike, playlists, addToPlaylist, startDownload, undislikeTrack, likedTracks } = useLibraryStore();
   const { isDisliked, removeDislike } = useRecommendationStore();
   const { openArtist, openAlbum } = useNavigationStore();
+  const { startRadio } = useSmartQueueStore();
 
   // Clear timeout on unmount
   useEffect(() => {
@@ -125,8 +130,15 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       onClose();
     };
 
+    const handlePlayNext = () => {
+      playNext(track);
+      showSuccessToast(`"${track.title}" will play next`);
+      onClose();
+    };
+
     const handleAddToQueue = () => {
       addToQueue(track);
+      showSuccessToast(`Added "${track.title}" to queue`);
       onClose();
     };
 
@@ -142,7 +154,9 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 
     const handleDislike = () => {
       if (trackIsDisliked) {
+        // Remove from both stores
         removeDislike(track.id);
+        undislikeTrack(track.id);
       } else if (onDislike) {
         onDislike(track);
       }
@@ -194,6 +208,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         <button className="context-menu-item" onClick={handlePlay}>
           <PlayIcon size={16} />
           <span>Play</span>
+        </button>
+
+        <button className="context-menu-item" onClick={handlePlayNext}>
+          <NextIcon size={16} />
+          <span>Play Next</span>
         </button>
 
         <button className="context-menu-item" onClick={handleAddToQueue}>
@@ -295,6 +314,19 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       onClose();
     };
 
+    const handleStartArtistRadio = async () => {
+      const seed: RadioSeed = {
+        type: 'artist',
+        id: artist.id,
+        name: `${artist.name} Radio`,
+        artwork: artist.image,
+        artistIds: [artist.id],
+      };
+      await startRadio(seed, likedTracks);
+      showSuccessToast(`Started ${artist.name} Radio`);
+      onClose();
+    };
+
     const handleGoToArtist = () => {
       openArtist(artist.id, artist);
       onClose();
@@ -305,6 +337,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         <button className="context-menu-item" onClick={handlePlayArtist}>
           <PlayIcon size={16} />
           <span>Play Artist</span>
+        </button>
+
+        <button className="context-menu-item" onClick={handleStartArtistRadio}>
+          <RadioIcon size={16} />
+          <span>Start {artist.name} Radio</span>
         </button>
 
         <div className="context-menu-divider" />

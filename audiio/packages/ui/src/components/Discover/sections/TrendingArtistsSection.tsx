@@ -5,8 +5,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigationStore } from '../../../stores/navigation-store';
 import { useArtistContextMenu } from '../../../contexts/ContextMenuContext';
-import { MusicNoteIcon } from '../../Icons/Icons';
+import { MusicNoteIcon } from '@audiio/icons';
 import type { BaseSectionProps } from '../section-registry';
+import { debugError } from '../../../utils/debug';
 
 interface TrendingArtist {
   id: string;
@@ -77,7 +78,7 @@ export const TrendingArtistsSection: React.FC<TrendingArtistsSectionProps> = ({
           }
         }
       } catch (error) {
-        console.error('[TrendingArtistsSection] Failed to fetch:', error);
+        debugError('[TrendingArtistsSection]', 'Failed to fetch:', error);
       } finally {
         if (mounted) {
           setIsLoading(false);

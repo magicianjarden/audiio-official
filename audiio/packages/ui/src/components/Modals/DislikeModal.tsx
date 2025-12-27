@@ -6,7 +6,7 @@ import {
   type DislikeReason
 } from '../../stores/recommendation-store';
 import { useLibraryStore } from '../../stores/library-store';
-import { CloseIcon, MusicNoteIcon } from '../Icons/Icons';
+import { CloseIcon, MusicNoteIcon } from '@audiio/icons';
 
 interface DislikeModalProps {
   track: UnifiedTrack;

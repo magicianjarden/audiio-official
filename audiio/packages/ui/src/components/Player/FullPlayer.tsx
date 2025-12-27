@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { usePlayerStore } from '../../stores/player-store';
 import { useLibraryStore } from '../../stores/library-store';
 import { useUIStore } from '../../stores/ui-store';
 import { useLyricsStore } from '../../stores/lyrics-store';
 import { useNavigationStore } from '../../stores/navigation-store';
 import { LyricsDisplay } from './LyricsDisplay';
+import { extractColorsFromImage, type ExtractedColors } from '../../utils/color-extractor';
 import {
   PlayIcon,
   PauseIcon,
@@ -18,12 +19,16 @@ import {
   ChevronDownIcon,
   LyricsIcon,
   MusicNoteIcon
-} from '../Icons/Icons';
+} from '@audiio/icons';
 
 export const FullPlayer: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const playPromiseRef = useRef<Promise<void> | null>(null);
+
+  // Dynamic background colors extracted from artwork
+  const [colors, setColors] = useState<ExtractedColors | null>(null);
+
   const {
     currentTrack,
     isPlaying,
@@ -43,7 +48,7 @@ export const FullPlayer: React.FC = () => {
 
   const { playerMode, collapsePlayer, isLyricsVisible, toggleLyrics } = useUIStore();
   const { isLiked, toggleLike } = useLibraryStore();
-  const { fetchLyrics, updateCurrentLine, clearLyrics } = useLyricsStore();
+  const { fetchLyrics, updateCurrentLine, updatePositionAtomic, singAlongEnabled, clearLyrics } = useLyricsStore();
   const { openAlbum, openArtist } = useNavigationStore();
 
   const trackIsLiked = currentTrack ? isLiked(currentTrack.id) : false;
@@ -89,29 +94,32 @@ export const FullPlayer: React.FC = () => {
     }
   }, [playerMode, clearLyrics]);
 
-  // Update current lyric line based on position
+  // Extract colors from artwork for animated background
+  useEffect(() => {
+    const artworkUrl = currentTrack?.artwork?.large ??
+      currentTrack?.artwork?.medium ??
+      currentTrack?.album?.artwork?.large ??
+      currentTrack?.album?.artwork?.medium;
+
+    if (artworkUrl && playerMode === 'full') {
+      extractColorsFromImage(artworkUrl).then(setColors);
+    }
+  }, [currentTrack?.id, playerMode]);
+
+  // Update current lyric line and word based on position
+  // Use atomic update when sing-along is enabled for smooth word tracking
   useEffect(() => {
     if (isLyricsVisible) {
-      updateCurrentLine(position);
-    }
-  }, [position, isLyricsVisible, updateCurrentLine]);
-
-  // Handle keyboard shortcuts
-  useEffect(() => {
-    if (playerMode !== 'full') return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        collapsePlayer();
-      } else if (e.key === ' ' && !e.target?.toString().includes('input')) {
-        e.preventDefault();
-        isPlaying ? pause() : resume();
+      if (singAlongEnabled) {
+        updatePositionAtomic(position);
+      } else {
+        updateCurrentLine(position);
       }
-    };
+    }
+  }, [position, isLyricsVisible, singAlongEnabled, updateCurrentLine, updatePositionAtomic]);
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [playerMode, collapsePlayer, isPlaying, pause, resume]);
+  // Note: Keyboard shortcuts are now handled globally by GlobalShortcutManager
+  // Escape to collapse and Space for play/pause work app-wide
 
   // Check for animated artwork (compute before hook so it's stable)
   const animatedArtwork = currentTrack?.artwork?.animated ?? currentTrack?.album?.artwork?.animated;
@@ -207,7 +215,17 @@ export const FullPlayer: React.FC = () => {
 
   return (
     <div className="full-player" ref={containerRef}>
-      {/* Blurred Background */}
+      {/* Animated Gradient Background */}
+      <div
+        className="full-player-animated-bg"
+        style={{
+          '--bg-primary': colors?.primary || '#1a1a2e',
+          '--bg-secondary': colors?.secondary || '#16213e',
+          '--bg-accent': colors?.accent || '#1db954',
+        } as React.CSSProperties}
+      />
+
+      {/* Blurred Artwork Overlay */}
       {artworkUrl && (
         <div
           className="full-player-bg"
