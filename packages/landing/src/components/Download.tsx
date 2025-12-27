@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { DownloadIcon, DesktopIcon, PhoneIcon, ExternalLinkIcon } from '@audiio/icons';
+import { DownloadIcon, DesktopIcon, PhoneIcon, ExternalLinkIcon, LockIcon, CloudOffIcon, ZapIcon, GlobeIcon } from '@audiio/icons';
 import { useDevMode } from '../hooks/useDevMode';
 import './Download.css';
 
@@ -143,18 +143,62 @@ export function Download() {
                 </a>
               </div>
             </div>
-            {isDevMode && (
-              <div className="mobile-how-it-works">
-                <h4>How P2P Remote Works:</h4>
-                <ol>
-                  <li>Enable Mobile Access in desktop app settings</li>
-                  <li>Get your connection code (e.g., SWIFT-EAGLE-42)</li>
-                  <li>Visit the remote portal from any device</li>
-                  <li>Enter your code — connects via Nostr relay</li>
-                  <li>Your music streams from your desktop, no cloud needed</li>
-                </ol>
+
+            <div className="mobile-how-it-works">
+              <h4>How P2P Remote Works</h4>
+              <ol>
+                <li>Enable Mobile Access in desktop app settings</li>
+                <li>Get your connection code (e.g., SWIFT-EAGLE-42)</li>
+                <li>Visit the remote portal from any device</li>
+                <li>Enter your code — connects via our relay server</li>
+                <li>Your music streams directly from your desktop</li>
+              </ol>
+            </div>
+
+            <div className="mobile-tech-specs">
+              <h4>Under the Hood</h4>
+              <div className="tech-grid">
+                <div className="tech-item">
+                  <LockIcon size={18} />
+                  <div className="tech-content">
+                    <span className="tech-label">End-to-End Encrypted</span>
+                    <span className="tech-detail">NaCl X25519 + XSalsa20-Poly1305</span>
+                  </div>
+                </div>
+                <div className="tech-item">
+                  <CloudOffIcon size={18} />
+                  <div className="tech-content">
+                    <span className="tech-label">Zero Cloud Storage</span>
+                    <span className="tech-detail">Streams direct from your machine</span>
+                  </div>
+                </div>
+                <div className="tech-item">
+                  <ZapIcon size={18} />
+                  <div className="tech-content">
+                    <span className="tech-label">WebSocket Signaling</span>
+                    <span className="tech-detail">Sub-second connection establishment</span>
+                  </div>
+                </div>
+                <div className="tech-item">
+                  <GlobeIcon size={18} />
+                  <div className="tech-content">
+                    <span className="tech-label">Self-Hosted Relay</span>
+                    <span className="tech-detail">Open-source, auditable, no third parties</span>
+                  </div>
+                </div>
               </div>
-            )}
+              {isDevMode && (
+                <div className="tech-code">
+                  <code>
+                    # The relay server is open source
+                    <br />
+                    npm install @audiio/relay
+                    <br />
+                    npx audiio-relay --port 9484
+                  </code>
+                </div>
+              )}
+            </div>
           </div>
 
           {isDevMode && (

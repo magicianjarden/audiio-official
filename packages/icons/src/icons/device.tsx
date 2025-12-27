@@ -95,6 +95,91 @@ export const QrCodeIcon: React.FC<IconProps> = ({ size = 24, className, ...props
 );
 
 // ============================================
+// Lock Icon
+// ============================================
+
+export const LockIcon: React.FC<IconProps> = ({ size = 24, className, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </svg>
+);
+
+// ============================================
+// Cloud Icons
+// ============================================
+
+export const CloudIcon: React.FC<IconProps> = ({ size = 24, className, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
+  </svg>
+);
+
+export const CloudOffIcon: React.FC<IconProps> = ({ size = 24, className, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <line x1="1" y1="1" x2="23" y2="23" />
+    <path d="M9.72 5.41a8 8 0 0 1 7.54 4.59" />
+    <path d="M17.73 11.86A5 5 0 0 1 18 20H9" />
+    <path d="M5.42 13A8 8 0 0 0 5 20h12" />
+    <path d="M8 10a4 4 0 0 0-4 4" />
+  </svg>
+);
+
+// ============================================
+// Zap/Lightning Icon
+// ============================================
+
+export const ZapIcon: React.FC<IconProps> = ({ size = 24, className, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+  </svg>
+);
+
+// ============================================
 // Key Icon
 // ============================================
 
