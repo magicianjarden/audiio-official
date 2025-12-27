@@ -11,7 +11,9 @@ import {
   // Primary sections
   HeroSection,
   HorizontalSection,
+  EmbeddingHorizontalSection,
   LargeCardSection,
+  EmbeddingLargeCardSection,
   CompactListSection,
   GridSection,
   // New algorithmic sections
@@ -31,6 +33,18 @@ import {
   WeeklyRotationSection,
   BannerSection,
   MasonrySection,
+  MoodPlaylistSection,
+  // New personalized sections
+  TimeGreetingSection,
+  OnRepeatSection,
+  DiscoverWeeklySection,
+  TopMixSection,
+  RediscoverSection,
+  ActivitySection,
+  DecadeMixSection,
+  SeasonalSection,
+  BlindPicksSection,
+  SimilarArtistsSection,
 } from './sections';
 
 // ============================================
@@ -89,7 +103,7 @@ const compactListSectionDef: SectionDefinition = {
 // ============================================
 
 const trendingTracksSectionDef: SectionDefinition = {
-  type: 'trending-tracks' as any,
+  type: 'trending-tracks',
   component: TrendingTracksSection as React.ComponentType<any>,
   displayName: 'Trending Songs',
   description: 'Hot tracks right now',
@@ -112,7 +126,7 @@ const trendingTracksSectionDef: SectionDefinition = {
 };
 
 const trendingArtistsSectionDef: SectionDefinition = {
-  type: 'trending-artists' as any,
+  type: 'trending-artists',
   component: TrendingArtistsSection as React.ComponentType<any>,
   displayName: 'Popular Artists',
   description: 'Trending artists right now',
@@ -135,7 +149,7 @@ const trendingArtistsSectionDef: SectionDefinition = {
 };
 
 const artistRadioSectionDef: SectionDefinition = {
-  type: 'artist-radio' as any,
+  type: 'artist-radio',
   component: ArtistRadioSection as React.ComponentType<any>,
   displayName: 'Artist Radio',
   description: 'Tracks similar to your top artist',
@@ -159,7 +173,7 @@ const artistRadioSectionDef: SectionDefinition = {
 };
 
 const becauseYouLikeSectionDef1: SectionDefinition = {
-  type: 'because-you-like' as any,
+  type: 'because-you-like',
   component: BecauseYouLikeSection as React.ComponentType<any>,
   displayName: 'Because You Like',
   description: 'Recommendations based on a specific artist',
@@ -182,7 +196,7 @@ const becauseYouLikeSectionDef1: SectionDefinition = {
 };
 
 const becauseYouLikeSectionDef2: SectionDefinition = {
-  type: 'because-you-like' as any,
+  type: 'because-you-like',
   component: BecauseYouLikeSection as React.ComponentType<any>,
   displayName: 'Because You Like',
   description: 'Recommendations based on another artist',
@@ -205,7 +219,7 @@ const becauseYouLikeSectionDef2: SectionDefinition = {
 };
 
 const newReleasesSectionDef: SectionDefinition = {
-  type: 'new-releases' as any,
+  type: 'new-releases',
   component: NewReleasesSection as React.ComponentType<any>,
   displayName: 'New Releases',
   description: 'Latest music releases',
@@ -227,7 +241,7 @@ const newReleasesSectionDef: SectionDefinition = {
 };
 
 const chartListSectionDef: SectionDefinition = {
-  type: 'chart-list' as any,
+  type: 'chart-list',
   component: ChartListSection as React.ComponentType<any>,
   displayName: 'Top Charts',
   description: 'Numbered list of trending tracks',
@@ -250,7 +264,7 @@ const chartListSectionDef: SectionDefinition = {
 };
 
 const quickPicksSectionDef: SectionDefinition = {
-  type: 'quick-picks' as any,
+  type: 'quick-picks',
   component: QuickPicksSection as React.ComponentType<any>,
   displayName: 'Quick Picks',
   description: 'Small tiles for quick access',
@@ -321,9 +335,9 @@ const horizontalSectionDef: SectionDefinition = {
 
 const largeCardsSectionDef: SectionDefinition = {
   type: 'large-cards',
-  component: LargeCardSection as React.ComponentType<any>,
+  component: EmbeddingLargeCardSection as React.ComponentType<any>,
   displayName: 'Highlights',
-  description: 'Large card grid with 2-3 columns',
+  description: 'Large card grid with 2-3 columns (embedding-enhanced)',
   requirements: {},
   constraints: {
     maxPerPage: 1,
@@ -341,13 +355,29 @@ const largeCardsSectionDef: SectionDefinition = {
   generateConfig: (ctx) => {
     const hour = ctx.hour;
     if (hour >= 6 && hour < 12) {
-      return { title: 'Morning Energy', query: 'upbeat energizing morning' };
+      return {
+        title: 'Morning Energy',
+        query: 'upbeat energizing morning',
+        embedding: { type: 'mood', id: 'uplifting' },
+      };
     } else if (hour >= 12 && hour < 18) {
-      return { title: 'Afternoon Vibes', query: 'popular trending afternoon' };
+      return {
+        title: 'Afternoon Vibes',
+        query: 'popular trending afternoon',
+        embedding: { type: 'mood', id: 'focus' },
+      };
     } else if (hour >= 18 && hour < 22) {
-      return { title: 'Evening Wind Down', query: 'chill relaxing evening' };
+      return {
+        title: 'Evening Wind Down',
+        query: 'chill relaxing evening',
+        embedding: { type: 'mood', id: 'chill' },
+      };
     } else {
-      return { title: 'Night Mode', query: 'ambient calm night lofi' };
+      return {
+        title: 'Night Mode',
+        query: 'ambient calm night lofi',
+        embedding: { type: 'mood', id: 'chill' },
+      };
     }
   },
 };
@@ -381,7 +411,7 @@ const artistSpotlightSectionDef: SectionDefinition = {
 // ============================================
 
 const moodGradientSectionDef: SectionDefinition = {
-  type: 'mood-gradient' as any,
+  type: 'mood-gradient',
   component: MoodGradientSection as React.ComponentType<any>,
   displayName: 'Mood Spectrum',
   description: 'Tracks arranged by energy level',
@@ -404,7 +434,7 @@ const moodGradientSectionDef: SectionDefinition = {
 };
 
 const genreExplorerSectionDef: SectionDefinition = {
-  type: 'genre-explorer' as any,
+  type: 'genre-explorer',
   component: GenreExplorerSection as React.ComponentType<any>,
   displayName: 'Explore Genres',
   description: 'Browse music by genre',
@@ -428,7 +458,7 @@ const genreExplorerSectionDef: SectionDefinition = {
 };
 
 const weeklyRotationSectionDef: SectionDefinition = {
-  type: 'weekly-rotation' as any,
+  type: 'weekly-rotation',
   component: WeeklyRotationSection as React.ComponentType<any>,
   displayName: 'Weekly Rotation',
   description: 'Trending tracks by day',
@@ -451,7 +481,7 @@ const weeklyRotationSectionDef: SectionDefinition = {
 };
 
 const bannerSectionDef: SectionDefinition = {
-  type: 'banner' as any,
+  type: 'banner',
   component: BannerSection as React.ComponentType<any>,
   displayName: 'Featured',
   description: 'Promotional banner',
@@ -473,7 +503,7 @@ const bannerSectionDef: SectionDefinition = {
 };
 
 const masonrySectionDef: SectionDefinition = {
-  type: 'masonry' as any,
+  type: 'masonry',
   component: MasonrySection as React.ComponentType<any>,
   displayName: 'Discover Grid',
   description: 'Masonry layout of tracks',
@@ -493,12 +523,36 @@ const masonrySectionDef: SectionDefinition = {
   }),
 };
 
-// Extra horizontal sections for variety
+const moodPlaylistSectionDef: SectionDefinition = {
+  type: 'mood-playlist',
+  component: MoodPlaylistSection as React.ComponentType<any>,
+  displayName: 'Mood Playlists',
+  description: 'Interactive mood-based playlist generator',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    preferredPosition: 'top',
+    cooldownSections: 6,
+  },
+  weights: {
+    base: 80,
+    personalizedBoost: 10,
+    newUserBoost: 15,
+  },
+  generateConfig: () => ({
+    title: 'Moods',
+    subtitle: 'Match your vibe',
+    query: 'mood music',
+    isPersonalized: false,
+  }),
+};
+
+// Extra horizontal sections for variety - now with embedding support
 const horizontalSectionDef2: SectionDefinition = {
   type: 'horizontal',
-  component: HorizontalSection as React.ComponentType<any>,
+  component: EmbeddingHorizontalSection as React.ComponentType<any>,
   displayName: 'Chill Vibes',
-  description: 'Relaxing music',
+  description: 'Relaxing music (embedding-enhanced)',
   requirements: {},
   constraints: {
     maxPerPage: 3,
@@ -517,15 +571,16 @@ const horizontalSectionDef2: SectionDefinition = {
     title: 'Chill Vibes',
     subtitle: 'Wind down with these tracks',
     query: 'chill lofi relaxing music',
+    embedding: { type: 'mood', id: 'chill' },
     isPersonalized: false,
   }),
 };
 
 const horizontalSectionDef3: SectionDefinition = {
   type: 'horizontal',
-  component: HorizontalSection as React.ComponentType<any>,
+  component: EmbeddingHorizontalSection as React.ComponentType<any>,
   displayName: 'Energy Boost',
-  description: 'Upbeat music',
+  description: 'Upbeat music (embedding-enhanced)',
   requirements: {},
   constraints: {
     maxPerPage: 3,
@@ -544,12 +599,237 @@ const horizontalSectionDef3: SectionDefinition = {
     title: 'Energy Boost',
     subtitle: 'Get pumped up',
     query: 'upbeat energetic workout music',
+    embedding: { type: 'mood', id: 'energetic' },
     isPersonalized: false,
   }),
 };
 
 // ============================================
-// Register All Sections (Expanded - 20+ sections)
+// New Personalized Section Definitions
+// ============================================
+
+const timeGreetingSectionDef: SectionDefinition = {
+  type: 'time-greeting',
+  component: TimeGreetingSection as React.ComponentType<any>,
+  displayName: 'Time Greeting',
+  description: 'Context-aware greeting with personalized tracks',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    preferredPosition: 'top',
+  },
+  weights: {
+    base: 85,
+    personalizedBoost: 15,
+    timeRelevance: () => 10, // Always relevant
+  },
+  generateConfig: (ctx) => ({
+    title: '', // Component handles title based on time
+    isPersonalized: true,
+  }),
+};
+
+const onRepeatSectionDef: SectionDefinition = {
+  type: 'on-repeat',
+  component: OnRepeatSection as React.ComponentType<any>,
+  displayName: 'On Repeat',
+  description: 'Your most played tracks',
+  requirements: {
+    minListens: 5,
+  },
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 4,
+  },
+  weights: {
+    base: 70,
+    personalizedBoost: 20,
+  },
+  generateConfig: () => ({
+    title: 'On Repeat',
+    subtitle: 'Your heavy rotation',
+    isPersonalized: true,
+  }),
+};
+
+const discoverWeeklySectionDef: SectionDefinition = {
+  type: 'discover-weekly',
+  component: DiscoverWeeklySection as React.ComponentType<any>,
+  displayName: 'Discover Weekly',
+  description: 'Mix of familiar and new music',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 5,
+  },
+  weights: {
+    base: 75,
+    personalizedBoost: 15,
+  },
+  generateConfig: () => ({
+    title: 'Discover Weekly',
+    subtitle: 'Your personalized mix of new and familiar',
+    isPersonalized: true,
+  }),
+};
+
+const topMixSectionDef: SectionDefinition = {
+  type: 'top-mix',
+  component: TopMixSection as React.ComponentType<any>,
+  displayName: 'Your Top Mix',
+  description: 'Pure taste profile-based recommendations',
+  requirements: {
+    minListens: 3,
+  },
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 4,
+  },
+  weights: {
+    base: 70,
+    personalizedBoost: 25,
+  },
+  generateConfig: () => ({
+    title: 'Your Top Mix',
+    subtitle: 'Based on everything you love',
+    isPersonalized: true,
+  }),
+};
+
+const rediscoverSectionDef: SectionDefinition = {
+  type: 'rediscover',
+  component: RediscoverSection as React.ComponentType<any>,
+  displayName: 'Rediscover',
+  description: 'Old favorites you might have forgotten',
+  requirements: {
+    minListens: 10,
+  },
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 6,
+  },
+  weights: {
+    base: 55,
+    personalizedBoost: 20,
+  },
+  generateConfig: () => ({
+    title: 'Rediscover',
+    subtitle: 'Tracks you might have forgotten',
+    isPersonalized: true,
+  }),
+};
+
+const activitySectionDef: SectionDefinition = {
+  type: 'activity',
+  component: ActivitySection as React.ComponentType<any>,
+  displayName: 'Activity Playlists',
+  description: 'Music for what you\'re doing',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 5,
+  },
+  weights: {
+    base: 65,
+    personalizedBoost: 10,
+    newUserBoost: 15,
+  },
+  generateConfig: () => ({
+    title: 'Activity Playlists',
+    subtitle: 'Music for what you\'re doing',
+    isPersonalized: false,
+  }),
+};
+
+const decadeMixSectionDef: SectionDefinition = {
+  type: 'decade-mix',
+  component: DecadeMixSection as React.ComponentType<any>,
+  displayName: 'Decade Mixes',
+  description: 'Music through the years',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 6,
+  },
+  weights: {
+    base: 55,
+    personalizedBoost: 5,
+    newUserBoost: 10,
+  },
+  generateConfig: () => ({
+    title: 'Decade Mixes',
+    subtitle: 'Music through the years',
+    isPersonalized: false,
+  }),
+};
+
+const seasonalSectionDef: SectionDefinition = {
+  type: 'seasonal',
+  component: SeasonalSection as React.ComponentType<any>,
+  displayName: 'Seasonal',
+  description: 'Music for the season',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 7,
+  },
+  weights: {
+    base: 50,
+    personalizedBoost: 10,
+  },
+  generateConfig: () => ({
+    title: '', // Component handles title based on season
+    isPersonalized: false,
+  }),
+};
+
+const blindPicksSectionDef: SectionDefinition = {
+  type: 'blind-picks',
+  component: BlindPicksSection as React.ComponentType<any>,
+  displayName: 'Blind Picks',
+  description: 'Random discovery to expand taste',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 5,
+  },
+  weights: {
+    base: 60,
+    personalizedBoost: 5,
+    newUserBoost: 20,
+  },
+  generateConfig: () => ({
+    title: 'Blind Picks',
+    subtitle: 'Expand your horizons',
+    isPersonalized: false,
+  }),
+};
+
+const similarArtistsSectionDef: SectionDefinition = {
+  type: 'similar-artists',
+  component: SimilarArtistsSection as React.ComponentType<any>,
+  displayName: 'Artists For You',
+  description: 'Artists similar to your favorites',
+  requirements: {
+    minListens: 5,
+  },
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 5,
+  },
+  weights: {
+    base: 65,
+    personalizedBoost: 20,
+  },
+  generateConfig: () => ({
+    title: 'Artists For You',
+    subtitle: 'Based on your listening',
+    isPersonalized: true,
+  }),
+};
+
+// ============================================
+// Register All Sections (Expanded - 30+ sections)
 // ============================================
 
 export function registerAllSections(): void {
@@ -584,6 +864,19 @@ export function registerAllSections(): void {
   sectionRegistry.register(moodGradientSectionDef);
   sectionRegistry.register(genreExplorerSectionDef);
   sectionRegistry.register(weeklyRotationSectionDef);
+  sectionRegistry.register(moodPlaylistSectionDef);
+
+  // New personalized sections
+  sectionRegistry.register(timeGreetingSectionDef);
+  sectionRegistry.register(onRepeatSectionDef);
+  sectionRegistry.register(discoverWeeklySectionDef);
+  sectionRegistry.register(topMixSectionDef);
+  sectionRegistry.register(rediscoverSectionDef);
+  sectionRegistry.register(activitySectionDef);
+  sectionRegistry.register(decadeMixSectionDef);
+  sectionRegistry.register(seasonalSectionDef);
+  sectionRegistry.register(blindPicksSectionDef);
+  sectionRegistry.register(similarArtistsSectionDef);
 
   // Feature sections (lower frequency)
   sectionRegistry.register(artistSpotlightSectionDef);

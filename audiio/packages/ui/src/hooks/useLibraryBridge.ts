@@ -14,11 +14,13 @@ import type { UnifiedTrack, Playlist } from '@audiio/sdk';
 
 // Type for the preload API
 interface LibraryBridgeAPI {
+  signalLibraryBridgeReady: () => void;
   onLibraryDataRequest: (callback: () => void) => () => void;
   sendLibraryData: (data: {
     likedTracks: UnifiedTrack[];
     playlists: Playlist[];
     dislikedTrackIds: string[];
+    dislikedTracks: UnifiedTrack[]; // Full track objects for mobile
   }) => void;
   notifyLibraryChange: (type: string, data: unknown) => void;
   onLibraryAction: (
@@ -51,10 +53,16 @@ export function useLibraryBridge(): void {
       const playlists = libraryStore.playlists;
       const dislikedTrackIds = Object.keys(recommendationStore.dislikedTracks || {});
 
+      // Extract full track objects from disliked tracks
+      const dislikedTracks = Object.values(recommendationStore.dislikedTracks || {})
+        .map(d => d.track)
+        .filter((t): t is UnifiedTrack => t !== undefined);
+
       window.api?.sendLibraryData({
         likedTracks,
         playlists,
-        dislikedTrackIds
+        dislikedTrackIds,
+        dislikedTracks
       });
     });
 
@@ -154,6 +162,9 @@ export function useLibraryBridge(): void {
         })
       );
     }
+
+    // Signal to main process that bridge is ready
+    window.api?.signalLibraryBridgeReady?.();
 
     return () => {
       unsubDataRequest();

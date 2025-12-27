@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { SearchBar } from './SearchBar';
-import { SearchIcon, CloseIcon } from '../Icons/Icons';
+import { SearchIcon, CloseIcon } from '@audiio/icons';
 
 interface FloatingSearchProps {
   onSearch: (query: string) => void;

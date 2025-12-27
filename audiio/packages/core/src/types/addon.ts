@@ -102,7 +102,8 @@ export type AddonRole =
   | 'metadata-provider'
   | 'stream-provider'
   | 'lyrics-provider'
-  | 'scrobbler';
+  | 'scrobbler'
+  | 'audio-processor';
 
 export interface AddonManifest {
   /** Unique identifier (e.g., "deezer", "youtube-music") */
@@ -365,4 +366,42 @@ export interface Scrobbler extends BaseAddon {
 
   /** Check if user is authenticated */
   isAuthenticated(): boolean;
+}
+
+// ============================================
+// Audio Processor Contract (Karaoke/Stem Separation)
+// ============================================
+
+export interface AudioProcessorResult {
+  /** Track identifier */
+  trackId: string;
+
+  /** URL to the processed audio (blob or cached) */
+  instrumentalUrl: string;
+
+  /** Whether this result was from cache */
+  cached: boolean;
+}
+
+export interface AudioProcessor extends BaseAddon {
+  /** Unique processor identifier */
+  readonly id: string;
+
+  /** Human-readable name */
+  readonly name: string;
+
+  /** Check if processor is available (server running, etc.) */
+  isAvailable(): Promise<boolean>;
+
+  /** Process a track - returns instrumental audio */
+  processTrack(trackId: string, audioUrl: string): Promise<AudioProcessorResult>;
+
+  /** Check if track is already cached */
+  hasCached(trackId: string): Promise<boolean>;
+
+  /** Get cached result without processing */
+  getCached(trackId: string): Promise<AudioProcessorResult | null>;
+
+  /** Clear cache for a track */
+  clearCache(trackId: string): Promise<void>;
 }

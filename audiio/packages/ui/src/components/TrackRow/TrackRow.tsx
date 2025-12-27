@@ -1,6 +1,6 @@
 import React from 'react';
 import type { UnifiedTrack } from '@audiio/core';
-import { MusicNoteIcon } from '../Icons/Icons';
+import { MusicNoteIcon } from '@audiio/icons';
 
 interface TrackRowProps {
   track: UnifiedTrack;
@@ -25,7 +25,7 @@ export const TrackRow: React.FC<TrackRowProps> = ({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const artistNames = track.artists.map(a => a.name).join(', ');
+  const artistNames = track.artists?.map(a => a.name).join(', ') ?? 'Unknown Artist';
   const artworkUrl = track.artwork?.medium ?? track.album?.artwork?.medium;
 
   const handleContextMenu = (e: React.MouseEvent) => {

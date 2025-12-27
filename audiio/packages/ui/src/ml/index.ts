@@ -80,3 +80,19 @@ export {
   keyNumberToString,
   estimateEnergyFromFeatures
 } from './plugin-audio-provider';
+
+export {
+  // ML Integration (bridges new architecture with existing code)
+  registerAlgorithmPlugin,
+  unregisterAlgorithmPlugin,
+  getRegisteredPlugins,
+  getActivePlugin,
+  setActivePlugin,
+  getUnifiedScore,
+  initializeMLIntegration,
+  cleanupMLIntegration,
+  trainWithCurrentData,
+
+  // Types
+  type ExternalAlgorithmPlugin
+} from './ml-integration';

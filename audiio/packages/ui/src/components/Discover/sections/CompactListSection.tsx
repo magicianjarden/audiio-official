@@ -6,7 +6,7 @@ import React from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { MusicNoteIcon, PlayIcon } from '../../Icons/Icons';
+import { MusicNoteIcon, PlayIcon } from '@audiio/icons';
 
 export interface CompactListSectionProps {
   id: string;

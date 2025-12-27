@@ -9,6 +9,7 @@ import { useSearchStore } from '../../stores/search-store';
 import { useRecommendationStore } from '../../stores/recommendation-store';
 import { useLibraryStore } from '../../stores/library-store';
 import { usePluginStore } from '../../stores/plugin-store';
+import { DiscoverySliderMini } from '../DiscoverySlider/DiscoverySlider';
 
 // Section registry imports
 import {
@@ -95,6 +96,7 @@ export const Discover: React.FC = () => {
             </span>
           )}
         </div>
+        <DiscoverySliderMini className="discover-hero-slider" />
       </header>
 
       {/* Dynamic Sections from Registry */}

@@ -6,7 +6,7 @@ import {
   QueueIcon,
   MusicNoteIcon,
   CloseIcon
-} from '../Icons/Icons';
+} from '@audiio/icons';
 
 interface QueueViewProps {
   onClose?: () => void;

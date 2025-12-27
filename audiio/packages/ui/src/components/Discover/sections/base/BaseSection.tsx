@@ -1,11 +1,14 @@
 /**
  * BaseSection - Common wrapper for all Discover page sections
  * Provides loading states, error handling, animations, and consistent styling
+ * Includes embedding-enhanced track fetching with search fallback
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { BaseSectionProps, SectionData, SelectionContext } from '../../section-registry';
 import type { UnifiedTrack } from '@audiio/core';
+import { useEmbeddingPlaylist } from '../../../../hooks/useEmbeddingPlaylist';
+import { debugLog, debugError } from '../../../../utils/debug';
 
 export interface BaseSectionWrapperProps extends BaseSectionProps {
   children: React.ReactNode;
@@ -102,7 +105,7 @@ export function useSectionData<T extends SectionData>(
       const result = await fetcher(context);
       setData(result);
     } catch (err) {
-      console.error('[Section] Data fetch failed:', err);
+      debugError('[Section]', 'Data fetch failed:', err);
       setError(err instanceof Error ? err.message : 'Failed to load section');
     } finally {
       setIsLoading(false);
@@ -118,71 +121,125 @@ export function useSectionData<T extends SectionData>(
 }
 
 /**
- * Hook for sections that fetch tracks via search API
+ * Embedding type configuration for useSectionTracks
+ */
+export interface EmbeddingConfig {
+  type: 'mood' | 'genre' | 'personalized' | 'discovery';
+  id?: string; // mood or genre id (e.g., 'chill', 'pop')
+  exploration?: number;
+}
+
+/**
+ * Hook for sections that fetch tracks via embedding (no fallback)
+ * Uses embedding-based playlist generation only
  */
 export function useSectionTracks(
-  query: string | undefined,
+  _query: string | undefined, // Kept for API compatibility but not used
   options: {
     limit?: number;
     filterDisliked?: boolean;
     shuffle?: boolean;
+    embedding?: EmbeddingConfig;
   } = {}
 ): {
   tracks: UnifiedTrack[];
   isLoading: boolean;
   error: string | null;
+  source: 'embedding' | 'none';
 } {
-  const [tracks, setTracks] = useState<UnifiedTrack[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { limit = 12, embedding } = options;
 
-  const { limit = 12, shuffle = false } = options;
+  // Get embedding playlist functions
+  const {
+    generateMoodPlaylist,
+    generateGenrePlaylist,
+    generatePersonalizedPlaylist,
+    generateDiscoveryPlaylist,
+    getTracksFromPlaylist,
+    isReady: embeddingReady,
+    tracksIndexed,
+  } = useEmbeddingPlaylist();
 
-  useEffect(() => {
-    if (!query) {
-      setTracks([]);
-      setIsLoading(false);
-      return;
+  // Use embedding-based generation only
+  const embeddingTracks = useMemo(() => {
+    if (!embedding) {
+      debugLog('[useSectionTracks]', 'No embedding config provided');
+      return [];
     }
 
-    let mounted = true;
+    if (!embeddingReady) {
+      debugLog('[useSectionTracks]', 'Embedding not ready yet');
+      return [];
+    }
 
-    const fetchTracks = async () => {
-      setIsLoading(true);
-      setError(null);
+    if (tracksIndexed < 1) {
+      debugLog('[useSectionTracks]', 'No tracks indexed yet');
+      return [];
+    }
 
-      try {
-        if (window.api) {
-          let result = await window.api.search({ query, type: 'track' });
+    let playlist = null;
 
-          if (shuffle) {
-            result = [...result].sort(() => Math.random() - 0.5);
-          }
-
-          if (mounted) {
-            setTracks(result.slice(0, limit));
-          }
+    switch (embedding.type) {
+      case 'mood':
+        if (embedding.id) {
+          playlist = generateMoodPlaylist(embedding.id, {
+            limit,
+            exploration: embedding.exploration,
+          });
         }
-      } catch (err) {
-        console.error('[Section] Track fetch failed:', err);
-        if (mounted) {
-          setError(err instanceof Error ? err.message : 'Failed to load tracks');
+        break;
+      case 'genre':
+        if (embedding.id) {
+          playlist = generateGenrePlaylist(embedding.id, {
+            limit,
+            exploration: embedding.exploration,
+          });
         }
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
-      }
-    };
+        break;
+      case 'personalized':
+        playlist = generatePersonalizedPlaylist({
+          limit,
+          exploration: embedding.exploration,
+        });
+        break;
+      case 'discovery':
+        playlist = generateDiscoveryPlaylist({
+          limit,
+          exploration: embedding.exploration,
+        });
+        break;
+    }
 
-    fetchTracks();
+    if (!playlist || playlist.tracks.length === 0) {
+      debugLog('[useSectionTracks]', `No tracks from embedding ${embedding.type}:${embedding.id || ''}`);
+      return [];
+    }
 
-    return () => {
-      mounted = false;
-    };
-  }, [query, limit, shuffle]);
+    debugLog(
+      '[useSectionTracks]',
+      `Embedding ${embedding.type}${embedding.id ? `:${embedding.id}` : ''} returned ${playlist.tracks.length} tracks (indexed: ${tracksIndexed})`
+    );
+    return getTracksFromPlaylist(playlist);
+  }, [
+    embedding,
+    embeddingReady,
+    tracksIndexed,
+    limit,
+    generateMoodPlaylist,
+    generateGenrePlaylist,
+    generatePersonalizedPlaylist,
+    generateDiscoveryPlaylist,
+    getTracksFromPlaylist,
+  ]);
 
-  return { tracks, isLoading, error };
+  const source: 'embedding' | 'none' = embeddingTracks.length > 0 ? 'embedding' : 'none';
+
+  return {
+    tracks: embeddingTracks,
+    isLoading: !embeddingReady,
+    error: null,
+    source
+  };
 }
 
 /**

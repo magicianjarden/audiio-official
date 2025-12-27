@@ -1,28 +1,37 @@
 /**
- * LibraryPage - Shows user's library (Likes, Playlists)
+ * LibraryPage - Shows user's library (Likes, Dislikes, Playlists)
+ *
+ * Features:
+ * - Pull-to-refresh for syncing
+ * - Tabs for likes, dislikes, and playlists (like host app)
+ * - Badge counts on tabs
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLibraryStore, type Track, type Playlist } from '../stores/library-store';
 import { TrackList } from '../components/TrackList';
-import { HeartIcon, PlaylistIcon, AddIcon, SpinnerIcon, RefreshIcon } from '../components/Icons';
+import { PullToRefresh } from '../components/PullToRefresh';
+import { LibrarySkeleton } from '../components/Skeleton';
+import { HeartIcon, PlaylistIcon, AddIcon, SpinnerIcon, RefreshIcon, ThumbDownIcon } from '@audiio/icons';
 import { getTrackArtwork } from '../utils/artwork';
 import styles from './LibraryPage.module.css';
 
-type LibraryTab = 'likes' | 'playlists';
+type LibraryTab = 'likes' | 'dislikes' | 'playlists';
 
 export function LibraryPage() {
   const [activeTab, setActiveTab] = useState<LibraryTab>('likes');
   const navigate = useNavigate();
   const {
     likedTracks,
+    dislikedTracks,
     playlists,
     isLoading,
     isSynced,
     fetchLibrary,
     refreshLibrary,
-    createPlaylist
+    createPlaylist,
+    removeDislike
   } = useLibraryStore();
 
   // Fetch library on mount
@@ -52,6 +61,11 @@ export function LibraryPage() {
     return null;
   };
 
+  // Pull-to-refresh handler
+  const handleRefresh = useCallback(async () => {
+    await refreshLibrary();
+  }, [refreshLibrary]);
+
   return (
     <div className={styles.page}>
       {/* Header */}
@@ -74,7 +88,19 @@ export function LibraryPage() {
         >
           <HeartIcon size={18} />
           Likes
-          <span className={styles.count}>{likedTracks.length}</span>
+          {likedTracks.length > 0 && (
+            <span className={styles.badge}>{likedTracks.length}</span>
+          )}
+        </button>
+        <button
+          className={`${styles.tab} ${activeTab === 'dislikes' ? styles.active : ''}`}
+          onClick={() => setActiveTab('dislikes')}
+        >
+          <ThumbDownIcon size={18} />
+          Dislikes
+          {dislikedTracks.length > 0 && (
+            <span className={styles.badge}>{dislikedTracks.length}</span>
+          )}
         </button>
         <button
           className={`${styles.tab} ${activeTab === 'playlists' ? styles.active : ''}`}
@@ -82,7 +108,9 @@ export function LibraryPage() {
         >
           <PlaylistIcon size={18} />
           Playlists
-          <span className={styles.count}>{playlists.length}</span>
+          {playlists.length > 0 && (
+            <span className={styles.badge}>{playlists.length}</span>
+          )}
         </button>
       </div>
 
@@ -94,24 +122,25 @@ export function LibraryPage() {
         </div>
       )}
 
-      {/* Content */}
-      <div className={styles.content}>
-        {isLoading ? (
-          <div className={styles.loading}>
-            <SpinnerIcon size={32} />
-            <p>Loading library...</p>
-          </div>
-        ) : activeTab === 'likes' ? (
-          <LikesTab tracks={likedTracks} />
-        ) : (
-          <PlaylistsTab
-            playlists={playlists}
-            onPlaylistClick={handlePlaylistClick}
-            onCreatePlaylist={handleCreatePlaylist}
-            getPlaylistArtwork={getPlaylistArtwork}
-          />
-        )}
-      </div>
+      {/* Content with pull-to-refresh */}
+      <PullToRefresh onRefresh={handleRefresh} disabled={isLoading}>
+        <div className={styles.content}>
+          {isLoading ? (
+            <LibrarySkeleton />
+          ) : activeTab === 'likes' ? (
+            <LikesTab tracks={likedTracks} />
+          ) : activeTab === 'dislikes' ? (
+            <DislikesTab tracks={dislikedTracks} onRemoveDislike={removeDislike} />
+          ) : (
+            <PlaylistsTab
+              playlists={playlists}
+              onPlaylistClick={handlePlaylistClick}
+              onCreatePlaylist={handleCreatePlaylist}
+              getPlaylistArtwork={getPlaylistArtwork}
+            />
+          )}
+        </div>
+      </PullToRefresh>
     </div>
   );
 }
@@ -130,6 +159,33 @@ function LikesTab({ tracks }: { tracks: Track[] }) {
 
   return (
     <div className={styles.trackSection}>
+      <TrackList tracks={tracks} showMoreButton={true} />
+    </div>
+  );
+}
+
+// Dislikes Tab Component
+interface DislikesTabProps {
+  tracks: Track[];
+  onRemoveDislike: (trackId: string) => Promise<boolean>;
+}
+
+function DislikesTab({ tracks, onRemoveDislike }: DislikesTabProps) {
+  if (tracks.length === 0) {
+    return (
+      <div className={styles.empty}>
+        <ThumbDownIcon size={48} />
+        <h3>No disliked tracks</h3>
+        <p>Tracks you dislike won't be recommended</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.trackSection}>
+      <p className={styles.dislikesHint}>
+        These tracks won't appear in your recommendations
+      </p>
       <TrackList tracks={tracks} showMoreButton={true} />
     </div>
   );

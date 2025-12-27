@@ -8,7 +8,7 @@ import {
   BackIcon,
   CloseIcon,
   MusicNoteIcon
-} from '../Icons/Icons';
+} from '@audiio/icons';
 
 export const PlaylistDetailView: React.FC = () => {
   const { selectedPlaylistId, goBack } = useNavigationStore();

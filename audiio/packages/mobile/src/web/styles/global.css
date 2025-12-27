@@ -1,25 +1,41 @@
 /**
  * Audiio Mobile - Global Styles
- * Mobile-optimized dark theme
+ * Native-feeling mobile dark theme with visual polish
  */
 
 :root {
-  /* Colors - Dark Theme */
-  --color-bg-primary: #121212;
-  --color-bg-secondary: #1a1a1a;
-  --color-bg-elevated: #242424;
-  --color-bg-hover: #2a2a2a;
+  /* Colors - Dark Theme with depth */
+  --color-bg-primary: #0a0a0a;
+  --color-bg-secondary: #121212;
+  --color-bg-elevated: #1a1a1a;
+  --color-bg-hover: #242424;
+  --color-bg-active: #2a2a2a;
+  --color-bg-glass: rgba(18, 18, 18, 0.85);
 
   --color-text-primary: #ffffff;
-  --color-text-secondary: #a0a0a0;
-  --color-text-muted: #666666;
+  --color-text-secondary: rgba(255, 255, 255, 0.7);
+  --color-text-muted: rgba(255, 255, 255, 0.4);
 
   --color-accent: #1ed760;
   --color-accent-hover: #1db954;
-  --color-accent-muted: rgba(30, 215, 96, 0.2);
+  --color-accent-muted: rgba(30, 215, 96, 0.15);
+  --color-accent-glow: rgba(30, 215, 96, 0.3);
 
-  --color-error: #ff4444;
-  --color-warning: #ffaa00;
+  --color-error: #ff4757;
+  --color-warning: #ffa502;
+  --color-info: #3498db;
+
+  /* Shadows - Layered depth */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 20px var(--color-accent-glow);
+
+  /* Blur effects */
+  --blur-sm: 8px;
+  --blur-md: 16px;
+  --blur-lg: 32px;
 
   /* Spacing */
   --spacing-xs: 4px;
@@ -27,23 +43,41 @@
   --spacing-md: 16px;
   --spacing-lg: 24px;
   --spacing-xl: 32px;
+  --spacing-2xl: 48px;
 
   /* Border Radius */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
   --radius-full: 9999px;
 
   /* Typography */
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-md: 15px;
+  --font-size-lg: 17px;
+  --font-size-xl: 22px;
+  --font-size-2xl: 28px;
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-medium: 0.25s ease;
+  --transition-slow: 0.35s ease;
+  --transition-spring: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.1);
 
   /* Safe areas for mobile */
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
 
-  /* Player bar height */
+  /* Component dimensions */
   --player-height: 72px;
   --nav-height: 56px;
+  --header-height: 52px;
 }
 
 * {
@@ -134,4 +168,154 @@ input, textarea {
 /* Prevent pull-to-refresh on mobile */
 .app-container {
   overscroll-behavior: none;
+}
+
+/* ==================== Glass Effect Utilities ==================== */
+.glass {
+  background: var(--color-bg-glass);
+  backdrop-filter: blur(var(--blur-md));
+  -webkit-backdrop-filter: blur(var(--blur-md));
+}
+
+.glass-heavy {
+  background: rgba(10, 10, 10, 0.9);
+  backdrop-filter: blur(var(--blur-lg));
+  -webkit-backdrop-filter: blur(var(--blur-lg));
+}
+
+/* ==================== Touch Feedback ==================== */
+.touch-feedback {
+  transition: transform var(--transition-fast), opacity var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.touch-feedback:active {
+  transform: scale(0.97);
+  opacity: 0.8;
+}
+
+/* Prevent text selection on interactive elements */
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* ==================== Smooth Scrolling ==================== */
+.smooth-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Momentum scrolling for lists */
+.momentum-scroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* ==================== Animation Utilities ==================== */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s var(--transition-spring);
+}
+
+.animate-fade-in-scale {
+  animation: fadeInScale 0.3s var(--transition-spring);
+}
+
+/* ==================== Shadow Utilities ==================== */
+.shadow-sm { box-shadow: var(--shadow-sm); }
+.shadow-md { box-shadow: var(--shadow-md); }
+.shadow-lg { box-shadow: var(--shadow-lg); }
+.shadow-xl { box-shadow: var(--shadow-xl); }
+.shadow-glow { box-shadow: var(--shadow-glow); }
+
+/* ==================== Reduced Motion ==================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==================== iOS Safe Areas ==================== */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-area-all {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* ==================== Interactive Elements ==================== */
+.interactive {
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.interactive:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.interactive:active {
+  background-color: var(--color-bg-active);
+}
+
+/* Elevated cards with depth */
+.card-elevated {
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
 }

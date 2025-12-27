@@ -29,6 +29,8 @@ export interface LibraryData {
   likedTracks: UnifiedTrack[];
   playlists: Playlist[];
   dislikedTrackIds: string[];
+  dislikedTracks?: UnifiedTrack[]; // Full disliked track objects
+  allTracks?: UnifiedTrack[]; // For ML service
 }
 
 export interface LibraryBridgeEvents {
@@ -40,7 +42,9 @@ export class LibraryBridge {
   private cachedData: LibraryData = {
     likedTracks: [],
     playlists: [],
-    dislikedTrackIds: []
+    dislikedTrackIds: [],
+    dislikedTracks: [],
+    allTracks: []
   };
   private listeners: LibraryBridgeEvents['onLibraryChange'][] = [];
 
@@ -54,8 +58,18 @@ export class LibraryBridge {
   setWindow(window: BrowserWindow | null): void {
     this.mainWindow = window;
     if (window) {
-      // Request initial data when window is set
-      this.refreshData();
+      // Wait for renderer to signal it's ready before requesting data
+      // The renderer will send 'library-bridge-ready' when its hooks are set up
+      const readyHandler = () => {
+        ipcMain.removeListener('library-bridge-ready', readyHandler);
+        this.refreshData();
+      };
+      ipcMain.on('library-bridge-ready', readyHandler);
+
+      // Also clean up handler if window is destroyed
+      window.once('closed', () => {
+        ipcMain.removeListener('library-bridge-ready', readyHandler);
+      });
     }
   }
 
@@ -150,6 +164,12 @@ export class LibraryBridge {
     if (data.dislikedTrackIds !== undefined) {
       this.cachedData.dislikedTrackIds = data.dislikedTrackIds;
     }
+    if (data.dislikedTracks !== undefined) {
+      this.cachedData.dislikedTracks = data.dislikedTracks;
+    }
+    if (data.allTracks !== undefined) {
+      this.cachedData.allTracks = data.allTracks;
+    }
   }
 
   /**
@@ -206,6 +226,77 @@ export class LibraryBridge {
    */
   isTrackDisliked(trackId: string): boolean {
     return this.cachedData.dislikedTrackIds.includes(trackId);
+  }
+
+  /**
+   * Get all disliked tracks
+   */
+  getDislikedTracks(): UnifiedTrack[] {
+    return this.cachedData.dislikedTracks || [];
+  }
+
+  // ========================================
+  // ML Service Access Methods
+  // ========================================
+
+  /**
+   * Get all tracks (for ML service)
+   * Returns liked tracks and playlist tracks combined
+   */
+  getAllTracks(): UnifiedTrack[] {
+    // Return cached all tracks if available
+    if (this.cachedData.allTracks && this.cachedData.allTracks.length > 0) {
+      return this.cachedData.allTracks;
+    }
+
+    // Otherwise, combine liked tracks and playlist tracks
+    const trackMap = new Map<string, UnifiedTrack>();
+
+    // Add liked tracks
+    for (const track of this.cachedData.likedTracks) {
+      trackMap.set(track.id, track);
+    }
+
+    // Add tracks from playlists
+    for (const playlist of this.cachedData.playlists) {
+      for (const track of playlist.tracks) {
+        if (!trackMap.has(track.id)) {
+          trackMap.set(track.id, track);
+        }
+      }
+    }
+
+    return Array.from(trackMap.values());
+  }
+
+  /**
+   * Get a track by ID (for ML service)
+   */
+  getTrackById(trackId: string): UnifiedTrack | null {
+    // Check all tracks first
+    if (this.cachedData.allTracks) {
+      const track = this.cachedData.allTracks.find(t => t.id === trackId);
+      if (track) return track;
+    }
+
+    // Check liked tracks
+    const likedTrack = this.cachedData.likedTracks.find(t => t.id === trackId);
+    if (likedTrack) return likedTrack;
+
+    // Check playlist tracks
+    for (const playlist of this.cachedData.playlists) {
+      const track = playlist.tracks.find(t => t.id === trackId);
+      if (track) return track;
+    }
+
+    return null;
+  }
+
+  /**
+   * Get disliked track IDs (for ML service)
+   */
+  getDislikedTrackIds(): string[] {
+    return this.cachedData.dislikedTrackIds;
   }
 
   // ========================================

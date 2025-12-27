@@ -15,7 +15,7 @@ import {
   TrashIcon,
   PlaylistIcon,
   SpinnerIcon
-} from '../components/Icons';
+} from '@audiio/icons';
 import { getTrackArtwork } from '../utils/artwork';
 import styles from './PlaylistDetailPage.module.css';
 

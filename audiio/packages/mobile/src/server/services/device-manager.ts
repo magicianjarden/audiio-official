@@ -37,7 +37,7 @@ export interface DeviceManagerConfig {
 }
 
 const DEFAULT_CONFIG: DeviceManagerConfig = {
-  defaultExpirationDays: 30,
+  defaultExpirationDays: null, // Never expires by default for better UX
   dataPath: undefined
 };
 

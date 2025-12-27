@@ -7,7 +7,7 @@ import {
   CloseIcon,
   RefreshIcon,
   MusicNoteIcon
-} from '../Icons/Icons';
+} from '@audiio/icons';
 
 export const DownloadsView: React.FC = () => {
   const { downloads, removeDownload, retryDownload } = useLibraryStore();

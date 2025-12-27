@@ -9,7 +9,7 @@ import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
 import { BaseSectionWrapper, useSectionTracks } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
-import { PlayIcon, MusicNoteIcon } from '../../Icons/Icons';
+import { PlayIcon, MusicNoteIcon } from '@audiio/icons';
 
 export interface MasonrySectionProps extends BaseSectionProps {
   tracks?: UnifiedTrack[];

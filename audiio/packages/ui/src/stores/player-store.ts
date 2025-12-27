@@ -34,6 +34,8 @@ interface PlayerState {
   toggleMute: () => void;
   setQueue: (tracks: UnifiedTrack[], startIndex?: number) => void;
   addToQueue: (track: UnifiedTrack) => void;
+  playNext: (track: UnifiedTrack) => void;
+  removeFromQueue: (trackId: string) => void;
   setPosition: (position: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
   setStreamInfo: (track: UnifiedTrack, streamInfo: StreamInfo) => void;
@@ -65,8 +67,32 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      // Request stream resolution via IPC (Electron)
-      if (window.api) {
+      // Check if track already has streamInfo (e.g., local files)
+      // Local tracks have streamInfo pre-populated with local-audio:// URLs
+      const isLocalTrack = track.id.startsWith('local:') || track._meta?.metadataProvider === 'local-file';
+
+      if (isLocalTrack && track.streamInfo?.url) {
+        // Use existing streamInfo for local tracks
+        console.log('[PlayerStore] Playing local track with existing streamInfo:', track.streamInfo.url);
+        set({
+          currentTrack: track,
+          isPlaying: true,
+          duration: track.duration * 1000,
+          position: 0,
+          isLoading: false
+        });
+
+        // Update queue index if track is in queue
+        const { queue } = get();
+        const index = queue.findIndex(t => t.id === track.id);
+        if (index !== -1) {
+          set({ queueIndex: index });
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('audiio:check-auto-queue'));
+          }, 100);
+        }
+      } else if (window.api) {
+        // Request stream resolution via IPC (Electron) for remote tracks
         const streamInfo = await window.api.playTrack(track) as StreamInfo;
         const updatedTrack = { ...track, streamInfo };
 
@@ -218,6 +244,39 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   addToQueue: (track) => {
     set(state => ({ queue: [...state.queue, track] }));
+  },
+
+  playNext: (track) => {
+    set(state => {
+      // Insert after current track
+      const insertPosition = state.queueIndex + 1;
+      const newQueue = [
+        ...state.queue.slice(0, insertPosition),
+        track,
+        ...state.queue.slice(insertPosition)
+      ];
+      return { queue: newQueue };
+    });
+  },
+
+  removeFromQueue: (trackId) => {
+    set(state => {
+      const trackIndex = state.queue.findIndex(t => t.id === trackId);
+      if (trackIndex === -1) return state;
+
+      const newQueue = state.queue.filter(t => t.id !== trackId);
+
+      // Adjust queueIndex if needed
+      let newQueueIndex = state.queueIndex;
+      if (trackIndex < state.queueIndex) {
+        newQueueIndex = state.queueIndex - 1;
+      } else if (trackIndex === state.queueIndex) {
+        // Don't allow removing current track
+        return state;
+      }
+
+      return { queue: newQueue, queueIndex: newQueueIndex };
+    });
   },
 
   setPosition: (position) => {

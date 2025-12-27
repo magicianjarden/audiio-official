@@ -45,6 +45,10 @@ export type {
   DeezerProviderSettings,
   AppleMusicArtworkSettings,
 
+  // Audio processor types
+  AudioProcessor,
+  AudioProcessorResult,
+
   // Media processing types
   HLSConversionOptions,
   ConversionResult,
@@ -59,6 +63,7 @@ export { MediaProcessor, getMediaProcessor } from '@audiio/core';
 export { BaseMetadataProvider } from './base/BaseMetadataProvider';
 export { BaseStreamProvider } from './base/BaseStreamProvider';
 export { BaseLyricsProvider } from './base/BaseLyricsProvider';
+export { BaseAudioProcessor } from './base/BaseAudioProcessor';
 
 // Registration
 export { defineAddon, type AddonDefinition } from './registration';

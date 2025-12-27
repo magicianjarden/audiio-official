@@ -3,7 +3,9 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { tunnelFetch } from '../stores/auth-store';
+import { triggerHaptic } from '../utils/haptics';
 import { TrackList } from '../components/TrackList';
 import styles from './SearchPage.module.css';
 
@@ -14,12 +16,23 @@ interface SearchResults {
 }
 
 export function SearchPage() {
+  const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResults | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [activeTab, setActiveTab] = useState<'tracks' | 'artists' | 'albums'>('tracks');
   const searchTimeout = useRef<NodeJS.Timeout>();
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleArtistClick = (artist: any) => {
+    triggerHaptic('light');
+    navigate(`/artist/${artist.id}?name=${encodeURIComponent(artist.name)}&source=${artist.source || 'deezer'}`);
+  };
+
+  const handleAlbumClick = (album: any) => {
+    triggerHaptic('light');
+    navigate(`/album/${album.id}?name=${encodeURIComponent(album.name)}&source=${album.source || 'deezer'}`);
+  };
 
   // Debounced search
   const handleSearch = useCallback(async (searchQuery: string) => {
@@ -144,7 +157,11 @@ export function SearchPage() {
             {activeTab === 'artists' && results.artists && (
               <div className={styles.artistList}>
                 {results.artists.map((artist: any) => (
-                  <div key={artist.id} className={styles.artistItem}>
+                  <button
+                    key={artist.id}
+                    className={styles.artistItem}
+                    onClick={() => handleArtistClick(artist)}
+                  >
                     <div className={styles.artistAvatar}>
                       {artist.image ? (
                         <img src={artist.image} alt={artist.name} />
@@ -153,14 +170,18 @@ export function SearchPage() {
                       )}
                     </div>
                     <span className={styles.artistName}>{artist.name}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
             {activeTab === 'albums' && results.albums && (
               <div className={styles.albumList}>
                 {results.albums.map((album: any) => (
-                  <div key={album.id} className={styles.albumItem}>
+                  <button
+                    key={album.id}
+                    className={styles.albumItem}
+                    onClick={() => handleAlbumClick(album)}
+                  >
                     <div className={styles.albumArtwork}>
                       {album.artwork ? (
                         <img src={album.artwork} alt={album.name} />
@@ -172,7 +193,7 @@ export function SearchPage() {
                       <span className={styles.albumName}>{album.name}</span>
                       <span className={styles.albumArtist}>{album.artists?.[0]?.name}</span>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}

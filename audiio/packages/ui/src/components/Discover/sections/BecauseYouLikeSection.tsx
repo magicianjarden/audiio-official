@@ -1,16 +1,17 @@
 /**
  * BecauseYouLikeSection - "Because you like [Artist]" personalized recommendations
  * Can have multiple instances, each based on a different top artist
- * Uses ML ranking for intelligent track ordering
+ * Uses embedding-based artist radio with ML ranking fallback
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import { TrackCard } from '../TrackCard';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { useMLRanking } from '../../../hooks';
+import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
 import type { BaseSectionProps } from '../section-registry';
+import { debugLog } from '../../../utils/debug';
 
 export interface BecauseYouLikeSectionProps extends BaseSectionProps {
   artistIndex?: number; // Which top artist to use (0, 1, 2, etc.)
@@ -25,76 +26,52 @@ export const BecauseYouLikeSection: React.FC<BecauseYouLikeSectionProps> = ({
   artistIndex = 0,
   maxItems = 8,
 }) => {
-  const [tracks, setTracks] = useState<UnifiedTrack[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [artistName, setArtistName] = useState<string>('');
   const { play, setQueue } = usePlayerStore();
   const { showContextMenu } = useTrackContextMenu();
-  const { rankTracks } = useMLRanking();
 
-  useEffect(() => {
-    let mounted = true;
+  // Embedding-based playlist generation
+  const {
+    generateArtistRadio,
+    getTracksFromPlaylist,
+    isReady: embeddingReady,
+    tracksIndexed,
+  } = useEmbeddingPlaylist();
 
-    const fetchRecommendations = async () => {
-      setIsLoading(true);
+  // Get target artist from context
+  const targetArtist = context?.topArtists?.[artistIndex];
+  const artistId = targetArtist?.toLowerCase().replace(/\s+/g, '-');
+  const artistName = targetArtist || '';
 
-      // Get artist at specified index from context
-      const targetArtist = context?.topArtists?.[artistIndex];
-      if (!targetArtist) {
-        setIsLoading(false);
-        return;
-      }
+  // Use embedding-based generation only
+  const tracks = useMemo(() => {
+    if (!artistId) {
+      return [];
+    }
 
-      setArtistName(targetArtist);
+    if (!embeddingReady) {
+      debugLog('[BecauseYouLike]', 'Embedding not ready');
+      return [];
+    }
 
-      try {
-        let fetchedTracks: UnifiedTrack[] = [];
+    if (tracksIndexed < 1) {
+      debugLog('[BecauseYouLike]', 'No tracks indexed');
+      return [];
+    }
 
-        // Try getRecommendedTracks API first
-        if (window.api?.getRecommendedTracks) {
-          const recommended = await window.api.getRecommendedTracks('artist', targetArtist);
-          if (recommended?.length > 0) {
-            fetchedTracks = recommended;
-          }
-        }
+    const playlist = generateArtistRadio(artistId, { limit: maxItems });
+    if (!playlist || playlist.tracks.length === 0) {
+      debugLog('[BecauseYouLike]', `No tracks for artist "${targetArtist}"`);
+      return [];
+    }
 
-        // Fallback to search
-        if (fetchedTracks.length === 0 && window.api?.search) {
-          const searchQuery = `${targetArtist} fans also like similar`;
-          const results = await window.api.search({ query: searchQuery, type: 'track' });
-          fetchedTracks = results || [];
-        }
+    debugLog(
+      '[BecauseYouLike]',
+      `Generated "${targetArtist}" playlist: ${playlist.tracks.length} tracks (indexed: ${tracksIndexed})`
+    );
+    return getTracksFromPlaylist(playlist);
+  }, [artistId, embeddingReady, tracksIndexed, maxItems, generateArtistRadio, getTracksFromPlaylist, targetArtist]);
 
-        if (!mounted || fetchedTracks.length === 0) {
-          if (mounted) setIsLoading(false);
-          return;
-        }
-
-        // Apply ML ranking with serendipity for personalized discovery
-        const ranked = await rankTracks(fetchedTracks, {
-          enabled: true,
-          explorationMode: 'balanced',
-          limit: maxItems,
-          shuffle: true,
-          shuffleIntensity: 0.2 // More variety for discovery
-        });
-
-        setTracks(ranked.map(r => r.track));
-      } catch (error) {
-        console.error('[BecauseYouLikeSection] Failed to fetch:', error);
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    fetchRecommendations();
-
-    return () => {
-      mounted = false;
-    };
-  }, [context?.topArtists, artistIndex, maxItems, rankTracks]);
+  const isLoading = artistId && !embeddingReady;
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     setQueue(tracks, index);

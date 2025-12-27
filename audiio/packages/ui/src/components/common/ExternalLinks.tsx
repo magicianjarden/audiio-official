@@ -11,7 +11,7 @@ import {
   GitHubIcon,
   WebsiteIcon,
   LinkIcon
-} from '../Icons/Icons';
+} from '@audiio/icons';
 
 interface ExternalLinksProps {
   urls: Record<string, string | undefined>;

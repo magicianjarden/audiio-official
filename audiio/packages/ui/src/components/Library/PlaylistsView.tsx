@@ -1,30 +1,40 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLibraryStore } from '../../stores/library-store';
 import { useNavigationStore } from '../../stores/navigation-store';
+import { useUIStore } from '../../stores/ui-store';
+import { PlaylistCover } from '../common/PlaylistCover';
+import { InputModal } from '../Modals/InputModal';
 import {
   PlaylistIcon,
   PlayIcon,
   AddIcon,
   CloseIcon,
-  MusicNoteIcon
-} from '../Icons/Icons';
+} from '@audiio/icons';
 
 export const PlaylistsView: React.FC = () => {
   const { playlists, createPlaylist, deletePlaylist } = useLibraryStore();
   const { openPlaylist } = useNavigationStore();
+  const {
+    isCreatePlaylistModalOpen,
+    openCreatePlaylistModal,
+    closeCreatePlaylistModal,
+  } = useUIStore();
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  const handleCreatePlaylist = () => {
-    const name = prompt('Enter playlist name:');
-    if (name?.trim()) {
-      const playlist = createPlaylist(name.trim());
-      openPlaylist(playlist.id);
-    }
+  const handleCreatePlaylist = (name: string) => {
+    const playlist = createPlaylist(name);
+    openPlaylist(playlist.id);
   };
 
   const handleDeletePlaylist = (e: React.MouseEvent, playlistId: string) => {
     e.stopPropagation();
-    if (confirm('Are you sure you want to delete this playlist?')) {
-      deletePlaylist(playlistId);
+    setDeleteConfirmId(playlistId);
+  };
+
+  const confirmDelete = () => {
+    if (deleteConfirmId) {
+      deletePlaylist(deleteConfirmId);
+      setDeleteConfirmId(null);
     }
   };
 
@@ -40,18 +50,18 @@ export const PlaylistsView: React.FC = () => {
       </header>
 
       <div className="library-actions">
-        <button className="library-create-button" onClick={handleCreatePlaylist}>
+        <button className="library-create-button" onClick={openCreatePlaylistModal}>
           <AddIcon size={18} /> Create Playlist
         </button>
       </div>
 
       <div className="playlists-grid">
         {playlists.length === 0 ? (
-          <div className="library-empty">
+          <div className="library-empty library-empty-centered">
             <div className="library-empty-icon"><PlaylistIcon size={48} /></div>
             <h3>Create your first playlist</h3>
             <p>Organize your favorite tracks</p>
-            <button className="library-create-button" onClick={handleCreatePlaylist}>
+            <button className="library-create-button" onClick={openCreatePlaylistModal}>
               <AddIcon size={18} /> Create Playlist
             </button>
           </div>
@@ -63,15 +73,11 @@ export const PlaylistsView: React.FC = () => {
               onClick={() => openPlaylist(playlist.id)}
             >
               <div className="playlist-card-artwork">
-                {playlist.tracks.length > 0 && playlist.tracks[0]?.artwork?.medium ? (
-                  <img
-                    src={playlist.tracks[0].artwork.medium}
-                    alt={playlist.name}
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="playlist-card-artwork-placeholder"><MusicNoteIcon size={48} /></div>
-                )}
+                <PlaylistCover
+                  tracks={playlist.tracks}
+                  name={playlist.name}
+                  size="lg"
+                />
                 <div className="playlist-card-overlay">
                   <button className="playlist-card-play"><PlayIcon size={24} /></button>
                 </div>
@@ -93,6 +99,52 @@ export const PlaylistsView: React.FC = () => {
           ))
         )}
       </div>
+
+      {/* Create Playlist Modal */}
+      {isCreatePlaylistModalOpen && (
+        <InputModal
+          title="Create Playlist"
+          placeholder="Playlist name"
+          submitLabel="Create"
+          onSubmit={handleCreatePlaylist}
+          onClose={closeCreatePlaylistModal}
+          icon={<PlaylistIcon size={20} />}
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <div className="modal-overlay">
+          <div className="modal modal-small">
+            <header className="modal-header">
+              <h2>Delete Playlist?</h2>
+              <button className="modal-close" onClick={() => setDeleteConfirmId(null)}>
+                <CloseIcon size={20} />
+              </button>
+            </header>
+            <div className="modal-content">
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                This action cannot be undone.
+              </p>
+              <div className="modal-actions">
+                <button
+                  className="modal-button secondary"
+                  onClick={() => setDeleteConfirmId(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="modal-button primary"
+                  onClick={confirmDelete}
+                  style={{ background: 'var(--danger)' }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

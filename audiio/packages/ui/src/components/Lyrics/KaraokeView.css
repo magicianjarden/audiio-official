@@ -1,0 +1,538 @@
+/**
+ * KaraokeView styles - Full-screen karaoke experience
+ */
+
+.karaoke-view {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Background with blurred album art */
+.karaoke-background {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(80px) saturate(1.2);
+  transform: scale(1.2);
+  opacity: 0.4;
+}
+
+.karaoke-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.7) 0%,
+    rgba(0, 0, 0, 0.4) 30%,
+    rgba(0, 0, 0, 0.4) 70%,
+    rgba(0, 0, 0, 0.8) 100%
+  );
+}
+
+/* Header */
+.karaoke-header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 32px;
+  flex-shrink: 0;
+}
+
+.karaoke-close {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 12px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.karaoke-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.karaoke-track-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.karaoke-artwork {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.karaoke-artwork-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.karaoke-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.karaoke-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: white;
+}
+
+.karaoke-artist {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Controls */
+.karaoke-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.karaoke-vocal-control {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.karaoke-vocal-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 24px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.karaoke-vocal-toggle:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.karaoke-vocal-toggle.active {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: white;
+}
+
+.karaoke-reduction-slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+}
+
+.karaoke-reduction-slider label {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.karaoke-reduction-slider input[type="range"] {
+  width: 100px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  appearance: none;
+  cursor: pointer;
+}
+
+.karaoke-reduction-slider input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.karaoke-reduction-slider span {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: white;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* Lyrics container */
+.karaoke-lyrics-container {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  overflow-y: auto;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 15%,
+    black 85%,
+    transparent 100%
+  );
+}
+
+/* Override sing-along styles for karaoke - Apple Music style */
+.karaoke-lyrics-container .sing-along-lyrics {
+  max-width: 900px;
+  width: 100%;
+}
+
+.karaoke-lyrics-container .sing-along-lyrics-line {
+  font-size: 1.5rem;
+  padding: 16px 24px;
+  color: rgba(255, 255, 255, 0.5);
+  background: transparent;
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: scale(0.92) translateY(0);
+  filter: blur(0px);
+}
+
+.karaoke-lyrics-container .sing-along-lyrics-line:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.karaoke-lyrics-container .sing-along-lyrics-line.active {
+  font-size: 2.5rem;
+  color: white;
+  background: transparent;
+  transform: scale(1) translateY(0);
+  animation: karaoke-line-active 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.karaoke-lyrics-container .sing-along-lyrics-line.past {
+  opacity: 0.35;
+  transform: scale(0.88) translateY(-4px);
+  filter: blur(1px);
+}
+
+/* Past lines further back get more blurred (depth of field effect) */
+.karaoke-lyrics-container .sing-along-lyrics-line.past + .sing-along-lyrics-line.past {
+  filter: blur(1.5px);
+  opacity: 0.25;
+}
+
+.karaoke-lyrics-container .sing-along-lyrics-line.future {
+  opacity: 0.5;
+  transform: scale(0.92) translateY(4px);
+}
+
+/* Future lines further away get more blurred */
+.karaoke-lyrics-container .sing-along-lyrics-line.future + .sing-along-lyrics-line.future {
+  filter: blur(0.5px);
+  opacity: 0.4;
+}
+
+.karaoke-lyrics-container .sing-along-lyrics-line.future + .sing-along-lyrics-line.future + .sing-along-lyrics-line.future {
+  filter: blur(1px);
+  opacity: 0.3;
+}
+
+/* Line immediately after active gets special treatment */
+.karaoke-lyrics-container .sing-along-lyrics-line.active + .sing-along-lyrics-line {
+  opacity: 0.7;
+  transform: scale(0.96);
+  filter: blur(0px);
+}
+
+/* Line immediately before active (using general sibling with position) */
+.karaoke-lyrics-container .sing-along-lyrics-line.past:has(+ .sing-along-lyrics-line.active) {
+  opacity: 0.5;
+  filter: blur(0.5px);
+}
+
+/* Upcoming words in non-active lines - dim white */
+.karaoke-lyrics-container .sing-along-word {
+  color: rgba(255, 255, 255, 0.4);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  transition: color 0.15s ease-out, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), text-shadow 0.15s ease-out;
+  display: inline-block;
+  will-change: transform, color;
+}
+
+/* Active line - upcoming words are bright white */
+.karaoke-lyrics-container .sing-along-lyrics-line.active .sing-along-word {
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+}
+
+/* Next word indicator - subtle pre-glow */
+.karaoke-lyrics-container .sing-along-lyrics-line.active .sing-along-word.next-word {
+  color: rgba(255, 255, 255, 1);
+  text-shadow: 0 0 8px rgba(255, 45, 85, 0.3), 0 2px 8px rgba(0, 0, 0, 0.5);
+  animation: karaoke-next-word-pulse 1s ease-in-out infinite;
+}
+
+/* Past words - Apple Music pink/magenta with glow */
+.karaoke-lyrics-container .sing-along-word.past {
+  color: #FF2D55;
+  text-shadow:
+    0 0 10px rgba(255, 45, 85, 0.6),
+    0 0 20px rgba(255, 45, 85, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.5);
+  animation: karaoke-word-sung 0.3s ease-out;
+}
+
+/* Currently highlighted word - pulsating glow effect with subtle bounce */
+.karaoke-lyrics-container .sing-along-word.highlighted {
+  color: #FF2D55;
+  text-shadow:
+    0 0 15px rgba(255, 45, 85, 0.9),
+    0 0 30px rgba(255, 45, 85, 0.6),
+    0 0 45px rgba(255, 45, 85, 0.3),
+    0 2px 8px rgba(0, 0, 0, 0.6);
+  transform: scale(1.08) translateY(-1px);
+  font-weight: 600;
+  animation: karaoke-word-pulse 0.8s ease-in-out infinite, karaoke-word-bounce 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Transitioning word - smooth gradient sweep like Apple Music */
+.karaoke-lyrics-container .sing-along-word.transitioning {
+  background: linear-gradient(
+    to right,
+    #FF2D55 0%,
+    #FF2D55 calc(var(--word-progress, 0%) - 2%),
+    #FF6B8A calc(var(--word-progress, 0%)),
+    rgba(255, 255, 255, 0.95) calc(var(--word-progress, 0%) + 5%),
+    rgba(255, 255, 255, 0.95) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  text-shadow: none;
+  filter:
+    drop-shadow(0 0 12px rgba(255, 45, 85, calc(0.3 + var(--word-progress, 0) * 0.004)))
+    drop-shadow(0 0 24px rgba(255, 45, 85, 0.3))
+    drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  transform: scale(calc(1 + var(--word-progress, 0) * 0.0008));
+  font-weight: 600;
+}
+
+/* First frame of transitioning - entrance animation */
+.karaoke-lyrics-container .sing-along-word.transitioning-start {
+  animation: karaoke-word-start 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Pulsating glow animation for highlighted word */
+@keyframes karaoke-word-pulse {
+  0%, 100% {
+    text-shadow:
+      0 0 15px rgba(255, 45, 85, 0.9),
+      0 0 30px rgba(255, 45, 85, 0.6),
+      0 0 45px rgba(255, 45, 85, 0.3),
+      0 2px 8px rgba(0, 0, 0, 0.6);
+  }
+  50% {
+    text-shadow:
+      0 0 20px rgba(255, 45, 85, 1),
+      0 0 40px rgba(255, 45, 85, 0.7),
+      0 0 60px rgba(255, 45, 85, 0.4),
+      0 2px 8px rgba(0, 0, 0, 0.6);
+  }
+}
+
+/* Next word subtle pulse - anticipation indicator */
+@keyframes karaoke-next-word-pulse {
+  0%, 100% {
+    text-shadow: 0 0 8px rgba(255, 45, 85, 0.2), 0 2px 8px rgba(0, 0, 0, 0.5);
+  }
+  50% {
+    text-shadow: 0 0 12px rgba(255, 45, 85, 0.4), 0 2px 8px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* Word sung animation - brief flash when complete */
+@keyframes karaoke-word-sung {
+  0% {
+    text-shadow:
+      0 0 20px rgba(255, 45, 85, 1),
+      0 0 40px rgba(255, 45, 85, 0.8),
+      0 2px 4px rgba(0, 0, 0, 0.5);
+  }
+  100% {
+    text-shadow:
+      0 0 10px rgba(255, 45, 85, 0.6),
+      0 0 20px rgba(255, 45, 85, 0.4),
+      0 2px 4px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* Word start animation - entrance when becoming active */
+@keyframes karaoke-word-start {
+  0% {
+    transform: scale(0.95);
+    filter:
+      drop-shadow(0 0 4px rgba(255, 45, 85, 0.3))
+      drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  }
+  50% {
+    transform: scale(1.1);
+    filter:
+      drop-shadow(0 0 16px rgba(255, 45, 85, 0.6))
+      drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Active line entrance animation */
+@keyframes karaoke-line-active {
+  0% {
+    transform: scale(0.95) translateY(10px);
+    opacity: 0.7;
+  }
+  60% {
+    transform: scale(1.02) translateY(-2px);
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Subtle bounce when word becomes highlighted */
+@keyframes karaoke-word-bounce {
+  0% {
+    transform: scale(1) translateY(0);
+  }
+  40% {
+    transform: scale(1.12) translateY(-2px);
+  }
+  70% {
+    transform: scale(1.06) translateY(-1px);
+  }
+  100% {
+    transform: scale(1.08) translateY(-1px);
+  }
+}
+
+/* Messages */
+.karaoke-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+}
+
+.karaoke-message span:first-of-type {
+  font-size: 1.2rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.karaoke-hint {
+  font-size: 0.9rem;
+  opacity: 0.6;
+}
+
+/* Footer with playback controls */
+.karaoke-footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  padding: 24px 32px 40px;
+  flex-shrink: 0;
+}
+
+.karaoke-playback-controls {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.karaoke-control-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.karaoke-control-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.05);
+}
+
+.karaoke-control-btn.play {
+  background: var(--accent-color);
+  padding: 20px;
+}
+
+.karaoke-control-btn.play:hover {
+  background: var(--accent-hover);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .karaoke-header {
+    flex-wrap: wrap;
+    padding: 16px;
+  }
+
+  .karaoke-track-info {
+    order: 2;
+    flex-basis: 100%;
+    margin-top: 12px;
+  }
+
+  .karaoke-controls {
+    order: 1;
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  .karaoke-vocal-control {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+
+  .karaoke-reduction-slider {
+    margin-top: 8px;
+  }
+
+  .karaoke-lyrics-container .sing-along-lyrics-line {
+    font-size: 1.2rem;
+  }
+
+  .karaoke-lyrics-container .sing-along-lyrics-line.active {
+    font-size: 1.8rem;
+  }
+}

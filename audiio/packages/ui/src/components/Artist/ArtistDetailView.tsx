@@ -8,8 +8,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigationStore } from '../../stores/navigation-store';
 import { usePlayerStore } from '../../stores/player-store';
 import { useArtistStore } from '../../stores/artist-store';
+import { useLibraryStore } from '../../stores/library-store';
+import { useSmartQueueStore, type RadioSeed } from '../../stores/smart-queue-store';
 import { useTrackContextMenu, useAlbumContextMenu } from '../../contexts/ContextMenuContext';
-import { MusicNoteIcon, PlayIcon, ShuffleIcon, ChevronLeftIcon } from '../Icons/Icons';
+import { showSuccessToast } from '../../stores/toast-store';
+import { MusicNoteIcon, PlayIcon, ShuffleIcon, ChevronLeftIcon, RadioIcon } from '@audiio/icons';
 import { getColorsForArtwork, getDefaultColors, type ExtractedColors } from '../../utils/color-extraction';
 import type { UnifiedTrack } from '@audiio/core';
 import type { SearchAlbum } from '../../stores/search-store';
@@ -119,6 +122,8 @@ const SimilarArtistCard: React.FC<{
 export const ArtistDetailView: React.FC = () => {
   const { selectedArtistId, selectedArtistData, goBack, openAlbum, openArtist } = useNavigationStore();
   const { play, setQueue, currentTrack } = usePlayerStore();
+  const { likedTracks } = useLibraryStore();
+  const { startRadio } = useSmartQueueStore();
   const { fetchArtist, getArtist, loadingArtistId, error } = useArtistStore();
   const { showContextMenu: showTrackContextMenu } = useTrackContextMenu();
   const { showContextMenu: showAlbumContextMenu } = useAlbumContextMenu();
@@ -184,6 +189,21 @@ export const ArtistDetailView: React.FC = () => {
     }
   };
 
+  const handleStartRadio = async () => {
+    const artistName = artistDetail?.name || selectedArtistData?.name || 'Artist';
+    const artistId = artistDetail?.id || selectedArtistId || '';
+    const seed: RadioSeed = {
+      type: 'artist',
+      id: artistId,
+      name: `${artistName} Radio`,
+      artwork: artistDetail?.image,
+      artistIds: [artistId],
+      genres: artistDetail?.genres,
+    };
+    await startRadio(seed, [...likedTracks, ...(artistDetail?.topTracks || [])]);
+    showSuccessToast(`Started ${artistName} Radio`);
+  };
+
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     if (artistDetail?.topTracks) {
       setQueue(artistDetail.topTracks, index);
@@ -200,7 +220,7 @@ export const ArtistDetailView: React.FC = () => {
       id: similarArtist.id,
       name: similarArtist.name,
       image: similarArtist.image,
-      source: artistDetail?.source || 'spotify'
+      source: artistDetail?.source || 'deezer'
     });
   };
 
@@ -364,6 +384,15 @@ export const ArtistDetailView: React.FC = () => {
               >
                 <ShuffleIcon size={16} />
                 <span>Shuffle</span>
+              </button>
+
+              <button
+                className="artist-radio-btn-magazine"
+                onClick={handleStartRadio}
+                aria-label="Start artist radio"
+              >
+                <RadioIcon size={16} />
+                <span>Radio</span>
               </button>
             </div>
           </div>

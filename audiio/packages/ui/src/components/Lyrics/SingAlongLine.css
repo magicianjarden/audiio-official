@@ -1,0 +1,229 @@
+/**
+ * SingAlongLine styles - Apple Music style word highlighting
+ * Uses subtle WHITE glow effects (not pink - pink is for karaoke mode only)
+ */
+
+/* Individual line container */
+.sing-along-line {
+  display: inline;
+  line-height: 1.8;
+}
+
+.sing-along-line.active {
+  font-weight: 600;
+}
+
+/* Word styling - smooth transitions */
+.sing-along-word {
+  display: inline-block;
+  position: relative;
+  /* Smooth transitions for color and glow */
+  transition:
+    color 0.15s ease-out,
+    text-shadow 0.2s ease-out,
+    filter 0.2s ease-out;
+  /* Default: dimmed, waiting to be sung */
+  color: rgba(255, 255, 255, 0.4);
+  text-shadow: none;
+}
+
+/* Past words - already sung - subtle white glow */
+.sing-along-word.past {
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow:
+    0 0 10px rgba(255, 255, 255, 0.3),
+    0 0 20px rgba(255, 255, 255, 0.15);
+}
+
+/* Currently highlighted word - bright white glow (no scale to avoid jumpiness) */
+.sing-along-word.highlighted {
+  color: #fff;
+  text-shadow:
+    0 0 8px rgba(255, 255, 255, 0.7),
+    0 0 16px rgba(255, 255, 255, 0.45),
+    0 0 28px rgba(255, 255, 255, 0.25);
+}
+
+/* Next word to be sung - slight anticipation glow */
+.sing-along-word.next-word {
+  color: rgba(255, 255, 255, 0.55);
+  text-shadow: 0 0 4px rgba(255, 255, 255, 0.1);
+}
+
+/* Progressive glow effect for current word - sweep from white dim to white bright */
+.sing-along-word.transitioning {
+  color: #fff;
+  text-shadow:
+    0 0 calc(8px * var(--word-progress, 0)) rgba(255, 255, 255, 0.8),
+    0 0 calc(16px * var(--word-progress, 0)) rgba(255, 255, 255, 0.5),
+    0 0 calc(32px * var(--word-progress, 0)) rgba(255, 255, 255, 0.3);
+  /* Progressive reveal via background gradient */
+  background: linear-gradient(
+    to right,
+    #fff 0%,
+    #fff var(--word-progress, 0%),
+    rgba(255, 255, 255, 0.4) var(--word-progress, 0%),
+    rgba(255, 255, 255, 0.4) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Space between words */
+.sing-along-space {
+  display: inline;
+}
+
+/* Full lyrics container - scrollable with fade mask */
+.sing-along-lyrics {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 30vh 1.5rem;
+  text-align: center;
+  height: 100%;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  /* Fade mask at top and bottom */
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 12%,
+    black 88%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 12%,
+    black 88%,
+    transparent 100%
+  );
+}
+
+/* Hide scrollbar but keep functionality */
+.sing-along-lyrics::-webkit-scrollbar {
+  display: none;
+}
+
+.sing-along-lyrics {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Line styling */
+.sing-along-lyrics-line {
+  font-size: 1.25rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: scale(0.95);
+  opacity: 0.4;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.sing-along-lyrics-line:hover {
+  background: rgba(255, 255, 255, 0.06);
+  opacity: 0.6;
+}
+
+/* Active line - white glow */
+.sing-along-lyrics-line.active {
+  font-size: 1.6rem;
+  background: transparent;
+  transform: scale(1);
+  opacity: 1;
+  color: #fff;
+  text-shadow:
+    0 0 20px rgba(255, 255, 255, 0.4),
+    0 0 40px rgba(255, 255, 255, 0.2);
+}
+
+.sing-along-lyrics-line.past {
+  opacity: 0.5;
+  transform: scale(0.92);
+  color: rgba(255, 255, 255, 0.7);
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.15);
+}
+
+.sing-along-lyrics-line.future {
+  opacity: 0.4;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Lines near active get slightly more visible */
+.sing-along-lyrics-line.active + .sing-along-lyrics-line {
+  opacity: 0.6;
+  transform: scale(0.96);
+  text-shadow: 0 0 4px rgba(255, 255, 255, 0.1);
+}
+
+.sing-along-empty-line {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+/* Original lyrics container */
+.sing-along-lyrics-original {
+  display: block;
+}
+
+/* Translation line styling */
+.sing-along-lyrics-translation {
+  display: block;
+  font-size: 0.85em;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 6px;
+  font-style: italic;
+  opacity: 0.8;
+  transition: all 0.3s ease;
+}
+
+/* Active line shows translation more prominently */
+.sing-along-lyrics-line.active .sing-along-lyrics-translation {
+  color: rgba(255, 255, 255, 0.7);
+  opacity: 1;
+}
+
+/* Past line translation is dimmer */
+.sing-along-lyrics-line.past .sing-along-lyrics-translation {
+  opacity: 0.5;
+}
+
+/* Smooth fade-in animation for active line - no bouncy scale */
+@keyframes line-become-active {
+  0% {
+    transform: scale(0.98);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.sing-along-lyrics-line.active {
+  animation: line-become-active 0.3s ease-out;
+}
+
+/* Compact mode for player integration */
+.sing-along-line.compact {
+  font-size: 1rem;
+}
+
+.sing-along-line.compact .sing-along-word {
+  font-weight: 500;
+}
+
+.sing-along-line.compact .sing-along-word.highlighted {
+  font-weight: 600;
+}
+
+/* Dark theme adjustments */
+@media (prefers-color-scheme: dark) {
+  .sing-along-word.transitioning {
+    filter: brightness(1.1);
+  }
+}

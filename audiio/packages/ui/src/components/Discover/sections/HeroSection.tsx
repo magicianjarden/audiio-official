@@ -6,15 +6,17 @@
  * Integrates with Smart Queue for seamless radio mode.
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useSmartQueueStore, useRadioState } from '../../../stores/smart-queue-store';
 import { useRecommendationStore } from '../../../stores/recommendation-store';
 import { useLibraryStore } from '../../../stores/library-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { useMLRanking } from '../../../hooks';
-import { PlayIcon, ShuffleIcon, MusicNoteIcon, RadioIcon, RefreshIcon } from '../../Icons/Icons';
+import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { PlayIcon, ShuffleIcon, MusicNoteIcon, RadioIcon, RefreshIcon } from '@audiio/icons';
+import { getAccentColor } from '../../../utils/theme-utils';
+import { debugLog } from '../../../utils/debug';
 
 export interface HeroSectionProps {
   id: string;
@@ -31,6 +33,7 @@ export interface HeroSectionProps {
 
 // Simple color extraction - average RGB from image
 async function extractDominantColor(imageUrl: string): Promise<string> {
+  const fallbackColor = getAccentColor();
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -41,7 +44,7 @@ async function extractDominantColor(imageUrl: string): Promise<string> {
         canvas.height = 50;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          resolve('#1db954');
+          resolve(fallbackColor);
           return;
         }
         ctx.drawImage(img, 0, 0, 50, 50);
@@ -55,10 +58,10 @@ async function extractDominantColor(imageUrl: string): Promise<string> {
         const pixels = data.length / 4;
         resolve(`rgb(${Math.round(r / pixels)}, ${Math.round(g / pixels)}, ${Math.round(b / pixels)})`);
       } catch {
-        resolve('#1db954');
+        resolve(fallbackColor);
       }
     };
-    img.onerror = () => resolve('#1db954');
+    img.onerror = () => resolve(fallbackColor);
     img.src = imageUrl;
   });
 }
@@ -88,167 +91,56 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   const { userProfile } = useRecommendationStore();
   const { likedTracks } = useLibraryStore();
   const { showContextMenu } = useTrackContextMenu();
-  const { rankTracks } = useMLRanking();
 
-  const [tracks, setTracks] = useState<UnifiedTrack[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  // Embedding-based playlist generation
+  const {
+    generatePersonalizedPlaylist,
+    generateDiscoveryPlaylist,
+    getTracksFromPlaylist,
+    isReady: embeddingReady,
+    tracksIndexed,
+  } = useEmbeddingPlaylist();
+
+  const [refreshKey, setRefreshKey] = useState(0);
   const [ambientColor, setAmbientColor] = useState<string>('var(--accent-primary)');
   const [isVisible, setIsVisible] = useState(false);
-
-  // Track listening activity to trigger refreshes
-  const listenCountRef = useRef(userProfile.totalListens);
-  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check if this mix is currently playing as radio
   const isThisMixRadio = isRadioMode && radioSeed?.type === 'genre' && radioSeed.name === 'Made For You';
 
-  // Fetch and rank tracks for the hero section
-  const fetchHeroTracks = useCallback(async (isRefresh = false) => {
-    if (isRefresh) {
-      setIsRefreshing(true);
-    } else {
-      setIsLoading(true);
+  // Use embedding-based generation only
+  const tracks = useMemo(() => {
+    if (!embeddingReady) {
+      debugLog('[HeroSection]', 'Embedding not ready');
+      return [];
     }
 
-    try {
-      let fetchedTracks: UnifiedTrack[] = [];
-      const allCandidates: UnifiedTrack[] = [];
-
-      // Source 1: User's liked tracks (familiar content)
-      if (likedTracks.length > 0) {
-        allCandidates.push(...likedTracks.slice(0, 30));
-      }
-
-      // Source 2: API recommendations based on user preferences
-      if (window.api?.getRecommendedTracks) {
-        const topGenres = Object.entries(userProfile.genrePreferences)
-          .sort((a, b) => (b[1] as any).score - (a[1] as any).score)
-          .slice(0, 2)
-          .map(([genre]) => genre);
-
-        const topArtists = Object.entries(userProfile.artistPreferences)
-          .sort((a, b) => (b[1] as any).score - (a[1] as any).score)
-          .slice(0, 2)
-          .map(([_, pref]) => (pref as any).artistName);
-
-        // Get recommendations from top genres
-        for (const genre of topGenres) {
-          try {
-            const recs = await window.api.getRecommendedTracks('genre', genre);
-            if (recs?.length > 0) {
-              allCandidates.push(...recs.slice(0, 15));
-            }
-          } catch { /* ignore */ }
-        }
-
-        // Get recommendations from top artists
-        for (const artist of topArtists) {
-          if (artist) {
-            try {
-              const recs = await window.api.getRecommendedTracks('artist', artist);
-              if (recs?.length > 0) {
-                allCandidates.push(...recs.slice(0, 10));
-              }
-            } catch { /* ignore */ }
-          }
-        }
-      }
-
-      // Source 3: Trending for discovery
-      if (window.api?.getTrending) {
-        try {
-          const trending = await window.api.getTrending();
-          if (trending?.tracks?.length > 0) {
-            allCandidates.push(...trending.tracks.slice(0, 15).map(track => ({
-              ...track,
-              streamSources: [],
-              _meta: {
-                metadataProvider: track._provider || 'hero',
-                matchConfidence: 1,
-                externalIds: track.externalIds || {},
-                lastUpdated: new Date()
-              }
-            })) as UnifiedTrack[]);
-          }
-        } catch { /* ignore */ }
-      }
-
-      // Source 4: Search fallback
-      if (allCandidates.length < 10 && window.api?.search) {
-        const searchQuery = query ||
-          (context?.topArtists?.[0] ? `${context.topArtists[0]} best songs` : 'top hits 2024 popular');
-        try {
-          const results = await window.api.search({ query: searchQuery, type: 'track' });
-          if (results?.length > 0) {
-            allCandidates.push(...results.slice(0, 20));
-          }
-        } catch { /* ignore */ }
-      }
-
-      // Deduplicate
-      const seen = new Set<string>();
-      fetchedTracks = allCandidates.filter(t => {
-        if (!t?.id || seen.has(t.id)) return false;
-        seen.add(t.id);
-        return true;
-      });
-
-      if (fetchedTracks.length === 0) {
-        setIsLoading(false);
-        setIsRefreshing(false);
-        return;
-      }
-
-      // Apply ML ranking - balanced exploration for evolving mix
-      // Use more exploration on refreshes to keep things fresh
-      const ranked = await rankTracks(fetchedTracks, {
-        enabled: true,
-        explorationMode: isRefresh ? 'balanced' : 'exploit',
-        limit: 20,
-        shuffle: true,
-        shuffleIntensity: isRefresh ? 0.3 : 0.15 // More variety on refresh
-      });
-
-      setTracks(ranked.map(r => r.track));
-    } catch (error) {
-      console.error('[HeroSection] Failed to fetch:', error);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [query, context?.topArtists, rankTracks, likedTracks, userProfile]);
-
-  // Initial fetch
-  useEffect(() => {
-    fetchHeroTracks(false);
-  }, [fetchHeroTracks]);
-
-  // Auto-refresh when user listens to more tracks (evolving behavior)
-  useEffect(() => {
-    // Only refresh if listen count increased significantly
-    const listenDiff = userProfile.totalListens - listenCountRef.current;
-
-    if (listenDiff >= 5) {
-      // User has listened to 5+ more tracks, refresh the mix
-      console.log('[HeroSection] Evolving mix - refreshing after', listenDiff, 'new listens');
-      listenCountRef.current = userProfile.totalListens;
-
-      // Debounce refresh
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-      refreshTimeoutRef.current = setTimeout(() => {
-        fetchHeroTracks(true);
-      }, 2000);
+    if (tracksIndexed < 1) {
+      debugLog('[HeroSection]', 'No tracks indexed');
+      return [];
     }
 
-    return () => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-    };
-  }, [userProfile.totalListens, fetchHeroTracks]);
+    const isNewUser = context?.isNewUser || tracksIndexed < 20;
+    const exploration = 0.15 + (refreshKey * 0.05); // More exploration on refreshes
+
+    const playlist = isNewUser
+      ? generateDiscoveryPlaylist({ limit: 20, exploration })
+      : generatePersonalizedPlaylist({ limit: 20, exploration });
+
+    if (!playlist || playlist.tracks.length === 0) {
+      debugLog('[HeroSection]', 'No tracks from embedding');
+      return [];
+    }
+
+    debugLog(
+      '[HeroSection]',
+      `Generated ${isNewUser ? 'discovery' : 'personalized'}: ${playlist.tracks.length} tracks (indexed: ${tracksIndexed}, avg similarity: ${playlist.stats.avgSimilarity.toFixed(2)})`
+    );
+    return getTracksFromPlaylist(playlist);
+  }, [embeddingReady, tracksIndexed, context?.isNewUser, refreshKey, generatePersonalizedPlaylist, generateDiscoveryPlaylist, getTracksFromPlaylist]);
+
+  const isLoading = !embeddingReady;
+  const isRefreshing = false; // No async refresh needed with useMemo
 
   const featuredTrack = tracks?.[0];
   const artworkUrl = featuredTrack?.artwork?.large || featuredTrack?.artwork?.medium;
@@ -316,12 +208,10 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     await startRadio(seed, candidates);
   }, [tracks, userProfile, artworkUrl, likedTracks, startRadio]);
 
-  // Manual refresh
+  // Manual refresh - increment refresh key to trigger re-generation
   const handleRefresh = useCallback(() => {
-    if (!isRefreshing) {
-      fetchHeroTracks(true);
-    }
-  }, [isRefreshing, fetchHeroTracks]);
+    setRefreshKey(k => k + 1);
+  }, []);
 
   // Show placeholder if empty instead of returning null
   const showEmptyState = !isLoading && tracks.length === 0;

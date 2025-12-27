@@ -13,13 +13,15 @@ import {
   ShieldIcon,
   CheckIcon,
   SettingsIcon,
-} from '../Icons/Icons';
+} from '@audiio/icons';
 
 const categoryLabels: Record<PluginCategory, string> = {
   metadata: 'Metadata Provider',
   streaming: 'Streaming Provider',
   lyrics: 'Lyrics Provider',
+  translation: 'Translation Service',
   scrobbling: 'Scrobbling Service',
+  analysis: 'Audio Analysis',
   other: 'Other',
 };
 
@@ -27,7 +29,9 @@ const categoryColors: Record<PluginCategory, string> = {
   metadata: 'var(--color-access-metadata)',
   streaming: 'var(--color-access-streaming)',
   lyrics: 'var(--color-access-lyrics)',
+  translation: 'var(--color-access-translation, var(--color-access-lyrics))',
   scrobbling: 'var(--color-access-scrobbling)',
+  analysis: 'var(--color-access-analysis, var(--color-access-metadata))',
   other: 'var(--color-access-other)',
 };
 

@@ -9,7 +9,7 @@ import { usePlayerStore } from '../../../stores/player-store';
 import { usePluginStore } from '../../../stores/plugin-store';
 import { BaseSectionWrapper, useSectionTracks } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
-import { PlayIcon, MusicNoteIcon, QuoteIcon } from '../../Icons/Icons';
+import { PlayIcon, MusicNoteIcon, QuoteIcon } from '@audiio/icons';
 
 export interface LyricsQuote {
   trackId: string;

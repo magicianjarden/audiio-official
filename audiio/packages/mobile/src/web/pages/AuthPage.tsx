@@ -2,45 +2,80 @@
  * Auth Page - Enhanced authentication for mobile portal
  *
  * Supports:
- * - Passphrase/password login
+ * - P2P Remote Access (enter code, works from anywhere!)
+ * - One-time QR pairing (no password needed)
+ * - Passphrase/password login (fallback)
  * - Device token authentication (remember device)
- * - QR code scanning option
  * - Device naming
  */
 
 import React, { useState, useEffect } from 'react';
 import { useAuthStore, tunnelFetch } from '../stores/auth-store';
-import { KeyIcon, QrCodeIcon, DeviceIcon, SpinnerIcon, CopyIcon, CheckIcon } from '../components/Icons';
+import { useP2PStore, isP2PSupported } from '../stores/p2p-store';
+import { KeyIcon, QrCodeIcon, DeviceIcon, SpinnerIcon, CheckIcon, WifiIcon } from '@audiio/icons';
 import styles from './AuthPage.module.css';
 
-type AuthMode = 'passphrase' | 'device-token';
+type AuthMode = 'p2p' | 'passphrase' | 'device-token' | 'pairing';
 
 export function AuthPage() {
-  const [authMode, setAuthMode] = useState<AuthMode>('passphrase');
+  const [authMode, setAuthMode] = useState<AuthMode>('p2p');
   const [passphrase, setPassphrase] = useState('');
   const [deviceName, setDeviceName] = useState('');
   const [rememberDevice, setRememberDevice] = useState(true);
   const [deviceToken, setDeviceToken] = useState('');
+  const [p2pCode, setP2PCode] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [tunnelPassword, setTunnelPassword] = useState<string | null>(null);
-  const [copiedPassword, setCopiedPassword] = useState(false);
+  const [isPairingMode, setIsPairingMode] = useState(false);
 
-  const { setToken, validateToken, error: storeError, isValidating } = useAuthStore();
+  const { setToken, validateToken, pairWithCode, error: storeError, isValidating, isPairing } = useAuthStore();
+  const { status: p2pStatus, error: p2pError, connect: p2pConnect, disconnect: p2pDisconnect, authToken: p2pAuthToken } = useP2PStore();
 
-  // Check for tunnel password in URL (for bypass helper)
+  // When P2P connects and provides an auth token, authenticate automatically
+  useEffect(() => {
+    if (p2pStatus === 'connected' && p2pAuthToken) {
+      console.log('[Auth] P2P connected with auth token, authenticating...');
+      setToken(p2pAuthToken);
+      validateToken();
+    }
+  }, [p2pStatus, p2pAuthToken, setToken, validateToken]);
+
+  // Check for pairing code in URL (from QR scan on local network)
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const tp = urlParams.get('tp');
-    if (tp) {
-      setTunnelPassword(tp);
-      // Store for future reference
-      localStorage.setItem('audiio-tunnel-password', tp);
+    const pairingCode = urlParams.get('pair');
+
+    // If we have a pairing code, try to auto-pair immediately
+    if (pairingCode) {
+      setIsPairingMode(true);
+      setAuthMode('pairing');
+      handleAutopairing(pairingCode);
     }
   }, []);
 
-  // Check for saved device token on mount
+  // Handle auto-pairing with QR code
+  const handleAutopairing = async (pairingCode: string) => {
+    console.log('[Auth] Auto-pairing with code...');
+    const success = await pairWithCode(pairingCode);
+
+    if (success) {
+      console.log('[Auth] Pairing successful!');
+      // Remove pairing code from URL to prevent re-use on refresh
+      const url = new URL(window.location.href);
+      url.searchParams.delete('pair');
+      window.history.replaceState({}, '', url.toString());
+    } else {
+      // Pairing failed - fall back to password mode
+      setIsPairingMode(false);
+      setAuthMode('passphrase');
+      setLocalError('QR code expired. Please enter the passphrase or scan a new QR code.');
+    }
+  };
+
+  // Check for saved device token on mount (only if not pairing)
   useEffect(() => {
+    if (isPairingMode) return;
+
     const savedToken = localStorage.getItem('audiio-device-token');
     if (savedToken) {
       setDeviceToken(savedToken);
@@ -52,15 +87,7 @@ export function AuthPage() {
     // Generate default device name
     const defaultName = getDefaultDeviceName();
     setDeviceName(defaultName);
-  }, []);
-
-  const copyTunnelPassword = async () => {
-    if (tunnelPassword) {
-      await navigator.clipboard.writeText(tunnelPassword);
-      setCopiedPassword(true);
-      setTimeout(() => setCopiedPassword(false), 2000);
-    }
-  };
+  }, [isPairingMode]);
 
   const handlePassphraseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,37 +175,20 @@ export function AuthPage() {
     setAuthMode('passphrase');
   };
 
-  const error = localError || storeError;
-  const loading = isLoading || isValidating;
+  const handleP2PConnect = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!p2pCode.trim()) return;
+
+    setLocalError(null);
+    const name = deviceName.trim() || getDefaultDeviceName();
+    await p2pConnect(p2pCode.trim(), name);
+  };
+
+  const error = localError || storeError || p2pError;
+  const loading = isLoading || isValidating || p2pStatus === 'connecting';
 
   return (
     <div className={styles.container}>
-      {/* Tunnel Password Helper Banner */}
-      {tunnelPassword && (
-        <div className={styles.tunnelBanner}>
-          <div className={styles.tunnelBannerContent}>
-            <div className={styles.tunnelBannerIcon}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
-              </svg>
-            </div>
-            <div className={styles.tunnelBannerText}>
-              <span className={styles.tunnelBannerLabel}>Tunnel Security Code</span>
-              <span className={styles.tunnelBannerHint}>Enter this if prompted by loca.lt</span>
-            </div>
-            <div className={styles.tunnelPasswordBox}>
-              <code className={styles.tunnelPasswordValue}>{tunnelPassword}</code>
-              <button
-                className={`${styles.tunnelCopyBtn} ${copiedPassword ? styles.copied : ''}`}
-                onClick={copyTunnelPassword}
-              >
-                {copiedPassword ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className={styles.content}>
         {/* Logo */}
         <div className={styles.logo}>
@@ -191,24 +201,101 @@ export function AuthPage() {
         </p>
 
         {/* Auth Mode Tabs */}
-        {!deviceToken && (
+        {!deviceToken && authMode !== 'pairing' && (
           <div className={styles.tabs}>
+            {isP2PSupported() && (
+              <button
+                type="button"
+                className={`${styles.tab} ${authMode === 'p2p' ? styles.activeTab : ''}`}
+                onClick={() => { setAuthMode('p2p'); setLocalError(null); }}
+              >
+                <WifiIcon size={16} />
+                Remote
+              </button>
+            )}
             <button
               type="button"
               className={`${styles.tab} ${authMode === 'passphrase' ? styles.activeTab : ''}`}
-              onClick={() => setAuthMode('passphrase')}
+              onClick={() => { setAuthMode('passphrase'); setLocalError(null); }}
             >
               <KeyIcon size={16} />
-              Passphrase
+              Local
             </button>
+          </div>
+        )}
+
+        {/* P2P Remote Access */}
+        {authMode === 'p2p' && !deviceToken && p2pStatus !== 'connected' && (
+          <form onSubmit={handleP2PConnect} className={styles.form}>
+            <div className={styles.inputGroup}>
+              <label htmlFor="p2pCode" className={styles.label}>
+                Enter connection code
+              </label>
+              <input
+                id="p2pCode"
+                type="text"
+                value={p2pCode}
+                onChange={(e) => setP2PCode(e.target.value.toUpperCase())}
+                placeholder="SWIFT-EAGLE-42"
+                className={styles.input}
+                disabled={loading}
+                autoComplete="off"
+                autoFocus
+                style={{ textTransform: 'uppercase', letterSpacing: '1px' }}
+              />
+              <p className={styles.inputHint}>
+                Find this code in Audiio Desktop → Settings → Mobile
+              </p>
+            </div>
+
+            <div className={styles.inputGroup}>
+              <label htmlFor="p2pDeviceName" className={styles.label}>
+                Device name (optional)
+              </label>
+              <input
+                id="p2pDeviceName"
+                type="text"
+                value={deviceName}
+                onChange={(e) => setDeviceName(e.target.value)}
+                placeholder="My iPhone"
+                className={styles.input}
+                disabled={loading}
+              />
+            </div>
+
+            {error && <p className={styles.error}>{error}</p>}
+
             <button
-              type="button"
-              className={`${styles.tab} ${authMode === 'device-token' ? styles.activeTab : ''}`}
-              onClick={() => setAuthMode('device-token')}
+              type="submit"
+              className={styles.button}
+              disabled={!p2pCode.trim() || loading}
             >
-              <DeviceIcon size={16} />
-              Device Token
+              {loading ? (
+                <>
+                  <SpinnerIcon size={18} />
+                  Connecting...
+                </>
+              ) : (
+                'Connect'
+              )}
             </button>
+
+            <p className={styles.p2pInfo}>
+              Works from anywhere — cellular, WiFi, any network
+            </p>
+          </form>
+        )}
+
+        {/* P2P Connected State */}
+        {authMode === 'p2p' && p2pStatus === 'connected' && (
+          <div className={styles.autoLogin}>
+            <div className={styles.autoLoginIcon} style={{ color: 'var(--color-success, #22c55e)' }}>
+              <CheckIcon size={32} />
+            </div>
+            <p className={styles.autoLoginText}>Connected via P2P!</p>
+            <p className={styles.autoLoginHint}>
+              You're connected directly to your desktop
+            </p>
           </div>
         )}
 
@@ -315,8 +402,43 @@ export function AuthPage() {
           </form>
         )}
 
+        {/* Auto-pairing via QR code */}
+        {authMode === 'pairing' && (
+          <div className={styles.autoLogin}>
+            <div className={styles.autoLoginIcon}>
+              <QrCodeIcon size={32} />
+            </div>
+            <p className={styles.autoLoginText}>
+              {isPairing ? 'Waiting for approval on desktop...' : 'Setting up...'}
+            </p>
+            {isPairing && (
+              <>
+                <SpinnerIcon size={24} className={styles.spinner} />
+                <p className={styles.autoLoginHint}>
+                  Check your desktop to approve this connection
+                </p>
+              </>
+            )}
+            {error && (
+              <>
+                <p className={styles.error}>{error}</p>
+                <button
+                  type="button"
+                  className={styles.linkButton}
+                  onClick={() => {
+                    setIsPairingMode(false);
+                    setAuthMode('passphrase');
+                  }}
+                >
+                  Enter passphrase instead
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Auto-login with saved device token */}
-        {deviceToken && (
+        {authMode === 'device-token' && deviceToken && (
           <div className={styles.autoLogin}>
             <div className={styles.autoLoginIcon}>
               <DeviceIcon size={32} />
@@ -341,18 +463,39 @@ export function AuthPage() {
         )}
 
         {/* Help Section */}
-        {!deviceToken && (
+        {!deviceToken && authMode !== 'pairing' && authMode === 'p2p' && (
           <div className={styles.help}>
             <div className={styles.helpHeader}>
-              <QrCodeIcon size={18} />
-              <span>Getting Started</span>
+              <WifiIcon size={18} />
+              <span>Remote Access</span>
             </div>
             <ol className={styles.helpList}>
               <li>Open Audiio on your desktop</li>
               <li>Go to <strong>Settings → Mobile Access</strong></li>
-              <li>Click <strong>Enable Mobile Portal</strong></li>
-              <li>Enter the passphrase shown, or scan the QR code</li>
+              <li>Enter the <strong>connection code</strong> shown above</li>
             </ol>
+            <p className={styles.helpNote}>
+              P2P connects you directly to your desktop from anywhere.
+              No internet server needed — fully private and encrypted.
+            </p>
+          </div>
+        )}
+
+        {!deviceToken && authMode !== 'pairing' && authMode === 'passphrase' && (
+          <div className={styles.help}>
+            <div className={styles.helpHeader}>
+              <QrCodeIcon size={18} />
+              <span>Local Network</span>
+            </div>
+            <ol className={styles.helpList}>
+              <li>Connect to the <strong>same WiFi</strong> as your desktop</li>
+              <li>Open Audiio Desktop → <strong>Settings → Mobile</strong></li>
+              <li>Scan the <strong>QR code</strong> or enter the passphrase</li>
+            </ol>
+            <p className={styles.helpNote}>
+              Local mode works when you're on the same network.
+              Use <strong>Remote</strong> tab for cellular/external access.
+            </p>
           </div>
         )}
       </div>

@@ -209,13 +209,15 @@ export class DeezerMetadataProvider extends BaseMetadataProvider {
         similarArtists
       };
 
-      // Add artwork if enabled
-      if (this.settings.fetchArtwork && artistData.picture_medium) {
+      // Add artwork if enabled (with fallback to base picture)
+      const hasPicture = artistData.picture_medium || artistData.picture_small || artistData.picture_big || artistData.picture_xl || artistData.picture;
+      if (this.settings.fetchArtwork && hasPicture) {
+        const fallback = artistData.picture;
         result.artwork = {
-          small: artistData.picture_small,
-          medium: artistData.picture_medium,
-          large: artistData.picture_big,
-          original: artistData.picture_xl
+          small: artistData.picture_small || fallback,
+          medium: artistData.picture_medium || fallback,
+          large: artistData.picture_big || fallback,
+          original: artistData.picture_xl || fallback
         };
       }
 
@@ -281,13 +283,15 @@ export class DeezerMetadataProvider extends BaseMetadataProvider {
       name: artist.name
     };
 
-    // Conditionally add artist artwork
-    if (this.settings.fetchArtwork && artist.picture_medium) {
+    // Conditionally add artist artwork with fallback to base picture
+    const hasPicture = artist.picture_medium || artist.picture_small || artist.picture_big || artist.picture_xl || artist.picture;
+    if (this.settings.fetchArtwork && hasPicture) {
+      const fallback = artist.picture;
       result.artwork = {
-        small: artist.picture_small,
-        medium: artist.picture_medium,
-        large: artist.picture_big,
-        original: artist.picture_xl
+        small: artist.picture_small || fallback,
+        medium: artist.picture_medium || fallback,
+        large: artist.picture_big || fallback,
+        original: artist.picture_xl || fallback
       };
     }
 
@@ -325,11 +329,13 @@ export class DeezerMetadataProvider extends BaseMetadataProvider {
   }
 
   private mapAlbumArtwork(album: DeezerAlbum): ArtworkSet {
+    // Fall back to base cover if size variants aren't available
+    const fallback = album.cover;
     return {
-      small: album.cover_small,
-      medium: album.cover_medium,
-      large: album.cover_big,
-      original: album.cover_xl
+      small: album.cover_small || fallback,
+      medium: album.cover_medium || fallback,
+      large: album.cover_big || fallback,
+      original: album.cover_xl || fallback
     };
   }
 

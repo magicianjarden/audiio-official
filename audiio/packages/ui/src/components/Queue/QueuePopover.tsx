@@ -33,7 +33,49 @@ import {
   SpinnerIcon,
   ShuffleIcon,
   DragHandleIcon
-} from '../Icons/Icons';
+} from '@audiio/icons';
+
+// Get track source hint based on context
+type QueueSourceType = 'similar' | 'artist' | 'genre' | 'liked' | 'radio' | 'auto' | null;
+
+function getTrackSourceHint(
+  track: UnifiedTrack,
+  currentTrack: UnifiedTrack | null,
+  radioSeed: { type: string; name: string } | null,
+  isAutoQueue: boolean
+): { type: QueueSourceType; label: string } | null {
+  // Check if from radio seed
+  if (radioSeed) {
+    if (radioSeed.type === 'artist' && track.artists.some(a => a.name === radioSeed.name)) {
+      return { type: 'artist', label: radioSeed.name };
+    }
+    return { type: 'radio', label: `${radioSeed.name} Radio` };
+  }
+
+  // Check if similar to current track
+  if (currentTrack && isAutoQueue) {
+    // Same artist
+    const currentArtist = currentTrack.artists[0]?.name;
+    if (currentArtist && track.artists.some(a => a.name === currentArtist)) {
+      return { type: 'artist', label: currentArtist };
+    }
+
+    // Same genre
+    if (currentTrack.genres?.length && track.genres?.length) {
+      const sharedGenre = currentTrack.genres.find(g =>
+        track.genres?.some(tg => tg.toLowerCase() === g.toLowerCase())
+      );
+      if (sharedGenre) {
+        return { type: 'genre', label: sharedGenre };
+      }
+    }
+
+    // Auto-queued
+    return { type: 'auto', label: 'For You' };
+  }
+
+  return null;
+}
 
 // Sortable queue item component
 interface SortableQueueItemProps {
@@ -43,6 +85,7 @@ interface SortableQueueItemProps {
   onPlay: () => void;
   onRemove: (e: React.MouseEvent) => void;
   onContextMenu: (e: React.MouseEvent, track: UnifiedTrack) => void;
+  sourceHint?: { type: QueueSourceType; label: string } | null;
 }
 
 const SortableQueueItem: React.FC<SortableQueueItemProps> = ({
@@ -52,6 +95,7 @@ const SortableQueueItem: React.FC<SortableQueueItemProps> = ({
   onPlay,
   onRemove,
   onContextMenu,
+  sourceHint,
 }) => {
   const {
     attributes,
@@ -91,6 +135,18 @@ const SortableQueueItem: React.FC<SortableQueueItemProps> = ({
         onContextMenu={onContextMenu}
         compact
       />
+      {sourceHint && (
+        <span
+          className={`queue-source-badge queue-source-${sourceHint.type}`}
+          title={`Added because: ${sourceHint.label}`}
+        >
+          {sourceHint.type === 'artist' && 'Artist'}
+          {sourceHint.type === 'genre' && 'Genre'}
+          {sourceHint.type === 'similar' && 'Similar'}
+          {sourceHint.type === 'radio' && 'Radio'}
+          {sourceHint.type === 'auto' && 'For You'}
+        </span>
+      )}
       <button
         className="queue-popover-item-remove"
         onClick={onRemove}
@@ -381,6 +437,7 @@ export const QueuePopover: React.FC = () => {
                       onPlay={() => handlePlayFromQueue(index)}
                       onRemove={(e) => handleRemoveFromQueue(e, index)}
                       onContextMenu={showContextMenu}
+                      sourceHint={isSmartQueueActive ? getTrackSourceHint(track, currentTrack, radioSeed, isAutoQueueEnabled) : null}
                     />
                   ))}
                   {upNext.length > visibleCount && (

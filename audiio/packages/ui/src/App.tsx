@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { Discover } from './components/Discover/Discover';
 import { FloatingSearch } from './components/Search/FloatingSearch';
 import { SearchResults } from './components/Search/SearchResults';
 import { LikesView } from './components/Library/LikesView';
+import { DislikesView } from './components/Library/DislikesView';
 import { PlaylistsView } from './components/Library/PlaylistsView';
 import { PlaylistDetailView } from './components/Library/PlaylistDetailView';
 import { DownloadsView } from './components/Library/DownloadsView';
@@ -12,16 +13,21 @@ import { PluginDetailView } from './components/Plugins/PluginDetailView';
 import { SettingsView } from './components/Settings/SettingsView';
 import { ArtistDetailView } from './components/Artist/ArtistDetailView';
 import { AlbumDetailView } from './components/Album/AlbumDetailView';
+import { StatsView } from './components/Stats';
 import { QueuePopover } from './components/Queue/QueuePopover';
 import { Player } from './components/Player/Player';
 import { FullPlayer } from './components/Player/FullPlayer';
 import { LyricsPanel } from './components/Player/LyricsPanel';
 import { AddToPlaylistModal } from './components/Modals/AddToPlaylistModal';
 import { DislikeModal } from './components/Modals/DislikeModal';
+import { ToastContainer } from './components/common/Toast';
+import { RecommendationExplanationProvider } from './components/RecommendationExplanation';
 import { useNavigationStore } from './stores/navigation-store';
 import { useSearchStore } from './stores/search-store';
 import { useLibraryStore } from './stores/library-store';
-import { useAutoQueue, usePluginAudioFeatures, useDownloadProgress, useLibraryBridge } from './hooks';
+import { useAutoQueue, usePluginAudioFeatures, useDownloadProgress, useLibraryBridge, GlobalShortcutManager, SkipTrackingManager } from './hooks';
+import { EmbeddingManager } from './components/EmbeddingManager';
+import { usePluginUIRegistry, initializePluginUIs } from './registry';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import type { UnifiedTrack } from '@audiio/core';
@@ -92,11 +98,24 @@ const LibraryBridgeManager: React.FC = () => {
 const MainContent: React.FC = () => {
   const { currentView, isSearchActive, searchQuery, setSearchQuery, clearSearch } = useNavigationStore();
   const { search, clear: clearSearchResults } = useSearchStore();
+  const pluginUIRegistry = usePluginUIRegistry();
 
   const handleCloseSearch = () => {
     clearSearch();
     clearSearchResults();
   };
+
+  // Check if this is a plugin view
+  if (currentView.startsWith('plugin-view-')) {
+    const viewId = currentView.replace('plugin-view-', '');
+    const pluginView = pluginUIRegistry.getView(viewId);
+    if (pluginView) {
+      const ViewComponent = pluginView.component;
+      return <ViewComponent />;
+    }
+    // Fallback if view not found
+    return <Discover />;
+  }
 
   // Home view with integrated search
   if (currentView === 'home') {
@@ -126,6 +145,8 @@ const MainContent: React.FC = () => {
   switch (currentView) {
     case 'likes':
       return <LikesView />;
+    case 'dislikes':
+      return <DislikesView />;
     case 'playlists':
       return <PlaylistsView />;
     case 'playlist-detail':
@@ -138,6 +159,8 @@ const MainContent: React.FC = () => {
       return <PluginDetailView />;
     case 'settings':
       return <SettingsView />;
+    case 'stats':
+      return <StatsView />;
     case 'artist-detail':
       return <ArtistDetailView />;
     case 'album-detail':
@@ -151,17 +174,26 @@ export const App: React.FC = () => {
   const [addToPlaylistTrack, setAddToPlaylistTrack] = useState<UnifiedTrack | null>(null);
   const [dislikeTrack, setDislikeTrack] = useState<UnifiedTrack | null>(null);
 
+  // Initialize plugin UIs on mount
+  useEffect(() => {
+    initializePluginUIs();
+  }, []);
+
   return (
     <ThemeProvider>
       <ContextMenuProvider
         onAddToPlaylist={setAddToPlaylistTrack}
         onDislike={setDislikeTrack}
       >
+        <RecommendationExplanationProvider>
         <div className="app">
           <AutoQueueManager />
           <PluginAudioManager />
           <DownloadManager />
           <LibraryBridgeManager />
+          <GlobalShortcutManager />
+          <SkipTrackingManager />
+          <EmbeddingManager />
           <Sidebar />
           <main className="main-content">
             <MainContent />
@@ -183,6 +215,8 @@ export const App: React.FC = () => {
             onClose={() => setDislikeTrack(null)}
           />
         )}
+        <ToastContainer />
+        </RecommendationExplanationProvider>
       </ContextMenuProvider>
     </ThemeProvider>
   );
