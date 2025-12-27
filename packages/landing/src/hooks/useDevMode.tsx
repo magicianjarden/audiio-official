@@ -38,7 +38,7 @@ export function DevModeProvider({ children }: { children: ReactNode }) {
     console.log('%c  • Vite for builds', 'color: #646cff; font-size: 12px;');
     console.log('%c  • Electron for desktop', 'color: #9feaf9; font-size: 12px;');
     console.log('%c─────────────────────────────────────', 'color: #333;');
-    console.log('%cCheck out our GitHub: https://github.com/audiio', 'color: #a3a3a3; font-size: 12px;');
+    console.log('%cCheck out our GitHub: https://github.com/magicianjarden/audiio-official', 'color: #a3a3a3; font-size: 12px;');
   }, []);
 
   const toggleDevMode = useCallback(() => {

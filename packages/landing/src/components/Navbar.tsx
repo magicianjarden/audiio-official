@@ -38,7 +38,7 @@ export function Navbar({ scrolled }: NavbarProps) {
             </a>
           ))}
           <a
-            href="https://github.com/audiio/audiio"
+            href="https://github.com/magicianjarden/audiio-official"
             target="_blank"
             rel="noopener noreferrer"
             className="nav-link github-link"

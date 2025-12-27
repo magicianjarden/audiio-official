@@ -925,9 +925,11 @@ export function registerApiRoutes(fastify: FastifyInstance, context: RouteContex
     return {
       localUrl: access.localUrl,
       p2pCode: access.p2pCode,
+      relayCode: access.relayCode,
       createdAt: access.createdAt,
       expiresAt: access.expiresAt,
-      hasRemoteAccess: !!access.p2pActive
+      hasRemoteAccess: !!access.p2pActive,
+      relayActive: access.relayActive
     };
   });
 

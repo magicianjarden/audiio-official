@@ -21,7 +21,7 @@ export function Community() {
 
             <div className="community-actions">
               <a
-                href="https://github.com/audiio/audiio"
+                href="https://github.com/magicianjarden/audiio-official"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn btn-primary"
@@ -30,7 +30,7 @@ export function Community() {
                 View on GitHub
               </a>
               <a
-                href="https://github.com/audiio/audiio/stargazers"
+                href="https://github.com/magicianjarden/audiio-official/stargazers"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn btn-secondary"
@@ -42,19 +42,19 @@ export function Community() {
 
             {isDevMode && (
               <div className="community-dev-links">
-                <a href="https://github.com/audiio/audiio/issues" target="_blank" rel="noopener noreferrer">
+                <a href="https://github.com/magicianjarden/audiio-official/issues" target="_blank" rel="noopener noreferrer">
                   <ExternalLinkIcon size={14} />
                   Issues
                 </a>
-                <a href="https://github.com/audiio/audiio/pulls" target="_blank" rel="noopener noreferrer">
+                <a href="https://github.com/magicianjarden/audiio-official/pulls" target="_blank" rel="noopener noreferrer">
                   <ExternalLinkIcon size={14} />
                   Pull Requests
                 </a>
-                <a href="https://github.com/audiio/audiio/discussions" target="_blank" rel="noopener noreferrer">
+                <a href="https://github.com/magicianjarden/audiio-official/discussions" target="_blank" rel="noopener noreferrer">
                   <ExternalLinkIcon size={14} />
                   Discussions
                 </a>
-                <a href="https://github.com/audiio/audiio/wiki" target="_blank" rel="noopener noreferrer">
+                <a href="https://github.com/magicianjarden/audiio-official/wiki" target="_blank" rel="noopener noreferrer">
                   <ExternalLinkIcon size={14} />
                   Wiki
                 </a>

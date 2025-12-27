@@ -17,6 +17,7 @@ interface AccessConfig {
   relayCode?: string;
   relayPublicKey?: string;
   relayActive?: boolean;
+  remoteQrCode?: string;
 }
 
 interface MobileSession {
@@ -287,6 +288,99 @@ const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ qrCode, url, isRemote, tu
             </p>
           </div>
         )}
+      </div>
+    </div>
+  );
+};
+
+// ========================================
+// QR Code Tabs (Local + Remote)
+// ========================================
+
+interface QRCodeTabsProps {
+  localQrCode: string;
+  remoteQrCode: string;
+  localUrl: string;
+  relayCode: string;
+}
+
+const QRCodeTabs: React.FC<QRCodeTabsProps> = ({ localQrCode, remoteQrCode, localUrl, relayCode }) => {
+  const [activeTab, setActiveTab] = useState<'remote' | 'local'>('remote');
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const textToCopy = activeTab === 'remote' ? relayCode : localUrl;
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for older browsers
+    }
+  };
+
+  return (
+    <div className="mobile-qr-tabs-container">
+      {/* Tab Buttons */}
+      <div className="mobile-qr-tabs">
+        <button
+          type="button"
+          className={`mobile-qr-tab ${activeTab === 'remote' ? 'active' : ''}`}
+          onClick={() => setActiveTab('remote')}
+        >
+          <GlobeIcon size={14} />
+          Anywhere
+        </button>
+        <button
+          type="button"
+          className={`mobile-qr-tab ${activeTab === 'local' ? 'active' : ''}`}
+          onClick={() => setActiveTab('local')}
+        >
+          <WifiIcon size={14} />
+          Same Network
+        </button>
+      </div>
+
+      {/* QR Code Display */}
+      <div className="mobile-qr-card">
+        <img
+          src={activeTab === 'remote' ? remoteQrCode : localQrCode}
+          alt={`Scan to connect via ${activeTab === 'remote' ? 'P2P' : 'local network'}`}
+          className="mobile-qr-image"
+        />
+      </div>
+
+      {/* Info Section */}
+      <div className="mobile-qr-info">
+        {activeTab === 'remote' ? (
+          <>
+            <p className="mobile-qr-instruction">
+              Scan to connect from anywhere
+            </p>
+            <p className="mobile-qr-hint">
+              Works on cellular, any WiFi, or VPN — no port forwarding needed
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="mobile-qr-instruction">
+              Scan to connect on the same network
+            </p>
+            <p className="mobile-qr-hint">
+              One-time setup — your device will be remembered
+            </p>
+          </>
+        )}
+
+        <div className="mobile-qr-url-row">
+          <span className="mobile-qr-badge">
+            {activeTab === 'remote' ? 'P2P Connection' : 'Local Network'}
+          </span>
+          <button className="mobile-qr-copy" onClick={handleCopy}>
+            {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+            {copied ? 'Copied!' : activeTab === 'remote' ? 'Copy Code' : 'Copy Link'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1151,13 +1245,25 @@ export const MobileAccessSettings: React.FC = () => {
             />
           )}
 
-          {/* QR Code Section */}
-          <QRCodeDisplay
-            qrCode={state.accessConfig.qrCode || ''}
-            url={primaryUrl}
-            isRemote={isRemote}
-            tunnelPassword={state.accessConfig.tunnelPassword}
-          />
+          {/* QR Codes Section */}
+          <div className="mobile-qr-section">
+            {/* Show tabs when both QR codes are available */}
+            {state.accessConfig.remoteQrCode && state.accessConfig.qrCode ? (
+              <QRCodeTabs
+                localQrCode={state.accessConfig.qrCode}
+                remoteQrCode={state.accessConfig.remoteQrCode}
+                localUrl={state.accessConfig.localUrl}
+                relayCode={state.accessConfig.relayCode || ''}
+              />
+            ) : (
+              <QRCodeDisplay
+                qrCode={state.accessConfig.qrCode || ''}
+                url={primaryUrl}
+                isRemote={isRemote}
+                tunnelPassword={state.accessConfig.tunnelPassword}
+              />
+            )}
+          </div>
 
           {/* Remote Access Option - Only show if relay not active */}
           {!state.accessConfig.relayActive && (
@@ -1355,6 +1461,12 @@ const EyeOffIcon: React.FC<{ size: number }> = ({ size }) => (
 const LinkIcon: React.FC<{ size: number }> = ({ size }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
     <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
+  </svg>
+);
+
+const WifiIcon: React.FC<{ size: number }> = ({ size }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/>
   </svg>
 );
 

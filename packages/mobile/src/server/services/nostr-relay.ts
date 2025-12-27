@@ -20,11 +20,13 @@ const WebSocketImpl = typeof WebSocket !== 'undefined'
   : require('ws');
 
 // Public Nostr relays (free to use)
-// Using relay.nostr.band which is more lenient with signatures
+// Using popular, well-maintained relays with valid SSL certs
 const NOSTR_RELAYS = [
-  'wss://relay.nostr.band',
-  'wss://nostr.wine',
-  'wss://relay.snort.social'
+  'wss://nos.lol',
+  'wss://relay.damus.io',
+  'wss://relay.primal.net',
+  'wss://nostr.mom',
+  'wss://relay.nostr.net'
 ];
 
 // Word lists for memorable connection codes
@@ -241,20 +243,40 @@ export class NostrRelay extends EventEmitter {
   // ========================================
 
   private async connect(): Promise<void> {
-    const relayUrl = this.config.relays![0];
+    const relays = this.config.relays || NOSTR_RELAYS;
+    let lastError: Error | null = null;
 
+    // Try each relay until one succeeds
+    for (const relayUrl of relays) {
+      try {
+        await this.connectToRelay(relayUrl);
+        return; // Success!
+      } catch (error) {
+        console.log(`[NostrRelay] Failed to connect to ${relayUrl}, trying next...`);
+        lastError = error as Error;
+      }
+    }
+
+    // All relays failed
+    throw lastError || new Error('All relays failed to connect');
+  }
+
+  private async connectToRelay(relayUrl: string): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
         console.log(`[NostrRelay] Connecting to ${relayUrl}...`);
         this.ws = new WebSocketImpl(relayUrl);
 
         const timeout = setTimeout(() => {
+          if (this.ws) {
+            try { this.ws.close(); } catch {}
+          }
           reject(new Error('Connection timeout'));
-        }, 10000);
+        }, 8000);
 
         this.ws.onopen = () => {
           clearTimeout(timeout);
-          console.log('[NostrRelay] Connected to relay');
+          console.log(`[NostrRelay] Connected to relay: ${relayUrl}`);
           this.isRunning = true;
           this.subscribe();
           this.startHeartbeat();

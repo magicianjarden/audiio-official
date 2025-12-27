@@ -53,7 +53,7 @@ const platformInfo = {
   },
 };
 
-const GITHUB_RELEASES_URL = 'https://github.com/audiio/audiio/releases/latest';
+const GITHUB_RELEASES_URL = 'https://github.com/magicianjarden/audiio-official/releases/latest';
 // Remote portal hosted at /remote on same domain
 const MOBILE_REMOTE_URL = '/remote';
 
@@ -162,7 +162,7 @@ export function Download() {
               <code>
                 # Clone and build from source
                 <br />
-                git clone https://github.com/audiio/audiio.git
+                git clone https://github.com/magicianjarden/audiio-official.git
                 <br />
                 cd audiio && npm install && npm run build
               </code>

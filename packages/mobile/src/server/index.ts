@@ -11,6 +11,7 @@ import websocket from '@fastify/websocket';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import * as path from 'path';
+import * as QRCode from 'qrcode';
 import type { WebSocket } from 'ws';
 
 import { AccessManager } from './services/access-manager';
@@ -325,17 +326,39 @@ export class MobileServer {
       this.p2pManager.setAuthConfig(access.token, localUrl);
     }
 
-    // Add P2P info to access config
+    // Add P2P info to access config (set both p2p* and relay* for compatibility)
     if (this.p2pInfo) {
       access.p2pCode = this.p2pInfo.code;
       access.p2pActive = true;
+      // Also set relay* aliases for desktop UI compatibility
+      access.relayCode = this.p2pInfo.code;
+      access.relayActive = true;
+
+      // Generate QR code for remote access
+      // The URL points to the hosted remote portal with the P2P code in hash
+      const remotePortalUrl = `https://magicianjarden.github.io/audiio-official/remote/#p2p=${this.p2pInfo.code}`;
+      try {
+        access.remoteQrCode = await QRCode.toDataURL(remotePortalUrl, {
+          width: 256,
+          margin: 2,
+          color: {
+            dark: '#ffffff',
+            light: '#00000000' // Transparent background
+          },
+          errorCorrectionLevel: 'M'
+        });
+        console.log('[Mobile] Generated remote QR code for:', remotePortalUrl);
+      } catch (err) {
+        console.error('[Mobile] Failed to generate remote QR code:', err);
+      }
     }
 
     console.log('[Mobile] Generated access config:');
     console.log('[Mobile]   localUrl:', access.localUrl);
-    console.log('[Mobile]   p2pCode:', access.p2pCode);
-    console.log('[Mobile]   p2pActive:', access.p2pActive);
+    console.log('[Mobile]   p2pCode/relayCode:', access.p2pCode);
+    console.log('[Mobile]   p2pActive/relayActive:', access.p2pActive);
     console.log('[Mobile]   hasQrCode:', !!access.qrCode);
+    console.log('[Mobile]   hasRemoteQrCode:', !!access.remoteQrCode);
 
     this.options.onReady?.(access);
 

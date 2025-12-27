@@ -16792,6 +16792,61 @@ input:focus-visible {
   gap: var(--spacing-xl);
 }
 
+/* QR Code Tabs (Anywhere / Same Network) */
+.mobile-qr-tabs-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-lg);
+}
+
+.mobile-qr-tabs {
+  display: flex;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-full);
+  padding: 4px;
+  gap: 4px;
+}
+
+.mobile-qr-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mobile-qr-tab:hover {
+  color: var(--text-primary);
+}
+
+.mobile-qr-tab.active {
+  background: var(--accent);
+  color: white;
+}
+
+.mobile-qr-tabs-container .mobile-qr-card {
+  width: 200px;
+  height: 200px;
+  padding: var(--spacing-lg);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-qr-tabs-container .mobile-qr-info {
+  text-align: center;
+}
+
 .mobile-qr-container {
   display: flex;
   flex-direction: column;

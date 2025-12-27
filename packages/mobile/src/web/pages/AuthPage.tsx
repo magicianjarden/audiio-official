@@ -41,6 +41,7 @@ export function AuthPage() {
   }, [p2pStatus, p2pAuthToken, setToken, validateToken]);
 
   // Check for pairing code in URL (from QR scan on local network)
+  // Also check for P2P code in hash (from remote QR scan)
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const pairingCode = urlParams.get('pair');
@@ -50,6 +51,25 @@ export function AuthPage() {
       setIsPairingMode(true);
       setAuthMode('pairing');
       handleAutopairing(pairingCode);
+      return;
+    }
+
+    // Check for P2P code in hash (e.g., #p2p=SWIFT-EAGLE-42)
+    const hash = window.location.hash;
+    if (hash.startsWith('#p2p=')) {
+      const code = hash.substring(5); // Remove '#p2p='
+      if (code) {
+        console.log('[Auth] Found P2P code in URL hash:', code);
+        setP2PCode(code);
+        setAuthMode('p2p');
+        // Auto-connect after a short delay to ensure component is mounted
+        setTimeout(() => {
+          const name = deviceName.trim() || getDefaultDeviceName();
+          p2pConnect(code, name);
+          // Clear the hash to prevent re-connect on refresh
+          window.history.replaceState({}, '', window.location.pathname + window.location.search);
+        }, 500);
+      }
     }
   }, []);
 

@@ -19,6 +19,12 @@ export interface AccessConfig {
   p2pCode?: string;
   /** Whether P2P is active */
   p2pActive?: boolean;
+  /** Relay code (alias for p2pCode for desktop UI compatibility) */
+  relayCode?: string;
+  /** Whether relay is active (alias for p2pActive) */
+  relayActive?: boolean;
+  /** QR code for remote P2P access (encodes the connection code) */
+  remoteQrCode?: string;
 }
 
 export interface ServerConfig {
