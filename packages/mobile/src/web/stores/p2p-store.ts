@@ -86,6 +86,8 @@ interface P2PState {
   selfId: string;
   ws: WebSocket | null;
   keyPair: KeyPair;
+  authToken: string | null;
+  localUrl: string | null;
 
   // Actions
   connect: (code: string, deviceName?: string) => Promise<boolean>;
@@ -117,6 +119,8 @@ export const useP2PStore = create<P2PState>((set, get) => ({
   selfId,
   ws: null,
   keyPair,
+  authToken: null,
+  localUrl: null,
 
   connect: async (code: string, deviceName?: string) => {
     const normalizedCode = code.toUpperCase().trim();
@@ -237,7 +241,9 @@ export const useP2PStore = create<P2PState>((set, get) => ({
       connectionCode: null,
       desktopPublicKey: null,
       ws: null,
-      error: null
+      error: null,
+      authToken: null,
+      localUrl: null
     });
   },
 
@@ -345,8 +351,17 @@ function handleRelayMessage(
         );
         const data = JSON.parse(decrypted);
 
-        // Handle API responses
-        if (data.type === 'api-response') {
+        // Handle different message types
+        if (data.type === 'welcome') {
+          // Desktop sent auth info
+          console.log('[P2P] Received welcome with auth token');
+          if (data.authToken) {
+            set({ authToken: data.authToken });
+          }
+          if (data.localUrl) {
+            set({ localUrl: data.localUrl });
+          }
+        } else if (data.type === 'api-response') {
           const pending = pendingRequests.get(data.requestId);
           if (pending) {
             clearTimeout(pending.timeout);
