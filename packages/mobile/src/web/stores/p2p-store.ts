@@ -146,9 +146,12 @@ export const useP2PStore = create<P2PState>((set, get) => ({
 
       ws = await tryNextRelay();
 
+      // Socket is already connected at this point - set up handlers immediately
+      set({ ws });
+
       return new Promise((resolve) => {
         const timeout = setTimeout(() => {
-          ws.close();
+          ws!.close();
           set({
             status: 'error',
             error: 'Connection timeout. Make sure the code is correct and desktop is running.'
@@ -156,52 +159,7 @@ export const useP2PStore = create<P2PState>((set, get) => ({
           resolve(false);
         }, 15000);
 
-        ws.onopen = () => {
-          console.log('[P2P] Connected to relay');
-          set({ ws });
-
-          // Subscribe to room events
-          const subscriptionId = `sub_${randomId().substring(0, 8)}`;
-          const filter = {
-            kinds: [30078],
-            '#d': [roomId],
-            since: Math.floor(Date.now() / 1000) - 60
-          };
-          ws.send(JSON.stringify(['REQ', subscriptionId, filter]));
-
-          // Send join message
-          sendEvent(ws, roomId, {
-            type: 'join',
-            deviceName: deviceName || getDeviceName(),
-            timestamp: Date.now()
-          });
-
-          // Wait for welcome message from host
-          const checkConnection = setInterval(() => {
-            const { desktopPeerId } = get();
-            if (desktopPeerId) {
-              clearInterval(checkConnection);
-              clearTimeout(timeout);
-              set({ status: 'connected' });
-              resolve(true);
-            }
-          }, 500);
-
-          // Timeout for waiting for host
-          setTimeout(() => {
-            clearInterval(checkConnection);
-            const { desktopPeerId, status } = get();
-            if (!desktopPeerId && status === 'connecting') {
-              clearTimeout(timeout);
-              set({
-                status: 'error',
-                error: 'No desktop found with this code. Make sure the code is correct and desktop is running.'
-              });
-              resolve(false);
-            }
-          }, 12000);
-        };
-
+        // Set up message handler first (before subscribing)
         ws.onmessage = (event) => {
           handleRelayMessage(event.data, set, get);
         };
@@ -228,6 +186,51 @@ export const useP2PStore = create<P2PState>((set, get) => ({
           });
           resolve(false);
         };
+
+        // Socket already open - subscribe and join immediately
+        console.log('[P2P] Subscribing to room:', roomId);
+
+        // Subscribe to room events
+        const subscriptionId = `sub_${randomId().substring(0, 8)}`;
+        const filter = {
+          kinds: [30078],
+          '#d': [roomId],
+          since: Math.floor(Date.now() / 1000) - 60
+        };
+        ws.send(JSON.stringify(['REQ', subscriptionId, filter]));
+
+        // Send join message
+        console.log('[P2P] Sending join message');
+        sendEvent(ws, roomId, {
+          type: 'join',
+          deviceName: deviceName || getDeviceName(),
+          timestamp: Date.now()
+        });
+
+        // Wait for welcome message from host
+        const checkConnection = setInterval(() => {
+          const { desktopPeerId } = get();
+          if (desktopPeerId) {
+            clearInterval(checkConnection);
+            clearTimeout(timeout);
+            set({ status: 'connected' });
+            resolve(true);
+          }
+        }, 500);
+
+        // Timeout for waiting for host
+        setTimeout(() => {
+          clearInterval(checkConnection);
+          const { desktopPeerId, status } = get();
+          if (!desktopPeerId && status === 'connecting') {
+            clearTimeout(timeout);
+            set({
+              status: 'error',
+              error: 'No desktop found with this code. Make sure the code is correct and desktop is running.'
+            });
+            resolve(false);
+          }
+        }, 12000);
       });
     } catch (error) {
       console.error('[P2P] Connection error:', error);
@@ -380,7 +383,38 @@ function handleRelayMessage(
       const senderId = event.pubkey;
 
       // Handle message types
-      if (data.type === 'data') {
+      if (data.type === 'host-announce') {
+        // Desktop is announcing its presence - connect to it!
+        const { desktopPeerId, connectionCode, ws } = get();
+        if (!desktopPeerId && senderId) {
+          console.log('[P2P] Found desktop via announce!');
+          const update: Partial<P2PState> = {
+            desktopPeerId: senderId,
+            status: 'connected'
+          };
+          // Store auth token if provided
+          if (data.authToken) {
+            update.authToken = data.authToken;
+            console.log('[P2P] Received auth token from announce');
+          }
+          // Store local URL for API calls
+          if (data.localUrl) {
+            update.localUrl = data.localUrl;
+            console.log('[P2P] Received local URL:', data.localUrl);
+          }
+          set(update);
+
+          // Send join message to confirm we received the announce
+          if (ws && connectionCode) {
+            const roomId = `${APP_ID}:${connectionCode}`;
+            sendEvent(ws, roomId, {
+              type: 'join',
+              deviceName: getDeviceName(),
+              timestamp: Date.now()
+            });
+          }
+        }
+      } else if (data.type === 'data') {
         // Check if message is for us
         if (!data.to || data.to === selfId) {
           const payload = data.payload;

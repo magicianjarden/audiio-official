@@ -321,12 +321,37 @@ export class NostrRelay extends EventEmitter {
   }
 
   private startHeartbeat(): void {
+    // If host, announce presence immediately
+    if (this.isHost) {
+      this.announcePresence();
+    }
+
     this.heartbeatTimer = setInterval(() => {
       if (this.ws && this.ws.readyState === 1) {
         // Send a ping message to keep connection alive
         this.sendMessage({ type: 'ping', from: this.selfId });
+        // If host, also announce presence periodically
+        if (this.isHost) {
+          this.announcePresence();
+        }
       }
-    }, 30000);
+    }, 10000); // More frequent for better discovery
+  }
+
+  /**
+   * Announce host presence so mobile clients can discover us
+   */
+  private announcePresence(): void {
+    if (!this.isHost || !this.ws) return;
+
+    console.log('[NostrRelay] Announcing host presence');
+    this.sendMessage({
+      type: 'host-announce',
+      hostId: this.selfId,
+      authToken: this.config.authToken,
+      localUrl: this.config.localUrl,
+      timestamp: Date.now()
+    });
   }
 
   private subscribe(): void {
