@@ -334,19 +334,18 @@ export class NostrRelay extends EventEmitter {
   private startHeartbeat(): void {
     // If host, announce presence immediately
     if (this.isHost) {
+      console.log('[NostrRelay] Announcing host presence');
       this.announcePresence();
     }
 
     this.heartbeatTimer = setInterval(() => {
       if (this.ws && this.ws.readyState === 1) {
-        // Send a ping message to keep connection alive
-        this.sendMessage({ type: 'ping', from: this.publicKey });
-        // If host, also announce presence periodically
+        // If host, announce presence periodically (for peer discovery)
         if (this.isHost) {
           this.announcePresence();
         }
       }
-    }, 10000); // More frequent for better discovery
+    }, 30000); // Every 30 seconds for discovery, less aggressive
   }
 
   /**
@@ -355,7 +354,7 @@ export class NostrRelay extends EventEmitter {
   private announcePresence(): void {
     if (!this.isHost || !this.ws) return;
 
-    console.log('[NostrRelay] Announcing host presence');
+    // Don't log every announce - too noisy
     this.sendMessage({
       type: 'host-announce',
       hostId: this.publicKey,
