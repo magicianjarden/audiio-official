@@ -219,4 +219,64 @@ export class AddonRegistry {
   has(addonId: string): boolean {
     return this.addons.has(addonId);
   }
+
+  /**
+   * Check if an addon is enabled
+   */
+  isEnabled(addonId: string): boolean {
+    return this.addons.get(addonId)?.enabled ?? false;
+  }
+
+  /**
+   * Get addon info regardless of enabled state (for UI display)
+   */
+  getAddonInfo(addonId: string): {
+    id: string;
+    name: string;
+    description?: string;
+    version?: string;
+    roles: AddonRole[];
+    enabled: boolean;
+    priority?: number;
+  } | null {
+    const registered = this.addons.get(addonId);
+    if (!registered) return null;
+
+    const { manifest } = registered.addon;
+    return {
+      id: manifest.id,
+      name: manifest.name,
+      description: manifest.description,
+      version: manifest.version,
+      roles: manifest.roles,
+      enabled: registered.enabled,
+      priority: registered.userPriority ?? (registered.addon as MetadataProvider).priority,
+    };
+  }
+
+  /**
+   * Get all addon info (for UI display)
+   */
+  getAllAddonInfo(): Array<{
+    id: string;
+    name: string;
+    description?: string;
+    version?: string;
+    roles: AddonRole[];
+    enabled: boolean;
+    priority?: number;
+  }> {
+    return Array.from(this.addons.entries()).map(([_id, registered]) => {
+      const { manifest } = registered.addon;
+      return {
+        id: manifest.id,
+        name: manifest.name,
+        description: manifest.description,
+        version: manifest.version,
+        roles: manifest.roles,
+        enabled: registered.enabled,
+        priority: registered.userPriority ?? (registered.addon as MetadataProvider).priority,
+      };
+    });
+  }
 }

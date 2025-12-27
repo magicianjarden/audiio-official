@@ -121,7 +121,20 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
-  padding: var(--spacing-sm) 0;
+  padding: var(--spacing-sm);
+  margin: 0 calc(-1 * var(--spacing-sm));
+  background: none;
+  border: none;
+  width: calc(100% + var(--spacing-md));
+  text-align: left;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: background 0.15s;
+}
+
+.artistItem:active {
+  background: var(--color-bg-hover);
 }
 
 .artistAvatar {
@@ -161,7 +174,20 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
-  padding: var(--spacing-sm) 0;
+  padding: var(--spacing-sm);
+  margin: 0 calc(-1 * var(--spacing-sm));
+  background: none;
+  border: none;
+  width: calc(100% + var(--spacing-md));
+  text-align: left;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: background 0.15s;
+}
+
+.albumItem:active {
+  background: var(--color-bg-hover);
 }
 
 .albumArtwork {

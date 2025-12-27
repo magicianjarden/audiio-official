@@ -23,11 +23,14 @@ import {
   RepeatOneIcon,
   QueueIcon,
   LyricsIcon
-} from '../Icons/Icons';
+} from '@audiio/icons';
+import { useKaraoke } from '../../hooks/useKaraoke';
+import { useKaraokeAudio } from '../../hooks/useKaraokeAudio';
 
 export const Player: React.FC = () => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const playPromiseRef = useRef<Promise<void> | null>(null);
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
   const {
     currentTrack,
     isPlaying,
@@ -54,6 +57,25 @@ export const Player: React.FC = () => {
   const { isQueueOpen, toggleQueue, expandPlayer, isLyricsPanelOpen, toggleLyricsPanel } = useUIStore();
   const { recordListen } = useRecommendationStore();
   const { openAlbum, openArtist } = useNavigationStore();
+
+  // Karaoke mode - processes track and provides instrumental URL
+  const { isAvailable: karaokeAvailable, isEnabled: karaokeEnabled, isProcessing: karaokeProcessing, instrumentalUrl } = useKaraoke({
+    trackId: currentTrack?.id || null,
+    audioUrl: currentTrack?.streamInfo?.url || null
+  });
+
+  // Real-time audio mixing for karaoke (dual-source approach like Apple Music)
+  useKaraokeAudio({
+    originalAudio: audioElement,
+    instrumentalUrl,
+    isEnabled: karaokeEnabled && !!instrumentalUrl
+  });
+
+  // Capture audio element ref after mount
+  const audioRefCallback = useCallback((node: HTMLAudioElement | null) => {
+    audioRef.current = node;
+    setAudioElement(node);
+  }, []);
 
 
   // Track listen start time for analytics
@@ -118,19 +140,22 @@ export const Player: React.FC = () => {
   }, [volume, isMuted]);
 
   // Load new track - only when URL changes
+  // With karaoke, we always play original and mix with instrumental via Web Audio
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !currentTrack?.streamInfo) return;
 
-    // Only set src when URL actually changes to avoid resetting playback position
-    if (audio.src !== currentTrack.streamInfo.url) {
-      audio.src = currentTrack.streamInfo.url;
-      // Auto-play when a new track is loaded and isPlaying is true
-      if (isPlaying) {
+    const targetUrl = currentTrack.streamInfo.url;
+
+    // Only set src when URL actually changes
+    if (audio.src !== targetUrl) {
+      const wasPlaying = !audio.paused;
+      audio.src = targetUrl;
+      if (isPlaying || wasPlaying) {
         safePlay(audio);
       }
     }
-  }, [currentTrack?.streamInfo?.url, safePlay]);
+  }, [currentTrack?.streamInfo?.url, isPlaying, safePlay]);
 
   // Track listening analytics
   useEffect(() => {
@@ -327,7 +352,8 @@ export const Player: React.FC = () => {
   return (
     <div className="player">
       <audio
-        ref={audioRef}
+        ref={audioRefCallback}
+        crossOrigin="anonymous"
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
         onError={handleError}

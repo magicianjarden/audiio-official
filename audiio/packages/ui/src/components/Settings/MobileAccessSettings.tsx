@@ -14,6 +14,9 @@ interface AccessConfig {
   tunnelPassword?: string;
   qrCode?: string;
   createdAt: number;
+  relayCode?: string;
+  relayPublicKey?: string;
+  relayActive?: boolean;
 }
 
 interface MobileSession {
@@ -38,6 +41,12 @@ interface AuthSettings {
   requirePasswordEveryTime: boolean;
 }
 
+interface DeviceApprovalRequest {
+  id: string;
+  deviceName: string;
+  userAgent: string;
+}
+
 interface MobileAccessState {
   isEnabled: boolean;
   isLoading: boolean;
@@ -51,6 +60,7 @@ interface MobileAccessState {
   showCustomPasswordForm: boolean;
   customPassword: string;
   customPasswordError: string | null;
+  pendingApproval: DeviceApprovalRequest | null;
 }
 
 // ========================================
@@ -131,6 +141,61 @@ const PrivacyNotice: React.FC<PrivacyNoticeProps> = ({ onAccept, onDecline }) =>
 };
 
 // ========================================
+// Device Approval Dialog
+// ========================================
+
+interface DeviceApprovalDialogProps {
+  request: DeviceApprovalRequest;
+  onApprove: () => void;
+  onDeny: () => void;
+}
+
+const DeviceApprovalDialog: React.FC<DeviceApprovalDialogProps> = ({ request, onApprove, onDeny }) => {
+  return (
+    <div className="mobile-approval-overlay">
+      <div className="mobile-approval-modal">
+        <div className="mobile-approval-icon">
+          <MobileIcon size={48} />
+        </div>
+
+        <h2 className="mobile-approval-title">New Device</h2>
+        <p className="mobile-approval-subtitle">
+          A device wants to connect
+        </p>
+
+        <div className="mobile-approval-device">
+          <div className="mobile-approval-device-name">{request.deviceName}</div>
+          <div className="mobile-approval-device-hint">
+            This device scanned your QR code
+          </div>
+        </div>
+
+        <div className="mobile-approval-actions">
+          <button
+            className="mobile-approval-btn mobile-approval-btn-approve"
+            onClick={onApprove}
+          >
+            <CheckIcon size={18} />
+            Allow Connection
+          </button>
+          <button
+            className="mobile-approval-btn mobile-approval-btn-deny"
+            onClick={onDeny}
+          >
+            Deny
+          </button>
+        </div>
+
+        <p className="mobile-approval-note">
+          Approved devices can stream your music library.
+          You can revoke access anytime from Device Management.
+        </p>
+      </div>
+    </div>
+  );
+};
+
+// ========================================
 // QR Code Display
 // ========================================
 
@@ -180,7 +245,10 @@ const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ qrCode, url, isRemote, tu
 
       <div className="mobile-qr-info">
         <p className="mobile-qr-instruction">
-          Scan with your phone's camera
+          Scan with your phone's camera to connect instantly
+        </p>
+        <p className="mobile-qr-hint">
+          One-time setup - your device will be remembered
         </p>
         <div className="mobile-qr-url-row">
           <span className="mobile-qr-badge">
@@ -220,6 +288,63 @@ const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ qrCode, url, isRemote, tu
           </div>
         )}
       </div>
+    </div>
+  );
+};
+
+// ========================================
+// Relay Code Display
+// ========================================
+
+interface RelayCodeDisplayProps {
+  code: string;
+  isActive: boolean;
+}
+
+const RelayCodeDisplay: React.FC<RelayCodeDisplayProps> = ({ code, isActive }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for older browsers
+    }
+  };
+
+  if (!code) return null;
+
+  return (
+    <div className="mobile-relay-container">
+      <div className="mobile-relay-header">
+        <div className="mobile-relay-status">
+          <span className={`mobile-relay-indicator ${isActive ? 'active' : ''}`} />
+          <span>Relay {isActive ? 'Active' : 'Connecting...'}</span>
+        </div>
+        <LinkIcon size={16} />
+      </div>
+
+      <div className="mobile-relay-code-card">
+        <div className="mobile-relay-code">
+          {code.split('-').map((part, idx) => (
+            <React.Fragment key={idx}>
+              {idx > 0 && <span className="mobile-relay-separator">-</span>}
+              <span className="mobile-relay-code-part">{part}</span>
+            </React.Fragment>
+          ))}
+        </div>
+        <button className="mobile-relay-copy" onClick={handleCopy}>
+          {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+          {copied ? 'Copied!' : 'Copy'}
+        </button>
+      </div>
+
+      <p className="mobile-relay-hint">
+        Enter this code on your mobile device to connect from anywhere.
+        Works across different networks - no need to be on the same WiFi.
+      </p>
     </div>
   );
 };
@@ -616,12 +741,13 @@ export const MobileAccessSettings: React.FC = () => {
     authorizedDevices: [],
     authSettings: {
       useCustomPassword: false,
-      defaultExpirationDays: 30,
+      defaultExpirationDays: null, // Never expires by default
       requirePasswordEveryTime: false
     },
     showCustomPasswordForm: false,
     customPassword: '',
-    customPasswordError: null
+    customPasswordError: null,
+    pendingApproval: null
   });
 
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -637,6 +763,45 @@ export const MobileAccessSettings: React.FC = () => {
       loadAuthData();
     }
   }, [state.isEnabled]);
+
+  // Listen for device approval requests
+  useEffect(() => {
+    // @ts-ignore - API exposed via preload
+    const unsubscribe = window.api?.onMobileDeviceApprovalRequest?.((request: DeviceApprovalRequest) => {
+      console.log('[MobileAccess] Device approval request:', request);
+      setState(prev => ({ ...prev, pendingApproval: request }));
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
+
+  const handleApproveDevice = async () => {
+    if (!state.pendingApproval) return;
+
+    try {
+      // @ts-ignore - API exposed via preload
+      await window.api?.approveMobileDevice?.(state.pendingApproval.id);
+      setState(prev => ({ ...prev, pendingApproval: null }));
+      // Reload devices to show the new one
+      loadAuthData();
+    } catch (err) {
+      console.error('[MobileAccess] Error approving device:', err);
+    }
+  };
+
+  const handleDenyDevice = async () => {
+    if (!state.pendingApproval) return;
+
+    try {
+      // @ts-ignore - API exposed via preload
+      await window.api?.denyMobileDevice?.(state.pendingApproval.id);
+      setState(prev => ({ ...prev, pendingApproval: null }));
+    } catch (err) {
+      console.error('[MobileAccess] Error denying device:', err);
+    }
+  };
 
   const loadMobileStatus = async () => {
     console.log('[MobileAccess] Loading status...');
@@ -946,6 +1111,15 @@ export const MobileAccessSettings: React.FC = () => {
         <PrivacyNotice onAccept={handlePrivacyAccept} onDecline={handlePrivacyDecline} />
       )}
 
+      {/* Device Approval Dialog */}
+      {state.pendingApproval && (
+        <DeviceApprovalDialog
+          request={state.pendingApproval}
+          onApprove={handleApproveDevice}
+          onDeny={handleDenyDevice}
+        />
+      )}
+
       {/* Header */}
       <div className="mobile-access-header">
         <div className="mobile-access-header-icon">
@@ -969,6 +1143,14 @@ export const MobileAccessSettings: React.FC = () => {
       {/* Content - only show when enabled */}
       {state.isEnabled && state.accessConfig && (
         <div className="mobile-access-content">
+          {/* Relay Code Section - Primary connection method */}
+          {state.accessConfig.relayCode && (
+            <RelayCodeDisplay
+              code={state.accessConfig.relayCode}
+              isActive={state.accessConfig.relayActive || false}
+            />
+          )}
+
           {/* QR Code Section */}
           <QRCodeDisplay
             qrCode={state.accessConfig.qrCode || ''}
@@ -977,7 +1159,8 @@ export const MobileAccessSettings: React.FC = () => {
             tunnelPassword={state.accessConfig.tunnelPassword}
           />
 
-          {/* Remote Access Option */}
+          {/* Remote Access Option - Only show if relay not active */}
+          {!state.accessConfig.relayActive && (
           <div className="mobile-access-option">
             <div className="mobile-access-option-info">
               <div className="mobile-access-option-row">
@@ -999,6 +1182,7 @@ export const MobileAccessSettings: React.FC = () => {
               <span className="mobile-access-toggle-slider" />
             </label>
           </div>
+          )}
 
           {/* Passphrase Section */}
           {state.showCustomPasswordForm ? (
@@ -1165,6 +1349,12 @@ const EyeIcon: React.FC<{ size: number }> = ({ size }) => (
 const EyeOffIcon: React.FC<{ size: number }> = ({ size }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
     <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
+  </svg>
+);
+
+const LinkIcon: React.FC<{ size: number }> = ({ size }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
   </svg>
 );
 

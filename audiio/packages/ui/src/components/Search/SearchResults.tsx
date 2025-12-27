@@ -4,7 +4,7 @@ import { usePlayerStore } from '../../stores/player-store';
 import { useNavigationStore } from '../../stores/navigation-store';
 import { useTrackContextMenu, useArtistContextMenu, useAlbumContextMenu } from '../../contexts/ContextMenuContext';
 import { TrackRow } from '../TrackRow/TrackRow';
-import { MusicNoteIcon, PlayIcon, ChevronRightIcon } from '../Icons/Icons';
+import { MusicNoteIcon, PlayIcon, ChevronRightIcon } from '@audiio/icons';
 import type { UnifiedTrack } from '@audiio/core';
 
 interface ArtistCardProps {

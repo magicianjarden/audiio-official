@@ -51,6 +51,7 @@ export interface Playlist {
 interface LibraryState {
   // Data
   likedTracks: Track[];
+  dislikedTracks: Track[];
   playlists: Playlist[];
   dislikedTrackIds: string[];
 
@@ -92,6 +93,7 @@ export const useLibraryStore = create<LibraryState>()(
     (set, get) => ({
       // Initial state
       likedTracks: [],
+      dislikedTracks: [],
       playlists: [],
       dislikedTrackIds: [],
       isLoading: false,
@@ -107,17 +109,21 @@ export const useLibraryStore = create<LibraryState>()(
         set({ isLoading: true, error: null });
 
         try {
-          // Fetch likes and playlists in parallel
-          const [likesRes, playlistsRes] = await Promise.all([
+          // Fetch likes, dislikes, and playlists in parallel
+          const [likesRes, dislikesRes, playlistsRes] = await Promise.all([
             tunnelFetch('/api/library/likes'),
+            tunnelFetch('/api/library/dislikes'),
             tunnelFetch('/api/library/playlists')
           ]);
 
           const likesData = await likesRes.json();
+          const dislikesData = await dislikesRes.json();
           const playlistsData = await playlistsRes.json();
 
           set({
             likedTracks: likesData.tracks || [],
+            dislikedTracks: dislikesData.tracks || [],
+            dislikedTrackIds: (dislikesData.tracks || []).map((t: Track) => t.id),
             playlists: playlistsData.playlists || [],
             isSynced: likesData.synced && playlistsData.synced,
             lastSyncAt: Date.now(),
@@ -208,8 +214,12 @@ export const useLibraryStore = create<LibraryState>()(
       // Dislike a track
       dislikeTrack: async (track, reasons) => {
         const currentDislikes = get().dislikedTrackIds;
+        const currentDislikedTracks = get().dislikedTracks;
         if (!currentDislikes.includes(track.id)) {
-          set({ dislikedTrackIds: [...currentDislikes, track.id] });
+          set({
+            dislikedTrackIds: [...currentDislikes, track.id],
+            dislikedTracks: [...currentDislikedTracks, track]
+          });
         }
 
         try {
@@ -222,7 +232,10 @@ export const useLibraryStore = create<LibraryState>()(
           return response.ok;
         } catch (error) {
           console.error('[LibraryStore] Dislike error:', error);
-          set({ dislikedTrackIds: currentDislikes });
+          set({
+            dislikedTrackIds: currentDislikes,
+            dislikedTracks: currentDislikedTracks
+          });
           return false;
         }
       },
@@ -230,7 +243,11 @@ export const useLibraryStore = create<LibraryState>()(
       // Remove dislike
       removeDislike: async (trackId) => {
         const currentDislikes = get().dislikedTrackIds;
-        set({ dislikedTrackIds: currentDislikes.filter(id => id !== trackId) });
+        const currentDislikedTracks = get().dislikedTracks;
+        set({
+          dislikedTrackIds: currentDislikes.filter(id => id !== trackId),
+          dislikedTracks: currentDislikedTracks.filter(t => t.id !== trackId)
+        });
 
         try {
           const response = await tunnelFetch(`/api/library/dislikes/${trackId}`, {
@@ -238,14 +255,20 @@ export const useLibraryStore = create<LibraryState>()(
           });
 
           if (!response.ok) {
-            set({ dislikedTrackIds: currentDislikes });
+            set({
+              dislikedTrackIds: currentDislikes,
+              dislikedTracks: currentDislikedTracks
+            });
             return false;
           }
 
           return true;
         } catch (error) {
           console.error('[LibraryStore] Remove dislike error:', error);
-          set({ dislikedTrackIds: currentDislikes });
+          set({
+            dislikedTrackIds: currentDislikes,
+            dislikedTracks: currentDislikedTracks
+          });
           return false;
         }
       },
@@ -429,6 +452,7 @@ export const useLibraryStore = create<LibraryState>()(
       name: 'audiio-mobile-library',
       partialize: (state) => ({
         likedTracks: state.likedTracks,
+        dislikedTracks: state.dislikedTracks,
         playlists: state.playlists,
         dislikedTrackIds: state.dislikedTrackIds,
         lastSyncAt: state.lastSyncAt

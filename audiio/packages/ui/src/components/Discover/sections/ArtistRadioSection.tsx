@@ -3,13 +3,14 @@
  * Uses ML ranking for intelligent track ordering
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import { TrackCard } from '../TrackCard';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { useMLRanking } from '../../../hooks';
+import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
 import type { BaseSectionProps } from '../section-registry';
+import { debugLog } from '../../../utils/debug';
 
 export interface ArtistRadioSectionProps extends BaseSectionProps {
   artistName?: string;
@@ -24,81 +25,52 @@ export const ArtistRadioSection: React.FC<ArtistRadioSectionProps> = ({
   onSeeAll,
   maxItems = 10,
 }) => {
-  const [tracks, setTracks] = useState<UnifiedTrack[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [artistName, setArtistName] = useState<string>('');
   const { play, setQueue } = usePlayerStore();
   const { showContextMenu } = useTrackContextMenu();
-  const { rankTracks } = useMLRanking();
 
-  useEffect(() => {
-    let mounted = true;
+  // Embedding-based playlist generation
+  const {
+    generateArtistRadio,
+    getTracksFromPlaylist,
+    isReady: embeddingReady,
+    tracksIndexed,
+  } = useEmbeddingPlaylist();
 
-    const fetchArtistRadio = async () => {
-      setIsLoading(true);
+  // Get top artist from context
+  const topArtist = context?.topArtists?.[0];
+  const artistId = topArtist?.toLowerCase().replace(/\s+/g, '-');
+  const artistName = topArtist || '';
 
-      // Get top artist from context
-      const topArtist = context?.topArtists?.[0];
-      if (!topArtist) {
-        setIsLoading(false);
-        return;
-      }
+  // Use embedding-based generation only
+  const tracks = useMemo(() => {
+    if (!artistId) {
+      return [];
+    }
 
-      setArtistName(topArtist);
+    if (!embeddingReady) {
+      debugLog('[ArtistRadio]', 'Embedding not ready');
+      return [];
+    }
 
-      try {
-        let fetchedTracks: UnifiedTrack[] = [];
+    if (tracksIndexed < 1) {
+      debugLog('[ArtistRadio]', 'No tracks indexed');
+      return [];
+    }
 
-        // Try getRecommendedTracks API first
-        if (window.api?.getRecommendedTracks) {
-          const recommended = await window.api.getRecommendedTracks('artist', topArtist);
-          if (recommended?.length > 0) {
-            fetchedTracks = recommended;
-          }
-        }
+    const playlist = generateArtistRadio(artistId, { limit: maxItems });
+    if (!playlist || playlist.tracks.length === 0) {
+      debugLog('[ArtistRadio]', `No tracks for artist "${topArtist}"`);
+      return [];
+    }
 
-        // Fallback to search
-        if (fetchedTracks.length === 0 && window.api?.search) {
-          const searchQuery = `${topArtist} similar music style`;
-          const results = await window.api.search({ query: searchQuery, type: 'track' });
-          // Filter out tracks by the same artist for variety
-          fetchedTracks = (results || []).filter(track =>
-            !track.artists.some(a => a.name.toLowerCase() === topArtist.toLowerCase())
-          );
-        }
+    debugLog(
+      '[ArtistRadio]',
+      `Generated "${topArtist}" radio: ${playlist.tracks.length} tracks (indexed: ${tracksIndexed})`
+    );
+    return getTracksFromPlaylist(playlist);
+  }, [artistId, embeddingReady, tracksIndexed, maxItems, generateArtistRadio, getTracksFromPlaylist, topArtist]);
 
-        if (!mounted || fetchedTracks.length === 0) {
-          if (mounted) setIsLoading(false);
-          return;
-        }
-
-        // Apply ML ranking with balanced exploration for artist radio
-        const ranked = await rankTracks(fetchedTracks, {
-          enabled: true,
-          explorationMode: 'balanced',
-          limit: maxItems,
-          shuffle: true,
-          shuffleIntensity: 0.2 // Good variety for radio-style section
-        });
-
-        if (mounted) {
-          setTracks(ranked.map(r => r.track));
-        }
-      } catch (error) {
-        console.error('[ArtistRadioSection] Failed to fetch:', error);
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    fetchArtistRadio();
-
-    return () => {
-      mounted = false;
-    };
-  }, [context?.topArtists, maxItems, rankTracks]);
+  const isLoading = artistId && !embeddingReady;
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     setQueue(tracks, index);

@@ -6,6 +6,8 @@ import React, { useState } from 'react';
 import { useThemeStore, type SystemMode, type ThemeConfig } from '../../stores/theme-store';
 import { ThemeEditorModal } from './ThemeEditorModal';
 import { MobileAccessSettings } from './MobileAccessSettings';
+import { StorageSettings } from './StorageSettings';
+import { AudioSettings } from './AudioSettings';
 import { fetchThemeFromGitHub } from '../../utils/theme-utils';
 import {
   SettingsIcon,
@@ -21,7 +23,9 @@ import {
   EditIcon,
   GitHubIcon,
   LoadingIcon,
-} from '../Icons/Icons';
+  FolderIcon,
+  MusicNoteIcon,
+} from '@audiio/icons';
 
 // ========================================
 // Theme Preview Card
@@ -181,7 +185,7 @@ const ModeToggle: React.FC<ModeToggleProps> = ({ currentMode, onChange }) => {
 // Settings Tabs
 // ========================================
 
-type SettingsTab = 'appearance' | 'mobile';
+type SettingsTab = 'appearance' | 'audio' | 'storage' | 'mobile';
 
 // ========================================
 // Settings View
@@ -305,6 +309,20 @@ export const SettingsView: React.FC = () => {
         >
           <PaletteIcon size={18} />
           <span>Appearance</span>
+        </button>
+        <button
+          className={`settings-tab ${activeTab === 'audio' ? 'active' : ''}`}
+          onClick={() => setActiveTab('audio')}
+        >
+          <MusicNoteIcon size={18} />
+          <span>Audio</span>
+        </button>
+        <button
+          className={`settings-tab ${activeTab === 'storage' ? 'active' : ''}`}
+          onClick={() => setActiveTab('storage')}
+        >
+          <FolderIcon size={18} />
+          <span>Storage</span>
         </button>
         <button
           className={`settings-tab ${activeTab === 'mobile' ? 'active' : ''}`}
@@ -432,6 +450,34 @@ export const SettingsView: React.FC = () => {
             </button>
           </div>
         </section>
+        )}
+
+        {/* Audio Tab */}
+        {activeTab === 'audio' && (
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <MusicNoteIcon size={20} />
+              <h2>Audio & Playback</h2>
+            </div>
+            <p className="settings-section-description">
+              Configure audio processing, vocal removal, crossfade, and other playback settings.
+            </p>
+            <AudioSettings />
+          </section>
+        )}
+
+        {/* Storage Tab */}
+        {activeTab === 'storage' && (
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <FolderIcon size={20} />
+              <h2>Storage & Local Music</h2>
+            </div>
+            <p className="settings-section-description">
+              Configure where downloads are saved, add local music folders, and manage plugin installation.
+            </p>
+            <StorageSettings />
+          </section>
         )}
 
         {/* Mobile Tab */}

@@ -12,10 +12,12 @@
   },
   "dependencies": {
     "@audiio/core": "*",
+    "@audiio/icons": "*",
     "@dnd-kit/core": "^6.1.0",
     "@dnd-kit/sortable": "^8.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@tensorflow/tfjs": "^4.17.0",
+    "fuse.js": "^7.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^5.0.2"

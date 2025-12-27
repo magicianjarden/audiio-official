@@ -31,7 +31,19 @@ export type SectionType =
   | 'genre-explorer'
   | 'weekly-rotation'
   | 'banner'
-  | 'masonry';
+  | 'masonry'
+  // New personalized sections
+  | 'time-greeting'
+  | 'on-repeat'
+  | 'discover-weekly'
+  | 'top-mix'
+  | 'rediscover'
+  | 'activity'
+  | 'decade-mix'
+  | 'seasonal'
+  | 'blind-picks'
+  | 'similar-artists'
+  | 'mood-playlist';
 
 // Context passed to selection algorithm and sections
 export interface SelectionContext {

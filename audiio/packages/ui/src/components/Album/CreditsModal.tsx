@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { CloseIcon } from '../Icons/Icons';
+import { CloseIcon } from '@audiio/icons';
 import type { AlbumCredits } from '@audiio/core';
 
 interface CreditsModalProps {

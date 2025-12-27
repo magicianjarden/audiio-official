@@ -10,7 +10,7 @@ import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
 import { useRecommendationStore, calculateTrackMood, type EnergyLevel } from '../../../stores/recommendation-store';
 import { BaseSectionWrapper, useSectionTracks } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
-import { PlayIcon, MusicNoteIcon } from '../../Icons/Icons';
+import { PlayIcon, MusicNoteIcon } from '@audiio/icons';
 
 export interface MoodGradientSectionProps extends BaseSectionProps {
   tracks?: UnifiedTrack[];

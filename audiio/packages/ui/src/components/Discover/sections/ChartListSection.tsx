@@ -7,8 +7,9 @@ import React, { useState, useEffect } from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { MusicNoteIcon } from '../../Icons/Icons';
+import { MusicNoteIcon } from '@audiio/icons';
 import type { BaseSectionProps } from '../section-registry';
+import { debugError } from '../../../utils/debug';
 
 export interface ChartListSectionProps extends BaseSectionProps {
   maxItems?: number;
@@ -62,7 +63,7 @@ export const ChartListSection: React.FC<ChartListSectionProps> = ({
           }
         }
       } catch (error) {
-        console.error('[ChartListSection] Failed to fetch:', error);
+        debugError('[ChartListSection]', 'Failed to fetch:', error);
       } finally {
         if (mounted) {
           setIsLoading(false);

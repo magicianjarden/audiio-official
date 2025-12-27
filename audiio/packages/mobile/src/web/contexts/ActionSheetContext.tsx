@@ -3,6 +3,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { TrackActionSheet } from '../components/TrackActionSheet';
 import { DislikeModal } from '../components/DislikeModal';
 import { usePlayerStore } from '../stores/player-store';
@@ -23,6 +24,7 @@ interface ActionSheetProviderProps {
 }
 
 export function ActionSheetProvider({ children, onAddToPlaylist }: ActionSheetProviderProps) {
+  const navigate = useNavigate();
   const [activeTrack, setActiveTrack] = useState<UnifiedTrack | null>(null);
   const [showTrackSheet, setShowTrackSheet] = useState(false);
   const [showDislikeModal, setShowDislikeModal] = useState(false);
@@ -91,6 +93,22 @@ export function ActionSheetProvider({ children, onAddToPlaylist }: ActionSheetPr
     setActiveTrack(null);
   }, []);
 
+  const handleGoToArtist = useCallback((track: UnifiedTrack) => {
+    const artist = track.artists?.[0];
+    if (artist) {
+      hideActions();
+      navigate(`/artist/${artist.id}?name=${encodeURIComponent(artist.name)}&source=${track.source || 'deezer'}`);
+    }
+  }, [navigate, hideActions]);
+
+  const handleGoToAlbum = useCallback((track: UnifiedTrack) => {
+    const album = track.album;
+    if (album) {
+      hideActions();
+      navigate(`/album/${album.id}?name=${encodeURIComponent(album.name || album.title || '')}&source=${track.source || 'deezer'}`);
+    }
+  }, [navigate, hideActions]);
+
   const isTrackLiked = activeTrack ? libraryStore.isLiked(activeTrack.id) : false;
 
   return (
@@ -108,6 +126,8 @@ export function ActionSheetProvider({ children, onAddToPlaylist }: ActionSheetPr
         onLike={handleLike}
         onUnlike={handleUnlike}
         onDislike={handleDislike}
+        onGoToArtist={handleGoToArtist}
+        onGoToAlbum={handleGoToAlbum}
       />
       <DislikeModal
         isOpen={showDislikeModal}

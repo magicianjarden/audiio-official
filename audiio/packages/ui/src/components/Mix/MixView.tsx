@@ -12,7 +12,7 @@ import {
   PlayIcon,
   ShuffleIcon,
   MusicNoteIcon,
-} from '../Icons/Icons';
+} from '@audiio/icons';
 
 export const MixView: React.FC = () => {
   const { selectedMixData, goBack } = useNavigationStore();

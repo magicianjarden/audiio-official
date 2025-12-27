@@ -2,7 +2,7 @@
  * @audiio/mobile - Server Entry Point
  *
  * Creates a personal streaming server that can be accessed
- * from mobile devices on local network or via secure tunnel.
+ * from mobile devices on local network or via P2P (anywhere).
  */
 
 import Fastify from 'fastify';
@@ -11,10 +11,11 @@ import websocket from '@fastify/websocket';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import * as path from 'path';
+import type { WebSocket } from 'ws';
 
 import { AccessManager } from './services/access-manager';
 import { SessionManager } from './services/session-manager';
-import { TunnelManager } from './tunnel/tunnel-manager';
+import { P2PManager, type P2PPeer } from './services/p2p-manager';
 import { registerApiRoutes } from './api/routes';
 import { authMiddleware } from './middleware/auth';
 import type { ServerConfig, AccessConfig } from '../shared/types';
@@ -36,6 +37,8 @@ export interface MobileServerOptions {
     authManager?: unknown;
     /** Library bridge for syncing likes/playlists with desktop */
     libraryBridge?: unknown;
+    /** ML service for recommendations and audio features (optional) */
+    mlService?: unknown;
   };
 }
 
@@ -44,17 +47,87 @@ export class MobileServer {
   private config: ServerConfig;
   private accessManager: AccessManager;
   private sessionManager: SessionManager;
-  private tunnelManager: TunnelManager;
+  private p2pManager: P2PManager;
   private isRunning = false;
   private webDistPath: string;
+  private p2pInfo: { code: string } | null = null;
+  private p2pApprovalCallback?: (peer: P2PPeer) => void;
+  private cleanupInterval: NodeJS.Timeout | null = null;
+
+  // Session cleanup interval (1 minute)
+  private readonly CLEANUP_INTERVAL = 60 * 1000;
 
   constructor(private options: MobileServerOptions = {}) {
     this.config = { ...DEFAULT_SERVER_CONFIG, ...options.config };
     this.accessManager = new AccessManager();
     this.sessionManager = new SessionManager();
-    this.tunnelManager = new TunnelManager(this.config.tunnelProvider);
+    this.p2pManager = new P2PManager();
     // __dirname is dist/server/server, web is at dist/web, so go up two levels
     this.webDistPath = path.join(__dirname, '../../web');
+
+    // Set up P2P event handlers
+    this.setupP2PHandlers();
+  }
+
+  /**
+   * Set up event handlers for P2P connections
+   */
+  private setupP2PHandlers(): void {
+    this.p2pManager.on('peer-joined', (peer: P2PPeer) => {
+      console.log(`[Mobile] P2P peer connected: ${peer.deviceName}`);
+      if (this.p2pApprovalCallback) {
+        this.p2pApprovalCallback(peer);
+      }
+    });
+
+    this.p2pManager.on('peer-updated', (peer: P2PPeer) => {
+      console.log(`[Mobile] P2P peer identified: ${peer.deviceName}`);
+    });
+
+    this.p2pManager.on('peer-left', (peerId: string) => {
+      console.log(`[Mobile] P2P peer disconnected: ${peerId}`);
+    });
+
+    this.p2pManager.on('message', (peerId: string, message: unknown) => {
+      console.log(`[Mobile] P2P message from ${peerId}:`, message);
+      this.handleP2PMessage(peerId, message);
+    });
+  }
+
+  /**
+   * Handle messages received via P2P
+   */
+  private handleP2PMessage(peerId: string, message: unknown): void {
+    const msg = message as { type: string; payload?: unknown; requestId?: string };
+
+    switch (msg.type) {
+      case 'api-request':
+        this.handleP2PApiRequest(peerId, msg);
+        break;
+      case 'playback-command':
+        this.handleP2PPlaybackCommand(peerId, msg);
+        break;
+      default:
+        console.log(`[Mobile] Unknown P2P message type: ${msg.type}`);
+    }
+  }
+
+  private handleP2PApiRequest(peerId: string, msg: { requestId?: string; payload?: unknown }): void {
+    // Process API request and send response back via P2P
+    this.p2pManager.send({
+      type: 'api-response',
+      requestId: msg.requestId,
+      success: true
+    }, peerId);
+  }
+
+  private handleP2PPlaybackCommand(peerId: string, msg: { requestId?: string; payload?: unknown }): void {
+    // Forward playback commands to desktop playback orchestrator
+    this.p2pManager.send({
+      type: 'command-ack',
+      requestId: msg.requestId,
+      success: true
+    }, peerId);
   }
 
   /**
@@ -66,7 +139,7 @@ export class MobileServer {
       origin: true,
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'Bypass-Tunnel-Reminder']
+      allowedHeaders: ['Content-Type', 'Authorization']
     });
 
     // Rate limiting
@@ -214,40 +287,65 @@ export class MobileServer {
     this.isRunning = true;
     this.config.port = actualPort; // Update config with actual port
 
+    // Start session cleanup interval
+    this.cleanupInterval = setInterval(() => {
+      const cleaned = this.sessionManager.cleanupStale();
+      if (cleaned > 0) {
+        console.log(`[Mobile] Cleaned up ${cleaned} stale sessions`);
+      }
+    }, this.CLEANUP_INTERVAL);
+
     // Generate access config
     const localUrl = `http://${getLocalIP()}:${actualPort}`;
-    let tunnelUrl: string | undefined;
-    let tunnelPassword: string | undefined;
 
-    // Start tunnel if enabled
-    if (this.config.enableTunnel) {
-      try {
-        const tunnelInfo = await this.tunnelManager.start(actualPort, this.config.tunnelSubdomain);
-        tunnelUrl = tunnelInfo.url;
-        tunnelPassword = tunnelInfo.password;
-        console.log(`[Tunnel] URL: ${tunnelUrl}`);
-        if (tunnelPassword) {
-          console.log(`[Tunnel] Bypass password: ${tunnelPassword}`);
-        }
-      } catch (error) {
-        console.error('Failed to start tunnel:', error);
-      }
+    // Start P2P for remote access (serverless - no backend needed!)
+    console.log('[P2P] Starting P2P for remote access...');
+    try {
+      this.p2pInfo = await this.p2pManager.startAsHost();
+      console.log(`[P2P] Connection code: ${this.p2pInfo.code}`);
+      console.log('[P2P] Remote access ready - works from anywhere!');
+    } catch (error) {
+      console.error('[P2P] Failed to start P2P:', error);
+      this.p2pInfo = null;
     }
 
-    const access = await this.accessManager.generateAccess(localUrl, tunnelUrl, tunnelPassword);
+    // Set up pairing callback if authManager is available
+    const authManager = this.options.orchestrators?.authManager as import('./services/auth-manager').AuthManager | undefined;
+    if (authManager) {
+      this.accessManager.setPairingCallback((userAgent: string) => {
+        return authManager.pairDevice(userAgent);
+      });
+      console.log('[Mobile] Pairing callback registered with AuthManager');
+    }
+
+    const access = await this.accessManager.generateAccess(localUrl);
+
+    // Update P2P manager with auth info so it can send to connecting peers
+    if (this.p2pManager.getIsRunning() && access.token) {
+      this.p2pManager.setAuthConfig(access.token, localUrl);
+    }
+
+    // Add P2P info to access config
+    if (this.p2pInfo) {
+      access.p2pCode = this.p2pInfo.code;
+      access.p2pActive = true;
+    }
 
     console.log('[Mobile] Generated access config:');
     console.log('[Mobile]   localUrl:', access.localUrl);
-    console.log('[Mobile]   tunnelUrl:', access.tunnelUrl);
-    console.log('[Mobile]   tunnelPassword:', access.tunnelPassword);
+    console.log('[Mobile]   p2pCode:', access.p2pCode);
+    console.log('[Mobile]   p2pActive:', access.p2pActive);
     console.log('[Mobile]   hasQrCode:', !!access.qrCode);
 
     this.options.onReady?.(access);
 
+    console.log(`\n========================================`);
     console.log(`Mobile server running at ${localUrl}`);
-    if (tunnelUrl) {
-      console.log(`Remote access: ${tunnelUrl}`);
+    if (this.p2pInfo) {
+      console.log(`Remote access code: ${this.p2pInfo.code}`);
+      console.log(`(Works from anywhere - cellular, WiFi, etc.)`);
     }
+    console.log(`========================================\n`);
 
     return access;
   }
@@ -255,9 +353,16 @@ export class MobileServer {
   async stop(): Promise<void> {
     if (!this.isRunning) return;
 
-    await this.tunnelManager.stop();
+    // Stop cleanup interval
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+
+    await this.p2pManager.stop();
     await this.fastify.close();
     this.isRunning = false;
+    this.p2pInfo = null;
     console.log('Mobile server stopped');
   }
 
@@ -274,6 +379,94 @@ export class MobileServer {
    */
   getAuthManager(): unknown {
     return this.options.orchestrators?.authManager;
+  }
+
+  /**
+   * Get the access manager for pairing approval
+   */
+  getAccessManager(): AccessManager {
+    return this.accessManager;
+  }
+
+  /**
+   * Set callback for when a device requests approval
+   */
+  onDeviceApprovalRequest(callback: (request: { id: string; deviceName: string; userAgent: string }) => void): void {
+    this.accessManager.setApprovalCallback(callback);
+  }
+
+  /**
+   * Approve a pending device pairing request
+   */
+  approveDevice(requestId: string): boolean {
+    return this.accessManager.approvePairingRequest(requestId);
+  }
+
+  /**
+   * Deny a pending device pairing request
+   */
+  denyDevice(requestId: string): boolean {
+    return this.accessManager.denyPairingRequest(requestId);
+  }
+
+  /**
+   * Get pending approval requests
+   */
+  getPendingApprovals(): Array<{ id: string; deviceName: string; timestamp: number }> {
+    return this.accessManager.getPendingRequests();
+  }
+
+  /**
+   * Enable or disable desktop approval requirement
+   */
+  setRequireApproval(require: boolean): void {
+    this.accessManager.setRequireApproval(require);
+  }
+
+  // ========================================
+  // P2P Management (Remote Access)
+  // ========================================
+
+  /**
+   * Get P2P connection code - this is what users enter on their phone
+   */
+  getP2PCode(): string | null {
+    return this.p2pManager.getConnectionCode();
+  }
+
+  /**
+   * Get connected P2P peers
+   */
+  getP2PPeers(): P2PPeer[] {
+    return this.p2pManager.getPeers();
+  }
+
+  /**
+   * Check if P2P is active
+   */
+  isP2PActive(): boolean {
+    return this.p2pManager.getIsRunning();
+  }
+
+  /**
+   * Set callback for when a P2P peer connects
+   */
+  onP2PPeerJoined(callback: (peer: P2PPeer) => void): void {
+    this.p2pApprovalCallback = callback;
+  }
+
+  /**
+   * Send message to a P2P peer
+   */
+  sendToP2PPeer(peerId: string, message: unknown): void {
+    this.p2pManager.send(message, peerId);
+  }
+
+  /**
+   * Broadcast message to all P2P peers
+   */
+  broadcastToP2PPeers(message: unknown): void {
+    this.p2pManager.send(message);
   }
 
   private handleWebSocketMessage(socket: WebSocket, sessionId: string, data: { type: string; payload?: unknown }) {
@@ -318,18 +511,15 @@ function getLocalIP(): string {
 // CLI entry point
 if (require.main === module) {
   const server = new MobileServer({
-    config: {
-      enableTunnel: process.argv.includes('--tunnel')
-    },
     onReady: (access) => {
       console.log('\n========================================');
       console.log('Audiio Mobile Portal Ready!');
       console.log('========================================');
       console.log(`Local:  ${access.localUrl}`);
-      if (access.tunnelUrl) {
-        console.log(`Remote: ${access.tunnelUrl}`);
+      if (access.p2pCode) {
+        console.log(`\nRemote Access Code: ${access.p2pCode}`);
+        console.log('(Enter this code on your phone to connect from anywhere)');
       }
-      console.log(`Token:  ${access.token}`);
       console.log('========================================\n');
     }
   });
@@ -342,5 +532,6 @@ if (require.main === module) {
   });
 }
 
-export { AccessManager, SessionManager, TunnelManager };
+export { AccessManager, SessionManager };
+export { P2PManager, type P2PPeer, type P2PConfig } from './services/p2p-manager';
 export { AuthManager } from './services/auth-manager';

@@ -3,8 +3,11 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth-store';
 import { usePlayerStore } from '../stores/player-store';
+import { usePluginStore } from '../stores/plugin-store';
+import { PlugIcon, ChevronRightIcon } from '@audiio/icons';
 import styles from './SettingsPage.module.css';
 
 interface AccessInfo {
@@ -14,30 +17,25 @@ interface AccessInfo {
   hasRemoteAccess: boolean;
 }
 
-interface Addon {
-  id: string;
-  name: string;
-  roles: string[];
-  enabled: boolean;
-}
-
 export function SettingsPage() {
+  const navigate = useNavigate();
   const { logout } = useAuthStore();
   const { isConnected, disconnectWebSocket } = usePlayerStore();
+  const { plugins, fetchPlugins } = usePluginStore();
   const [accessInfo, setAccessInfo] = useState<AccessInfo | null>(null);
-  const [addons, setAddons] = useState<Addon[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       fetch('/api/access/info').then(r => r.json()),
-      fetch('/api/addons').then(r => r.json())
-    ]).then(([access, addonsData]) => {
+      fetchPlugins()
+    ]).then(([access]) => {
       setAccessInfo(access);
-      setAddons(addonsData.addons || []);
     }).catch(console.error)
       .finally(() => setIsLoading(false));
-  }, []);
+  }, [fetchPlugins]);
+
+  const enabledCount = plugins.filter(p => p.enabled).length;
 
   const handleLogout = () => {
     disconnectWebSocket();
@@ -81,33 +79,26 @@ export function SettingsPage() {
           </div>
         </section>
 
-        {/* Active Plugins (read-only) */}
+        {/* Plugins */}
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>Host Plugins</h2>
-          <p className={styles.sectionDesc}>
-            These plugins are enabled on your desktop app
-          </p>
-          <div className={styles.card}>
-            {isLoading ? (
-              <div className={styles.loading}>Loading...</div>
-            ) : addons.length > 0 ? (
-              addons.map(addon => (
-                <div key={addon.id} className={styles.addonRow}>
-                  <div className={styles.addonInfo}>
-                    <span className={styles.addonName}>{addon.name}</span>
-                    <span className={styles.addonRoles}>
-                      {addon.roles.join(', ')}
-                    </span>
-                  </div>
-                  <span className={`${styles.addonStatus} ${addon.enabled ? styles.enabled : ''}`}>
-                    {addon.enabled ? 'Active' : 'Disabled'}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <div className={styles.empty}>No plugins configured</div>
-            )}
-          </div>
+          <h2 className={styles.sectionTitle}>Plugins</h2>
+          <button
+            className={styles.menuCard}
+            onClick={() => navigate('/plugins')}
+          >
+            <div className={styles.menuLeft}>
+              <div className={styles.menuIcon}>
+                <PlugIcon />
+              </div>
+              <div className={styles.menuInfo}>
+                <span className={styles.menuTitle}>Manage Plugins</span>
+                <span className={styles.menuDesc}>
+                  {isLoading ? 'Loading...' : `${enabledCount} of ${plugins.length} enabled`}
+                </span>
+              </div>
+            </div>
+            <ChevronRightIcon />
+          </button>
         </section>
 
         {/* About */}

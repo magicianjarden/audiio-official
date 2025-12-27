@@ -8,6 +8,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { UnifiedTrack } from '@audiio/core';
+import { useStatsStore } from './stats-store';
 
 // ============================================
 // Types
@@ -49,6 +50,7 @@ export interface DislikedTrack {
   trackId: string;
   reasons: DislikeReason[];
   timestamp: number;
+  track: UnifiedTrack; // Full track object for mobile sync
   trackData: {
     title: string;
     artists: string[];
@@ -222,6 +224,7 @@ interface RecommendationState {
   // Actions - Tracking
   recordListen: (track: UnifiedTrack, duration: number, completed: boolean, skipped: boolean) => void;
   recordDislike: (track: UnifiedTrack, reasons: DislikeReason[]) => void;
+  recordSkip: (trackId: string, data: { skipPosition: number; skipPercentage: number; earlySkip: boolean }) => void;
   recordReorder: (track: UnifiedTrack, fromIndex: number, toIndex: number) => void;
   removeDislike: (trackId: string) => void;
   isDisliked: (trackId: string) => boolean;
@@ -376,6 +379,9 @@ export const useRecommendationStore = create<RecommendationState>()(
           skipped,
         };
 
+        // Also record to stats store for the stats dashboard
+        useStatsStore.getState().recordListen(track, Math.round(duration / 1000), completed);
+
         set((state) => {
           // Add to history (keep last 1000 events)
           const newHistory = [event, ...state.listenHistory].slice(0, 1000);
@@ -456,6 +462,7 @@ export const useRecommendationStore = create<RecommendationState>()(
             trackId: track.id,
             reasons,
             timestamp: Date.now(),
+            track, // Store full track for mobile sync
             trackData: {
               title: track.title,
               artists: track.artists.map(a => a.name),
@@ -525,6 +532,39 @@ export const useRecommendationStore = create<RecommendationState>()(
             },
             lastUpdated: Date.now(),
           };
+        });
+      },
+
+      recordSkip: (trackId, data) => {
+        // Record skip event for ML training
+        // This is a lightweight record - the actual penalty is calculated by the ML model
+        const skipPenalty = data.earlySkip ? WEIGHTS.SKIP * 1.5 : WEIGHTS.SKIP;
+
+        // Store skip event in listen history (we'll look up the track later if needed)
+        set((state) => {
+          const event: ListenEvent = {
+            trackId,
+            timestamp: Date.now(),
+            duration: data.skipPosition * 1000, // Convert back to ms
+            totalDuration: data.skipPosition / data.skipPercentage * 1000,
+            completed: false,
+            skipped: true,
+          };
+
+          // Add to history
+          const newHistory = [event, ...state.listenHistory].slice(0, 1000);
+
+          return {
+            listenHistory: newHistory,
+            lastUpdated: Date.now(),
+          };
+        });
+
+        console.debug('[RecommendationStore] Recorded skip:', {
+          trackId,
+          skipPercentage: `${(data.skipPercentage * 100).toFixed(1)}%`,
+          earlySkip: data.earlySkip,
+          penalty: skipPenalty,
         });
       },
 

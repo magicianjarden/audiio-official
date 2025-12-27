@@ -1,10 +1,16 @@
 /**
  * Layout Component - Mobile app shell with bottom navigation and player bar
+ *
+ * Features:
+ * - Connection status banner (Plex-style)
+ * - Bottom navigation with active states
+ * - Mini player integration
  */
 
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { MiniPlayer } from './MiniPlayer';
+import { PlayerSheet } from './PlayerSheet';
+import { ConnectionBanner } from './ConnectionBanner';
 import { usePlayerStore } from '../stores/player-store';
 import styles from './Layout.module.css';
 
@@ -15,27 +21,28 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const { currentTrack } = usePlayerStore();
-  const showPlayer = currentTrack && location.pathname !== '/now-playing';
+
+  // Hide player sheet on now-playing and lyrics pages (they have their own player UI)
+  const hidePlayerSheet = location.pathname === '/now-playing' || location.pathname === '/lyrics';
+  const showPlayer = currentTrack && !hidePlayerSheet;
 
   // Check if on library-related paths
   const isLibraryActive = location.pathname === '/library' || location.pathname.startsWith('/playlist/');
 
   return (
     <div className={styles.container}>
+      <ConnectionBanner />
+
       <main className={styles.main}>
         {children}
       </main>
 
-      {showPlayer && <MiniPlayer />}
+      {showPlayer && <PlayerSheet />}
 
       <nav className={styles.nav}>
         <NavLink to="/" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
           <HomeIcon />
           <span>Home</span>
-        </NavLink>
-        <NavLink to="/search" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
-          <SearchIcon />
-          <span>Search</span>
         </NavLink>
         <NavLink to="/library" className={() => `${styles.navItem} ${isLibraryActive ? styles.active : ''}`}>
           <LibraryIcon />
@@ -54,14 +61,6 @@ function HomeIcon() {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 3L4 9v12h5v-7h6v7h5V9l-8-6z"/>
-    </svg>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
     </svg>
   );
 }

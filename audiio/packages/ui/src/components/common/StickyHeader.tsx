@@ -4,7 +4,7 @@
  */
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { BackIcon, PlayIcon, ShuffleIcon, MusicNoteIcon, VerifiedIcon } from '../Icons/Icons';
+import { BackIcon, PlayIcon, ShuffleIcon, MusicNoteIcon, VerifiedIcon } from '@audiio/icons';
 import type { ExtractedColors } from '../../utils/color-extraction';
 
 export interface StickyHeaderProps {

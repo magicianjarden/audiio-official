@@ -4,7 +4,13 @@
  */
 
 import { translationCache, type SupportedLanguage } from './translation-cache';
-import { detectLanguageFromLines } from './language-detector';
+import {
+  detectLanguageFromLines,
+  detectLanguagePerLine,
+  getDominantLanguage,
+  isEnglishLine,
+  type LineLanguageResult
+} from './language-detector';
 import { libreTranslateClient } from './libre-translate-client';
 
 export interface LyricLine {
@@ -44,6 +50,7 @@ class TranslationService {
 
   /**
    * Main entry point: Translate lyrics for a track
+   * Now uses per-line language detection for multi-language songs
    */
   async translateLyrics(
     trackId: string,
@@ -55,83 +62,123 @@ class TranslationService {
     // Extract text from lyrics
     const texts = lines.map(line => line.text);
 
-    // Detect source language
-    const sourceLanguage = detectLanguageFromLines(texts);
-    if (!sourceLanguage) {
-      // No supported language detected (likely English or unknown)
+    // Use per-line language detection for multi-language support
+    const lineResults = detectLanguagePerLine(texts);
+
+    // Find lines that actually need translation (non-English)
+    const linesToTranslate = lineResults.filter(r => r.needsTranslation && r.language !== null);
+
+    // If no lines need translation, return null
+    if (linesToTranslate.length === 0) {
+      console.log('[Translation] No non-English lines detected, skipping translation');
       return null;
     }
+
+    // Get dominant language for metadata (most common non-English language)
+    const sourceLanguage = getDominantLanguage(texts);
+    if (!sourceLanguage) {
+      return null;
+    }
+
+    console.log(`[Translation] Detected ${linesToTranslate.length}/${lines.length} non-English lines`);
 
     // Check cache for existing translations
     const cachedTranslations = await translationCache.getBatchTranslations(trackId);
 
-    // If we have all translations cached, return early
-    if (cachedTranslations.size === lines.length) {
+    // Build initial translations map (include English lines as-is)
+    const translations = new Map(cachedTranslations);
+
+    // Count how many non-English lines are already cached
+    let cachedCount = 0;
+    for (const lineResult of linesToTranslate) {
+      if (cachedTranslations.has(lineResult.lineIndex)) {
+        cachedCount++;
+      }
+    }
+
+    // If all non-English lines are cached, return early
+    if (cachedCount === linesToTranslate.length) {
       return {
-        translations: cachedTranslations,
+        translations,
         sourceLanguage,
         fromCache: true,
         linesTranslated: 0,
-        linesCached: cachedTranslations.size
+        linesCached: cachedCount
       };
     }
 
-    // Find lines that need translation
-    const uncachedLines: { index: number; text: string }[] = [];
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (line && !cachedTranslations.has(i) && line.text.trim().length > 0) {
-        uncachedLines.push({ index: i, text: line.text });
+    // Find uncached non-English lines
+    const uncachedLines: { index: number; text: string; language: SupportedLanguage }[] = [];
+    for (const lineResult of linesToTranslate) {
+      const line = lines[lineResult.lineIndex];
+      if (line && !cachedTranslations.has(lineResult.lineIndex) && line.text.trim().length > 0) {
+        uncachedLines.push({
+          index: lineResult.lineIndex,
+          text: line.text,
+          language: lineResult.language!
+        });
       }
     }
 
     // If nothing to translate, return cached
     if (uncachedLines.length === 0) {
       return {
-        translations: cachedTranslations,
+        translations,
         sourceLanguage,
         fromCache: true,
         linesTranslated: 0,
-        linesCached: cachedTranslations.size
+        linesCached: cachedCount
       };
     }
 
-    // Translate uncached lines
-    const translations = new Map(cachedTranslations);
+    // Group lines by language for batch translation
+    const linesByLanguage = new Map<SupportedLanguage, typeof uncachedLines>();
+    for (const line of uncachedLines) {
+      const langLines = linesByLanguage.get(line.language) || [];
+      langLines.push(line);
+      linesByLanguage.set(line.language, langLines);
+    }
+
     let translated = 0;
+    const totalToTranslate = uncachedLines.length;
 
-    const textsToTranslate = uncachedLines.map(l => l.text);
-    const translatedTexts = await libreTranslateClient.translateBatch(
-      textsToTranslate,
-      sourceLanguage,
-      'en',
-      (completed, total) => {
-        // Calculate overall progress including cached
-        const cacheProgress = cachedTranslations.size / lines.length;
-        const translateProgress = (completed / total) * (1 - cacheProgress);
-        onProgress?.(Math.round((cacheProgress + translateProgress) * 100));
-      }
-    );
+    // Translate each language group
+    for (const [language, langLines] of linesByLanguage) {
+      const textsToTranslate = langLines.map(l => l.text);
 
-    // Cache and store results
-    for (let i = 0; i < uncachedLines.length; i++) {
-      const uncachedLine = uncachedLines[i];
-      const translatedText = translatedTexts[i];
+      console.log(`[Translation] Translating ${langLines.length} lines from ${language}`);
 
-      if (uncachedLine && translatedText && translatedText.length > 0) {
-        const originalLine = lines[uncachedLine.index];
-        if (originalLine) {
-          translations.set(uncachedLine.index, translatedText);
-          translated++;
+      const translatedTexts = await libreTranslateClient.translateBatch(
+        textsToTranslate,
+        language,
+        'en',
+        (completed, _total) => {
+          // Calculate overall progress
+          const progress = ((cachedCount + translated + completed) / (cachedCount + totalToTranslate)) * 100;
+          onProgress?.(Math.round(progress));
+        }
+      );
 
-          // Cache the translation
-          await translationCache.setTranslation(
-            trackId,
-            uncachedLine.index,
-            originalLine.text,
-            translatedText,
-            sourceLanguage
-          );
+      // Cache and store results
+      for (let i = 0; i < langLines.length; i++) {
+        const lineInfo = langLines[i];
+        const translatedText = translatedTexts[i];
+
+        if (lineInfo && translatedText && translatedText.length > 0) {
+          const originalLine = lines[lineInfo.index];
+          if (originalLine) {
+            translations.set(lineInfo.index, translatedText);
+            translated++;
+
+            // Cache the translation
+            await translationCache.setTranslation(
+              trackId,
+              lineInfo.index,
+              originalLine.text,
+              translatedText,
+              language
+            );
+          }
         }
       }
     }
@@ -143,25 +190,34 @@ class TranslationService {
       sourceLanguage,
       fromCache: false,
       linesTranslated: translated,
-      linesCached: cachedTranslations.size
+      linesCached: cachedCount
     };
   }
 
   /**
-   * Check if lyrics should be translated (has supported language)
+   * Check if lyrics should be translated (has any non-English lines)
    */
   shouldTranslate(lines: LyricLine[]): boolean {
     const texts = lines.map(line => line.text);
-    const language = detectLanguageFromLines(texts);
-    return language !== null;
+    const lineResults = detectLanguagePerLine(texts);
+    // Return true if any line needs translation
+    return lineResults.some(r => r.needsTranslation);
   }
 
   /**
-   * Get detected language for lyrics
+   * Get detected language for lyrics (dominant language)
    */
   detectLanguage(lines: LyricLine[]): SupportedLanguage | null {
     const texts = lines.map(line => line.text);
-    return detectLanguageFromLines(texts);
+    return getDominantLanguage(texts);
+  }
+
+  /**
+   * Get per-line language analysis
+   */
+  analyzeLineLanguages(lines: LyricLine[]): LineLanguageResult[] {
+    const texts = lines.map(line => line.text);
+    return detectLanguagePerLine(texts);
   }
 
   /**

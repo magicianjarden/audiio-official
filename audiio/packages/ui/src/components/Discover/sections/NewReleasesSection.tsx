@@ -6,8 +6,9 @@ import React, { useState, useEffect } from 'react';
 import type { Album } from '@audiio/core';
 import { useNavigationStore } from '../../../stores/navigation-store';
 import { useAlbumContextMenu } from '../../../contexts/ContextMenuContext';
-import { MusicNoteIcon } from '../../Icons/Icons';
+import { MusicNoteIcon } from '@audiio/icons';
 import type { BaseSectionProps } from '../section-registry';
+import { debugError } from '../../../utils/debug';
 
 interface NewReleaseAlbum {
   id: string;
@@ -73,7 +74,7 @@ export const NewReleasesSection: React.FC<NewReleasesSectionProps> = ({
           }
         }
       } catch (error) {
-        console.error('[NewReleasesSection] Failed to fetch:', error);
+        debugError('[NewReleasesSection]', 'Failed to fetch:', error);
       } finally {
         if (mounted) {
           setIsLoading(false);

@@ -58,7 +58,10 @@ export type {
   TrendingContent,
   Playlist,
   AlbumRelatedContent,
-  ArtistFullContent
+  ArtistFullContent,
+  // Audio processor types
+  AudioProcessorResult,
+  AudioProcessor
 } from './types/addon';
 
 // Registry
@@ -72,6 +75,10 @@ export {
   type PlaybackState,
   type PlaybackEvents
 } from './orchestrators/playback-orchestrator';
+export {
+  MetadataOrchestrator,
+  type ChartsResult
+} from './orchestrators/metadata-orchestrator';
 
 // Services
 export { TrackMatcher } from './services/track-matcher';

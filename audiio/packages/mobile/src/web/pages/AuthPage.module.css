@@ -130,6 +130,19 @@
   opacity: 0.6;
 }
 
+.inputHint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-top: var(--spacing-xs);
+}
+
+.p2pInfo {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-top: var(--spacing-md);
+  text-align: center;
+}
+
 /* Checkbox */
 .checkbox {
   display: flex;
@@ -226,6 +239,13 @@
   color: var(--color-text-secondary);
 }
 
+.autoLoginHint {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-align: center;
+  max-width: 200px;
+}
+
 /* Spinner Animation */
 .spinner {
   animation: spin 1s linear infinite;
@@ -273,6 +293,16 @@
   color: var(--color-text-primary);
 }
 
+.helpNote {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
 /* Footer */
 .footer {
   display: flex;
@@ -288,98 +318,3 @@
   opacity: 0.5;
 }
 
-/* Tunnel Password Banner */
-.tunnelBanner {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
-  padding: var(--spacing-md) var(--spacing-lg);
-  padding-top: calc(var(--spacing-md) + env(safe-area-inset-top, 0));
-  border-bottom: 1px solid rgba(102, 126, 234, 0.3);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.tunnelBannerContent {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--spacing-sm);
-  max-width: 400px;
-  margin: 0 auto;
-}
-
-.tunnelBannerIcon {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: rgba(102, 126, 234, 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #667eea;
-  flex-shrink: 0;
-}
-
-.tunnelBannerText {
-  flex: 1;
-  min-width: 120px;
-}
-
-.tunnelBannerLabel {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: #fff;
-}
-
-.tunnelBannerHint {
-  display: block;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.tunnelPasswordBox {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  width: 100%;
-  margin-top: var(--spacing-xs);
-}
-
-.tunnelPasswordValue {
-  flex: 1;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 15px;
-  font-weight: 600;
-  color: #667eea;
-  letter-spacing: 0.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tunnelCopyBtn {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  background: #667eea;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: all 0.2s;
-}
-
-.tunnelCopyBtn:active {
-  transform: scale(0.95);
-}
-
-.tunnelCopyBtn.copied {
-  background: #10b981;
-}

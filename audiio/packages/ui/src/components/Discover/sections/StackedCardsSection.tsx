@@ -9,7 +9,7 @@ import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
 import { BaseSectionWrapper, useSectionTracks } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
-import { PlayIcon, MusicNoteIcon, ChevronLeftIcon, ChevronRightIcon } from '../../Icons/Icons';
+import { PlayIcon, MusicNoteIcon, ChevronLeftIcon, ChevronRightIcon } from '@audiio/icons';
 
 export interface StackedCardsSectionProps extends BaseSectionProps {
   tracks?: UnifiedTrack[];

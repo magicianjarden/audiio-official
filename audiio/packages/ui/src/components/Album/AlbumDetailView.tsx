@@ -9,7 +9,7 @@ import { usePlayerStore } from '../../stores/player-store';
 import { useAlbumStore } from '../../stores/album-store';
 import { useTrackContextMenu, useAlbumContextMenu } from '../../contexts/ContextMenuContext';
 import { CreditsModal } from './CreditsModal';
-import { MusicNoteIcon, PlayIcon, ShuffleIcon, MoreIcon, BackIcon } from '../Icons/Icons';
+import { MusicNoteIcon, PlayIcon, ShuffleIcon, MoreIcon, BackIcon } from '@audiio/icons';
 import { getColorsForArtwork, getDefaultColors, type ExtractedColors } from '../../utils/color-extraction';
 import type { UnifiedTrack, AlbumCredits } from '@audiio/core';
 import type { SearchAlbum } from '../../stores/search-store';

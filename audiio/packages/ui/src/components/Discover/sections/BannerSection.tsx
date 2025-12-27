@@ -8,7 +8,8 @@ import { useNavigationStore } from '../../../stores/navigation-store';
 import { useSearchStore } from '../../../stores/search-store';
 import { useTrendingStore, type PromoBanner } from '../../../stores/trending-store';
 import type { BaseSectionProps } from '../section-registry';
-import { PlayIcon, ChevronRightIcon } from '../../Icons/Icons';
+import { PlayIcon, ChevronRightIcon } from '@audiio/icons';
+import { debugLog } from '../../../utils/debug';
 
 export interface BannerSectionProps extends BaseSectionProps {
   banner?: PromoBanner;
@@ -42,11 +43,11 @@ export const BannerSection: React.FC<BannerSectionProps> = ({
     } else if (banner.ctaAction.startsWith('artist:')) {
       // Could navigate to artist detail view
       const artistId = banner.ctaAction.replace('artist:', '');
-      console.log('Navigate to artist:', artistId);
+      debugLog('[Banner]', `Navigate to artist: ${artistId}`);
     } else if (banner.ctaAction.startsWith('album:')) {
       // Could navigate to album detail view
       const albumId = banner.ctaAction.replace('album:', '');
-      console.log('Navigate to album:', albumId);
+      debugLog('[Banner]', `Navigate to album: ${albumId}`);
     }
   };
 

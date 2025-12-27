@@ -11,7 +11,8 @@ import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
 import { useRecommendationStore } from '../../../stores/recommendation-store';
 import { BaseSectionWrapper } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
-import { PlayIcon, MusicNoteIcon, UserIcon } from '../../Icons/Icons';
+import { PlayIcon, MusicNoteIcon, UserIcon } from '@audiio/icons';
+import { debugError } from '../../../utils/debug';
 
 export interface ArtistData {
   id: string;
@@ -84,7 +85,7 @@ export const ArtistSpotlightSection: React.FC<ArtistSpotlightSectionProps> = ({
           }
         }
       } catch (err) {
-        console.error('[ArtistSpotlight] Failed to fetch artist:', err);
+        debugError('[ArtistSpotlight]', 'Failed to fetch artist:', err);
         setError('Failed to load artist');
       } finally {
         setIsLoading(false);

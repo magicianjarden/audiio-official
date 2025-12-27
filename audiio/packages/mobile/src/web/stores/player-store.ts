@@ -1,9 +1,23 @@
 /**
  * Player Store - Manages playback state and audio streaming
+ *
+ * Features:
+ * - WebSocket reconnection with exponential backoff
+ * - Fine-grained selectors for performance
+ * - Remote/local playback modes
  */
 
 import { create } from 'zustand';
 import { tunnelFetch } from './auth-store';
+
+// Reconnection configuration (Plex-style)
+const RECONNECT_CONFIG = {
+  initialDelay: 1000,      // Start with 1 second
+  maxDelay: 30000,         // Cap at 30 seconds
+  multiplier: 1.5,         // Exponential growth
+  jitter: 0.3,             // Add randomness to prevent thundering herd
+  maxAttempts: 20,         // Give up after 20 attempts
+};
 
 export interface Track {
   id: string;
@@ -74,6 +88,9 @@ interface PlayerState {
   // Connection
   isConnected: boolean;
   wsConnection: WebSocket | null;
+  connectionStatus: 'connected' | 'connecting' | 'disconnected' | 'reconnecting';
+  reconnectAttempts: number;
+  lastError: string | null;
 
   // Audio element
   audioElement: HTMLAudioElement | null;
@@ -94,6 +111,7 @@ interface PlayerState {
   removeFromQueue: (index: number) => void;
   clearQueue: () => void;
   setQueue: (tracks: Track[], startIndex?: number) => void;
+  playFromQueue: (index: number) => void;
   toggleShuffle: () => void;
   toggleRepeat: () => void;
   setPlaybackMode: (mode: PlaybackMode) => void;
@@ -121,6 +139,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   queueIndex: -1,
   isConnected: false,
   wsConnection: null,
+  connectionStatus: 'disconnected',
+  reconnectAttempts: 0,
+  lastError: null,
   audioElement: null,
 
   setTrack: (track) => {
@@ -403,6 +424,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
   },
 
+  playFromQueue: (index) => {
+    const { queue, playbackMode } = get();
+
+    if (index < 0 || index >= queue.length) return;
+
+    // If in remote mode, send command to desktop
+    if (playbackMode === 'remote') {
+      get().sendRemoteCommand('playFromQueue', { index });
+      return;
+    }
+
+    set({ queueIndex: index });
+    get().play(queue[index]);
+  },
+
   toggleShuffle: () => {
     const { isShuffled, queue, queueIndex, currentTrack, originalQueue, playbackMode } = get();
 
@@ -495,14 +531,40 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   connectWebSocket: (token) => {
+    const { wsConnection, connectionStatus } = get();
+
+    // Prevent duplicate connections
+    if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+      return;
+    }
+
+    // Close existing connection if any
+    if (wsConnection) {
+      wsConnection.close();
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws?token=${token}`;
+
+    set({ connectionStatus: 'connecting', lastError: null });
+    console.log('[WebSocket] Connecting...');
 
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      set({ isConnected: true, wsConnection: ws });
-      console.log('WebSocket connected');
+      set({
+        isConnected: true,
+        wsConnection: ws,
+        connectionStatus: 'connected',
+        reconnectAttempts: 0,
+        lastError: null
+      });
+      console.log('[WebSocket] Connected');
+
+      // Trigger haptic feedback on reconnect success
+      if ('vibrate' in navigator) {
+        navigator.vibrate(50);
+      }
     };
 
     ws.onmessage = (event) => {
@@ -514,21 +576,53 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      const { reconnectAttempts } = get();
       set({ isConnected: false, wsConnection: null });
-      console.log('WebSocket disconnected');
 
-      // Attempt to reconnect after 5 seconds
+      // Don't reconnect if this was a clean close (code 1000) or auth failure (4001)
+      if (event.code === 1000 || event.code === 4001) {
+        set({ connectionStatus: 'disconnected' });
+        console.log('[WebSocket] Closed cleanly');
+        return;
+      }
+
+      // Check if we should retry
+      if (reconnectAttempts >= RECONNECT_CONFIG.maxAttempts) {
+        set({
+          connectionStatus: 'disconnected',
+          lastError: 'Connection lost. Please refresh the page.'
+        });
+        console.log('[WebSocket] Max reconnect attempts reached');
+        return;
+      }
+
+      // Calculate delay with exponential backoff + jitter
+      const baseDelay = Math.min(
+        RECONNECT_CONFIG.initialDelay * Math.pow(RECONNECT_CONFIG.multiplier, reconnectAttempts),
+        RECONNECT_CONFIG.maxDelay
+      );
+      const jitter = baseDelay * RECONNECT_CONFIG.jitter * (Math.random() * 2 - 1);
+      const delay = Math.round(baseDelay + jitter);
+
+      set({
+        connectionStatus: 'reconnecting',
+        reconnectAttempts: reconnectAttempts + 1
+      });
+
+      console.log(`[WebSocket] Reconnecting in ${delay}ms (attempt ${reconnectAttempts + 1}/${RECONNECT_CONFIG.maxAttempts})`);
+
       setTimeout(() => {
-        const { isConnected } = get();
-        if (!isConnected) {
+        const { connectionStatus } = get();
+        if (connectionStatus === 'reconnecting') {
           get().connectWebSocket(token);
         }
-      }, 5000);
+      }, delay);
     };
 
     ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      console.error('[WebSocket] Error:', error);
+      set({ lastError: 'Connection error' });
     };
   },
 
@@ -642,3 +736,69 @@ function handleWebSocketMessage(
       break;
   }
 }
+
+// ============================================
+// Fine-grained selectors for performance
+// Use these instead of destructuring the entire store
+// ============================================
+
+/** Select only playback state - prevents re-renders when queue changes */
+export const usePlaybackState = () => usePlayerStore((state) => ({
+  currentTrack: state.currentTrack,
+  isPlaying: state.isPlaying,
+  isBuffering: state.isBuffering,
+  position: state.position,
+  duration: state.duration,
+}));
+
+/** Select only current track */
+export const useCurrentTrack = () => usePlayerStore((state) => state.currentTrack);
+
+/** Select only playing status */
+export const useIsPlaying = () => usePlayerStore((state) => state.isPlaying);
+
+/** Select only connection status */
+export const useConnectionStatus = () => usePlayerStore((state) => ({
+  isConnected: state.isConnected,
+  connectionStatus: state.connectionStatus,
+  reconnectAttempts: state.reconnectAttempts,
+  lastError: state.lastError,
+}));
+
+/** Select only queue state */
+export const useQueueState = () => usePlayerStore((state) => ({
+  queue: state.queue,
+  queueIndex: state.queueIndex,
+}));
+
+/** Select only shuffle/repeat state */
+export const usePlaybackModes = () => usePlayerStore((state) => ({
+  isShuffled: state.isShuffled,
+  repeatMode: state.repeatMode,
+  playbackMode: state.playbackMode,
+}));
+
+/** Select only volume */
+export const useVolume = () => usePlayerStore((state) => state.volume);
+
+/** Select playback controls (stable references) */
+export const usePlaybackControls = () => usePlayerStore((state) => ({
+  play: state.play,
+  pause: state.pause,
+  resume: state.resume,
+  seek: state.seek,
+  nextTrack: state.nextTrack,
+  previousTrack: state.previousTrack,
+  setVolume: state.setVolume,
+  toggleShuffle: state.toggleShuffle,
+  toggleRepeat: state.toggleRepeat,
+}));
+
+/** Select queue controls (stable references) */
+export const useQueueControls = () => usePlayerStore((state) => ({
+  addToQueue: state.addToQueue,
+  playNext: state.playNext,
+  removeFromQueue: state.removeFromQueue,
+  clearQueue: state.clearQueue,
+  setQueue: state.setQueue,
+}));

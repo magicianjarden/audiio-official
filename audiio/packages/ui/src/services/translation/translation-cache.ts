@@ -8,7 +8,7 @@ const DB_VERSION = 1;
 const STORE_NAME = 'translations';
 const CACHE_EXPIRY_DAYS = 30;
 
-export type SupportedLanguage = 'ja' | 'ko' | 'es';
+export type SupportedLanguage = 'ja' | 'ko' | 'zh' | 'es' | 'fr' | 'de' | 'pt' | 'it' | 'ru';
 
 export interface TranslationCacheEntry {
   id: string;              // `${trackId}-${lineIndex}`

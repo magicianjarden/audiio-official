@@ -30,19 +30,6 @@ interface TranslationState {
   detectLanguage: (lines: { time: number; text: string }[]) => SupportedLanguage | null;
 }
 
-// Helper to convert Map to/from plain object for persistence
-const mapToObject = (map: Map<number, string>): Record<number, string> => {
-  const obj: Record<number, string> = {};
-  map.forEach((value, key) => {
-    obj[key] = value;
-  });
-  return obj;
-};
-
-const objectToMap = (obj: Record<number, string>): Map<number, string> => {
-  return new Map(Object.entries(obj).map(([k, v]) => [Number(k), v]));
-};
-
 export const useTranslationStore = create<TranslationState>()(
   persist(
     (set, get) => ({
