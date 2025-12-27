@@ -302,7 +302,13 @@ export class NostrRelay extends EventEmitter {
         };
 
         this.ws.onmessage = (event: any) => {
-          console.log(`[NostrRelay] Raw WS message: ${String(event.data).substring(0, 200)}...`);
+          const data = String(event.data);
+          // Only log non-EOSE and non-OK messages in detail
+          if (data.includes('"EVENT"')) {
+            console.log(`[NostrRelay] Received EVENT: ${data.substring(0, 300)}...`);
+          } else if (!data.includes('"EOSE"')) {
+            console.log(`[NostrRelay] WS message: ${data.substring(0, 150)}`);
+          }
           this.handleMessage(event.data);
         };
       } catch (error) {
@@ -373,11 +379,12 @@ export class NostrRelay extends EventEmitter {
     const filter = {
       kinds: [30078],
       '#d': [roomId],
-      since: Math.floor(Date.now() / 1000) - 60 // Last minute only
+      since: Math.floor(Date.now() / 1000) - 300 // Last 5 minutes for better reliability
     };
 
     const req = JSON.stringify(['REQ', this.subscriptionId, filter]);
-    console.log('[NostrRelay] Subscribing:', req);
+    console.log('[NostrRelay] Subscribing to room:', roomId);
+    console.log('[NostrRelay] Subscription filter:', JSON.stringify(filter));
     this.ws.send(req);
   }
 
@@ -445,10 +452,17 @@ export class NostrRelay extends EventEmitter {
 
       switch (type) {
         case 'EVENT':
-          this.handleEvent(args[1] as NostrEvent);
+          // args[0] is subscription ID, args[1] is the event
+          const event = (args[1] || args[0]) as NostrEvent;
+          if (event && event.id && event.pubkey) {
+            this.handleEvent(event);
+          }
           break;
         case 'OK':
-          // Event accepted
+          // Event accepted/rejected - log if rejected
+          if (args[1] === false) {
+            console.log(`[NostrRelay] Event rejected: ${args[2]}`);
+          }
           break;
         case 'EOSE':
           // End of stored events
