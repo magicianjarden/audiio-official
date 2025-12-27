@@ -5,7 +5,8 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   root: './src/web',
-  base: '/',
+  // Use /remote/ for GitHub Pages deployment, / for local/desktop
+  base: process.env.GITHUB_PAGES === 'true' ? '/remote/' : '/',
   build: {
     outDir: '../../dist/web',
     emptyOutDir: true,

@@ -54,6 +54,8 @@ const platformInfo = {
 };
 
 const GITHUB_RELEASES_URL = 'https://github.com/audiio/audiio/releases/latest';
+// Remote portal hosted at /remote on same domain
+const MOBILE_REMOTE_URL = '/remote';
 
 export function Download() {
   const [platform, setPlatform] = useState<Platform>('unknown');
@@ -126,10 +128,33 @@ export function Download() {
             <div className="mobile-card">
               <PhoneIcon size={24} />
               <div className="mobile-info">
-                <h3>Mobile Access</h3>
-                <p>Control your desktop library from any device via the built-in web portal.</p>
+                <h3>Mobile Remote Access</h3>
+                <p>
+                  Control your desktop library from anywhere. Enable mobile access in the app,
+                  then enter your connection code on the web portal.
+                </p>
+                <a
+                  href={MOBILE_REMOTE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mobile-portal-link"
+                >
+                  Open Remote Portal <ExternalLinkIcon size={14} />
+                </a>
               </div>
             </div>
+            {isDevMode && (
+              <div className="mobile-how-it-works">
+                <h4>How P2P Remote Works:</h4>
+                <ol>
+                  <li>Enable Mobile Access in desktop app settings</li>
+                  <li>Get your connection code (e.g., SWIFT-EAGLE-42)</li>
+                  <li>Visit the remote portal from any device</li>
+                  <li>Enter your code — connects via Nostr relay</li>
+                  <li>Your music streams from your desktop, no cloud needed</li>
+                </ol>
+              </div>
+            )}
           </div>
 
           {isDevMode && (
