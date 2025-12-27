@@ -15,6 +15,7 @@ export function Navbar({ scrolled }: NavbarProps) {
     { label: 'Features', href: '#features' },
     { label: 'Themes', href: '#themes' },
     { label: 'Plugins', href: '#plugins' },
+    { label: 'Docs', href: 'https://github.com/magicianjarden/audiio-official/tree/main/docs', external: true },
     { label: 'Community', href: '#community' },
   ];
 
@@ -33,6 +34,7 @@ export function Navbar({ scrolled }: NavbarProps) {
               href={link.href}
               className="nav-link"
               onClick={() => setMobileMenuOpen(false)}
+              {...('external' in link && link.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
             >
               {link.label}
             </a>

@@ -41,13 +41,19 @@ export function Footer() {
 
             <div className="footer-column">
               <h4>Resources</h4>
-              <a href="https://github.com/magicianjarden/audiio-official/wiki" target="_blank" rel="noopener noreferrer">
+              <a href="https://github.com/magicianjarden/audiio-official/tree/main/docs" target="_blank" rel="noopener noreferrer">
                 Documentation
               </a>
-              <a href="https://github.com/magicianjarden/audiio-official/tree/main/packages/sdk" target="_blank" rel="noopener noreferrer">
-                Plugin SDK
+              <a href="https://github.com/magicianjarden/audiio-official/tree/main/docs/user-guide" target="_blank" rel="noopener noreferrer">
+                User Guide
               </a>
-              <a href="https://github.com/magicianjarden/audiio-official/releases" target="_blank" rel="noopener noreferrer">
+              <a href="https://github.com/magicianjarden/audiio-official/tree/main/docs/development" target="_blank" rel="noopener noreferrer">
+                Developer Docs
+              </a>
+              <a href="https://github.com/magicianjarden/audiio-official/tree/main/docs/sdk" target="_blank" rel="noopener noreferrer">
+                Addon SDK
+              </a>
+              <a href="https://github.com/magicianjarden/audiio-official/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">
                 Changelog
               </a>
             </div>
