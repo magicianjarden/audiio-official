@@ -12,7 +12,7 @@
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
-import { createServer as createHttpServer } from 'http';
+import { createServer as createHttpServer, IncomingMessage, ServerResponse } from 'http';
 import { createServer as createHttpsServer } from 'https';
 import { readFileSync } from 'fs';
 
@@ -41,23 +41,46 @@ export class RelayServer {
   private config: RelayServerConfig;
   private rooms = new Map<string, RelayRoom>();
   private clients = new Map<WebSocket, ConnectedClient>();
-  private cleanupInterval: NodeJS.Timeout | null = null;
+  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: Partial<RelayServerConfig> = {}) {
     this.config = { ...DEFAULT_RELAY_CONFIG, ...config };
   }
 
   /**
+   * Handle HTTP requests (health checks, etc.)
+   */
+  private handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
+    if (req.url === '/health' || req.url === '/') {
+      const stats = this.getStats();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: 'ok',
+        rooms: stats.rooms,
+        clients: stats.clients,
+        uptime: process.uptime()
+      }));
+    } else {
+      res.writeHead(404);
+      res.end('Not found');
+    }
+  }
+
+  /**
    * Start the relay server
    */
   async start(): Promise<void> {
-    // Create HTTP(S) server
+    // Create HTTP(S) server with request handler
+    const requestHandler = (req: IncomingMessage, res: ServerResponse) => {
+      this.handleHttpRequest(req, res);
+    };
+
     const server = this.config.tls
       ? createHttpsServer({
           cert: readFileSync(this.config.tls.cert),
           key: readFileSync(this.config.tls.key)
-        })
-      : createHttpServer();
+        }, requestHandler)
+      : createHttpServer(requestHandler);
 
     // Create WebSocket server
     this.wss = new WebSocketServer({ server });

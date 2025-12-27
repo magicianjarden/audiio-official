@@ -1,29 +1,27 @@
 /**
- * P2P Store - Manages P2P connection state for remote access
+ * P2P Store - Manages relay connection state for remote access
  *
- * Uses Nostr relays for serverless messaging.
+ * Connects to the Audiio Relay server for signaling.
  * Enter the code shown on desktop to connect from anywhere.
  *
- * API Tunneling: When connected via P2P, all API calls are routed
- * through the P2P WebSocket connection to the desktop.
+ * API Tunneling: When connected via relay, all API calls are routed
+ * through the encrypted WebSocket connection to the desktop.
  */
 
 import { create } from 'zustand';
-import { schnorr } from '@noble/curves/secp256k1';
-import { bytesToHex } from '@noble/curves/abstract/utils';
+import nacl from 'tweetnacl';
+import { encodeBase64, decodeBase64, decodeUTF8, encodeUTF8 } from 'tweetnacl-util';
 
-// Public Nostr relays (free to use, no PoW required)
-const NOSTR_RELAYS = [
-  'wss://relay.damus.io',
-  'wss://relay.snort.social',
-  'wss://nostr.wine',
-  'wss://relay.nostr.band',
-  'wss://purplepag.es'
-];
-
-const APP_ID = 'audiio-mobile';
+// Relay server URL - will be updated after Fly.io deployment
+const RELAY_URL = import.meta.env.VITE_RELAY_URL || 'wss://audiio-relay.fly.dev';
 
 export type P2PConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+// Key pair for E2E encryption
+interface KeyPair {
+  publicKey: string;
+  secretKey: Uint8Array;
+}
 
 // Pending API requests waiting for response
 interface PendingRequest {
@@ -40,34 +38,54 @@ function randomId(): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Simple hash for Nostr event ID
-async function sha256(data: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const dataBuffer = encoder.encode(data);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+// Generate encryption key pair
+function generateKeyPair(): KeyPair {
+  const keyPair = nacl.box.keyPair();
+  return {
+    publicKey: encodeBase64(keyPair.publicKey),
+    secretKey: keyPair.secretKey
+  };
 }
 
-interface NostrEvent {
-  id: string;
-  pubkey: string;
-  created_at: number;
-  kind: number;
-  tags: string[][];
-  content: string;
-  sig: string;
+// Encrypt message for desktop
+function encrypt(message: string, recipientPublicKey: string, senderSecretKey: Uint8Array): { encrypted: string; nonce: string } {
+  const messageBytes = decodeUTF8(message);
+  const nonce = nacl.randomBytes(nacl.box.nonceLength);
+  const recipientPubKey = decodeBase64(recipientPublicKey);
+
+  const encrypted = nacl.box(messageBytes, nonce, recipientPubKey, senderSecretKey);
+  if (!encrypted) {
+    throw new Error('Encryption failed');
+  }
+
+  return {
+    encrypted: encodeBase64(encrypted),
+    nonce: encodeBase64(nonce)
+  };
+}
+
+// Decrypt message from desktop
+function decrypt(encrypted: string, nonce: string, senderPublicKey: string, recipientSecretKey: Uint8Array): string {
+  const encryptedBytes = decodeBase64(encrypted);
+  const nonceBytes = decodeBase64(nonce);
+  const senderPubKey = decodeBase64(senderPublicKey);
+
+  const decrypted = nacl.box.open(encryptedBytes, nonceBytes, senderPubKey, recipientSecretKey);
+  if (!decrypted) {
+    throw new Error('Decryption failed');
+  }
+
+  return encodeUTF8(decrypted);
 }
 
 interface P2PState {
   status: P2PConnectionStatus;
   connectionCode: string | null;
   error: string | null;
-  desktopPeerId: string | null;
+  desktopPublicKey: string | null;
   selfId: string;
   ws: WebSocket | null;
-  authToken: string | null;
-  localUrl: string | null;
+  keyPair: KeyPair;
 
   // Actions
   connect: (code: string, deviceName?: string) => Promise<boolean>;
@@ -84,25 +102,24 @@ interface P2PState {
 // Message handler registry
 let messageHandler: ((type: string, payload: unknown) => void) | null = null;
 
-// Generate secp256k1 keypair for Nostr signing
-const privateKey = schnorr.utils.randomPrivateKey();
-const publicKey = bytesToHex(schnorr.getPublicKey(privateKey));
-// For backwards compatibility, export publicKey as selfId
-const selfId = publicKey;
+// Ping interval handle
+let pingInterval: ReturnType<typeof setInterval> | null = null;
+
+// Generate key pair on load
+const keyPair = generateKeyPair();
+const selfId = keyPair.publicKey.substring(0, 16);
 
 export const useP2PStore = create<P2PState>((set, get) => ({
   status: 'disconnected',
   connectionCode: null,
   error: null,
-  desktopPeerId: null,
+  desktopPublicKey: null,
   selfId,
   ws: null,
-  authToken: null,
-  localUrl: null,
+  keyPair,
 
   connect: async (code: string, deviceName?: string) => {
     const normalizedCode = code.toUpperCase().trim();
-    const roomId = `${APP_ID}:${normalizedCode}`;
 
     set({
       status: 'connecting',
@@ -111,72 +128,80 @@ export const useP2PStore = create<P2PState>((set, get) => ({
     });
 
     try {
-      console.log(`[P2P] Connecting to room: ${normalizedCode}`);
+      console.log(`[P2P] Connecting to relay: ${RELAY_URL}`);
 
-      // Try relays in sequence until one works
-      let ws: WebSocket | null = null;
-      let relayIndex = 0;
-
-      const tryNextRelay = (): Promise<WebSocket> => {
-        return new Promise((resolve, reject) => {
-          if (relayIndex >= NOSTR_RELAYS.length) {
-            reject(new Error('All relays failed'));
-            return;
-          }
-
-          const relayUrl = NOSTR_RELAYS[relayIndex];
-          console.log(`[P2P] Trying relay: ${relayUrl}`);
-          const testWs = new WebSocket(relayUrl);
-
-          const timeout = setTimeout(() => {
-            testWs.close();
-            relayIndex++;
-            tryNextRelay().then(resolve).catch(reject);
-          }, 5000);
-
-          testWs.onopen = () => {
-            clearTimeout(timeout);
-            console.log(`[P2P] Connected to relay: ${relayUrl}`);
-            resolve(testWs);
-          };
-
-          testWs.onerror = () => {
-            clearTimeout(timeout);
-            console.log(`[P2P] Relay ${relayUrl} failed, trying next...`);
-            relayIndex++;
-            tryNextRelay().then(resolve).catch(reject);
-          };
-        });
-      };
-
-      ws = await tryNextRelay();
-
-      // Socket is already connected at this point - set up handlers immediately
+      const ws = new WebSocket(RELAY_URL);
       set({ ws });
 
       return new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          ws!.close();
+        let connectionTimeout: ReturnType<typeof setTimeout>;
+        let resolved = false;
+
+        const cleanup = () => {
+          if (connectionTimeout) clearTimeout(connectionTimeout);
+        };
+
+        const resolveOnce = (value: boolean) => {
+          if (!resolved) {
+            resolved = true;
+            cleanup();
+            resolve(value);
+          }
+        };
+
+        connectionTimeout = setTimeout(() => {
+          ws.close();
           set({
             status: 'error',
             error: 'Connection timeout. Make sure the code is correct and desktop is running.'
           });
-          resolve(false);
+          resolveOnce(false);
         }, 15000);
 
-        // Set up message handler first (before subscribing)
+        ws.onopen = () => {
+          console.log('[P2P] Connected to relay server');
+
+          // Send join request
+          const joinMessage = {
+            type: 'join',
+            payload: {
+              code: normalizedCode,
+              publicKey: get().keyPair.publicKey,
+              deviceName: deviceName || getDeviceName(),
+              userAgent: navigator.userAgent
+            },
+            timestamp: Date.now()
+          };
+          ws.send(JSON.stringify(joinMessage));
+        };
+
         ws.onmessage = (event) => {
-          handleRelayMessage(event.data, set, get);
+          try {
+            const message = JSON.parse(event.data);
+            handleRelayMessage(message, set, get, () => {
+              // On successful connection
+              cleanup();
+              startPingInterval(get);
+              resolveOnce(true);
+            }, (errorMsg: string) => {
+              // On error
+              set({ status: 'error', error: errorMsg });
+              resolveOnce(false);
+            });
+          } catch (err) {
+            console.error('[P2P] Failed to parse message:', err);
+          }
         };
 
         ws.onclose = () => {
-          clearTimeout(timeout);
+          cleanup();
+          stopPingInterval();
           console.log('[P2P] Disconnected from relay');
           const { status } = get();
           if (status === 'connected') {
             set({
               status: 'disconnected',
-              desktopPeerId: null,
+              desktopPublicKey: null,
               error: 'Connection lost'
             });
           }
@@ -184,58 +209,12 @@ export const useP2PStore = create<P2PState>((set, get) => ({
 
         ws.onerror = (error) => {
           console.error('[P2P] WebSocket error:', error);
-          clearTimeout(timeout);
           set({
             status: 'error',
             error: 'Failed to connect to relay server'
           });
-          resolve(false);
+          resolveOnce(false);
         };
-
-        // Socket already open - subscribe and join immediately
-        console.log('[P2P] Subscribing to room:', roomId);
-
-        // Subscribe to room events
-        const subscriptionId = `sub_${randomId().substring(0, 8)}`;
-        const filter = {
-          kinds: [30078],
-          '#d': [roomId],
-          since: Math.floor(Date.now() / 1000) - 60
-        };
-        ws.send(JSON.stringify(['REQ', subscriptionId, filter]));
-
-        // Send join message
-        console.log('[P2P] Sending join message');
-        sendEvent(ws, roomId, {
-          type: 'join',
-          deviceName: deviceName || getDeviceName(),
-          timestamp: Date.now()
-        });
-
-        // Wait for welcome message from host
-        const checkConnection = setInterval(() => {
-          const { desktopPeerId } = get();
-          if (desktopPeerId) {
-            clearInterval(checkConnection);
-            clearTimeout(timeout);
-            set({ status: 'connected' });
-            resolve(true);
-          }
-        }, 500);
-
-        // Timeout for waiting for host
-        setTimeout(() => {
-          clearInterval(checkConnection);
-          const { desktopPeerId, status } = get();
-          if (!desktopPeerId && status === 'connecting') {
-            clearTimeout(timeout);
-            set({
-              status: 'error',
-              error: 'No desktop found with this code. Make sure the code is correct and desktop is running.'
-            });
-            resolve(false);
-          }
-        }, 12000);
       });
     } catch (error) {
       console.error('[P2P] Connection error:', error);
@@ -249,45 +228,43 @@ export const useP2PStore = create<P2PState>((set, get) => ({
 
   disconnect: () => {
     const { ws } = get();
+    stopPingInterval();
     if (ws) {
       ws.close();
     }
     set({
       status: 'disconnected',
       connectionCode: null,
-      desktopPeerId: null,
+      desktopPublicKey: null,
       ws: null,
-      error: null,
-      authToken: null,
-      localUrl: null
+      error: null
     });
   },
 
   send: (type: string, payload?: unknown) => {
-    const { ws, connectionCode, desktopPeerId, selfId } = get();
-    if (ws && ws.readyState === WebSocket.OPEN && connectionCode) {
-      const roomId = `${APP_ID}:${connectionCode}`;
-      sendEvent(ws, roomId, {
+    const { ws, desktopPublicKey, keyPair } = get();
+    if (ws && ws.readyState === WebSocket.OPEN && desktopPublicKey) {
+      const message = JSON.stringify({ type, payload });
+      const { encrypted, nonce } = encrypt(message, desktopPublicKey, keyPair.secretKey);
+
+      ws.send(JSON.stringify({
         type: 'data',
-        from: selfId,
-        to: desktopPeerId,
-        payload: { type, payload },
+        payload: { encrypted, nonce },
         timestamp: Date.now()
-      });
+      }));
     } else {
       console.warn('[P2P] Cannot send - not connected');
     }
   },
 
   apiRequest: async (url: string, options?: { method?: string; body?: unknown }) => {
-    const { ws, connectionCode, desktopPeerId, selfId, authToken } = get();
+    const { ws, desktopPublicKey, keyPair } = get();
 
-    if (!ws || ws.readyState !== WebSocket.OPEN || !connectionCode || !desktopPeerId) {
+    if (!ws || ws.readyState !== WebSocket.OPEN || !desktopPublicKey) {
       throw new Error('Not connected via P2P');
     }
 
     const requestId = randomId().substring(0, 12);
-    const roomId = `${APP_ID}:${connectionCode}`;
 
     return new Promise((resolve, reject) => {
       // Set timeout for response
@@ -299,21 +276,22 @@ export const useP2PStore = create<P2PState>((set, get) => ({
       // Store pending request
       pendingRequests.set(requestId, { resolve, reject, timeout });
 
-      // Send API request through P2P
-      sendEvent(ws, roomId, {
-        type: 'data',
-        from: selfId,
-        to: desktopPeerId,
-        payload: {
-          type: 'api-request',
-          requestId,
-          url,
-          method: options?.method || 'GET',
-          body: options?.body,
-          authToken
-        },
-        timestamp: Date.now()
+      // Send API request through relay
+      const apiMessage = JSON.stringify({
+        type: 'api-request',
+        requestId,
+        url,
+        method: options?.method || 'GET',
+        body: options?.body
       });
+
+      const { encrypted, nonce } = encrypt(apiMessage, desktopPublicKey, keyPair.secretKey);
+
+      ws.send(JSON.stringify({
+        type: 'data',
+        payload: { encrypted, nonce },
+        timestamp: Date.now()
+      }));
 
       console.log(`[P2P] API request: ${options?.method || 'GET'} ${url}`);
     });
@@ -327,149 +305,107 @@ export const useP2PStore = create<P2PState>((set, get) => ({
 }));
 
 /**
- * Send a Nostr event to the relay with proper Schnorr signature
- */
-async function sendEvent(ws: WebSocket, roomId: string, data: unknown): Promise<void> {
-  const content = JSON.stringify(data);
-  const created_at = Math.floor(Date.now() / 1000);
-  const kind = 30078;
-
-  const tags = [
-    ['d', roomId],
-    ['p', publicKey]
-  ];
-
-  // Create serialized event for hashing (NIP-01 format)
-  const preEvent = [
-    0,
-    publicKey,
-    created_at,
-    kind,
-    tags,
-    content
-  ];
-
-  // Hash the serialized event to get the event ID
-  const eventHash = await sha256(JSON.stringify(preEvent));
-
-  // Sign the event hash with our private key using Schnorr signature
-  const signature = schnorr.sign(eventHash, privateKey);
-  const sig = bytesToHex(signature);
-
-  const event: NostrEvent = {
-    id: eventHash,
-    pubkey: publicKey,
-    created_at,
-    kind,
-    tags,
-    content,
-    sig
-  };
-
-  ws.send(JSON.stringify(['EVENT', event]));
-}
-
-/**
- * Handle messages from Nostr relay
+ * Handle messages from relay server
  */
 function handleRelayMessage(
-  rawData: string,
+  message: { type: string; payload?: unknown; timestamp?: number },
   set: (state: Partial<P2PState>) => void,
-  get: () => P2PState
+  get: () => P2PState,
+  onConnected: () => void,
+  onError: (msg: string) => void
 ): void {
-  try {
-    const msg = JSON.parse(rawData);
-    if (!Array.isArray(msg)) return;
+  const { keyPair } = get();
 
-    const [type, ...args] = msg;
-
-    if (type === 'EVENT') {
-      const event = args[1] as NostrEvent;
-
-      // Ignore our own events
-      if (event.pubkey === selfId) return;
-
-      const data = JSON.parse(event.content);
-      const senderId = event.pubkey;
-
-      // Handle message types
-      if (data.type === 'host-announce') {
-        // Desktop is announcing its presence - connect to it!
-        const { desktopPeerId, connectionCode, ws } = get();
-        if (!desktopPeerId && senderId) {
-          console.log('[P2P] Found desktop via announce!');
-          const update: Partial<P2PState> = {
-            desktopPeerId: senderId,
-            status: 'connected'
-          };
-          // Store auth token if provided
-          if (data.authToken) {
-            update.authToken = data.authToken;
-            console.log('[P2P] Received auth token from announce');
-          }
-          // Store local URL for API calls
-          if (data.localUrl) {
-            update.localUrl = data.localUrl;
-            console.log('[P2P] Received local URL:', data.localUrl);
-          }
-          set(update);
-
-          // Send join message to confirm we received the announce
-          if (ws && connectionCode) {
-            const roomId = `${APP_ID}:${connectionCode}`;
-            sendEvent(ws, roomId, {
-              type: 'join',
-              deviceName: getDeviceName(),
-              timestamp: Date.now()
-            });
-          }
-        }
-      } else if (data.type === 'data') {
-        // Check if message is for us
-        if (!data.to || data.to === selfId) {
-          const payload = data.payload;
-          if (payload?.type === 'welcome') {
-            // Host acknowledged us - extract auth info
-            console.log('[P2P] Desktop connected!');
-            const update: Partial<P2PState> = {
-              desktopPeerId: senderId,
-              status: 'connected'
-            };
-            // Store auth token if provided
-            if (payload.authToken) {
-              update.authToken = payload.authToken;
-              console.log('[P2P] Received auth token');
-            }
-            // Store local URL for API calls
-            if (payload.localUrl) {
-              update.localUrl = payload.localUrl;
-              console.log('[P2P] Received local URL:', payload.localUrl);
-            }
-            set(update);
-          } else if (payload?.type === 'api-response') {
-            // Handle API response
-            const requestId = payload.requestId as string;
-            const pending = pendingRequests.get(requestId);
-            if (pending) {
-              clearTimeout(pending.timeout);
-              pendingRequests.delete(requestId);
-              pending.resolve({
-                ok: payload.ok as boolean,
-                status: payload.status as number,
-                data: payload.data
-              });
-              console.log(`[P2P] API response: ${payload.status} for ${requestId}`);
-            }
-          } else if (messageHandler && payload?.type) {
-            messageHandler(payload.type, payload.payload);
-          }
-        }
-      }
-    } else if (type === 'EOSE') {
-      console.log('[P2P] Subscription ready');
+  switch (message.type) {
+    case 'joined': {
+      // Successfully joined - got desktop's public key
+      const payload = message.payload as { desktopPublicKey: string };
+      console.log('[P2P] Connected to desktop!');
+      set({
+        status: 'connected',
+        desktopPublicKey: payload.desktopPublicKey
+      });
+      onConnected();
+      break;
     }
-  } catch {
-    // Ignore parse errors
+
+    case 'data': {
+      // Encrypted data from desktop
+      const { desktopPublicKey } = get();
+      if (!desktopPublicKey) return;
+
+      const payload = message.payload as { encrypted: string; nonce: string; from?: string };
+
+      try {
+        const decrypted = decrypt(
+          payload.encrypted,
+          payload.nonce,
+          desktopPublicKey,
+          keyPair.secretKey
+        );
+        const data = JSON.parse(decrypted);
+
+        // Handle API responses
+        if (data.type === 'api-response') {
+          const pending = pendingRequests.get(data.requestId);
+          if (pending) {
+            clearTimeout(pending.timeout);
+            pendingRequests.delete(data.requestId);
+            pending.resolve({
+              ok: data.ok,
+              status: data.status,
+              data: data.data
+            });
+            console.log(`[P2P] API response: ${data.status} for ${data.requestId}`);
+          }
+        } else if (messageHandler && data.type) {
+          messageHandler(data.type, data.payload);
+        }
+      } catch (err) {
+        console.error('[P2P] Failed to decrypt message:', err);
+      }
+      break;
+    }
+
+    case 'peer-left': {
+      // Desktop disconnected
+      console.log('[P2P] Desktop disconnected');
+      set({
+        status: 'disconnected',
+        desktopPublicKey: null,
+        error: 'Desktop disconnected'
+      });
+      break;
+    }
+
+    case 'error': {
+      const payload = message.payload as { code: string; message: string };
+      console.error('[P2P] Relay error:', payload.message);
+      onError(payload.message);
+      break;
+    }
+
+    case 'pong':
+      // Keep-alive response
+      break;
+  }
+}
+
+function startPingInterval(get: () => P2PState): void {
+  stopPingInterval();
+
+  pingInterval = setInterval(() => {
+    const { ws } = get();
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+    }
+  }, 30000);
+}
+
+function stopPingInterval(): void {
+  if (pingInterval) {
+    clearInterval(pingInterval);
+    pingInterval = null;
   }
 }
 
@@ -505,7 +441,7 @@ export function isP2PSupported(): boolean {
  */
 export function isP2PConnected(): boolean {
   const state = useP2PStore.getState();
-  return state.status === 'connected' && !!state.desktopPeerId;
+  return state.status === 'connected' && !!state.desktopPublicKey;
 }
 
 /**
