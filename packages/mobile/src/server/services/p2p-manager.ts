@@ -141,15 +141,8 @@ export class P2PManager extends EventEmitter {
    * Handle incoming message from peer
    */
   private handleMessage(peerId: string, message: unknown): void {
-    const msg = message as { type: string; requestId?: string; [key: string]: unknown };
-
-    if (msg.type === 'api-request') {
-      // Handle API request
-      this.emit('api-request', peerId, msg);
-    } else {
-      // Generic message
-      this.emit('message', peerId, message);
-    }
+    // Emit all messages through 'message' event - MobileServer handles routing
+    this.emit('message', peerId, message);
   }
 
   /**

@@ -56,6 +56,12 @@ export function authMiddleware(
       return done();
     }
 
+    // Allow P2P requests (authenticated via relay E2E encryption)
+    if (request.headers['x-p2p-request'] === 'true') {
+      console.log(`[Auth] Allowed (P2P request): ${pathname}`);
+      return done();
+    }
+
     // Extract token from query param or header
     const queryToken = (request.query as Record<string, string>).token;
     const headerToken = extractBearerToken(request.headers.authorization);

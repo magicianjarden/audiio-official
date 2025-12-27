@@ -113,13 +113,48 @@ export class MobileServer {
     }
   }
 
-  private handleP2PApiRequest(peerId: string, msg: { requestId?: string; payload?: unknown }): void {
-    // Process API request and send response back via P2P
-    this.p2pManager.send({
-      type: 'api-response',
-      requestId: msg.requestId,
-      success: true
-    }, peerId);
+  private async handleP2PApiRequest(peerId: string, msg: { requestId?: string; url?: string; method?: string; body?: unknown }): Promise<void> {
+    const { requestId, url, method = 'GET', body } = msg;
+
+    if (!url) {
+      this.p2pManager.sendApiResponse(peerId, requestId || '', {
+        ok: false,
+        status: 400,
+        data: { error: 'Missing URL' }
+      });
+      return;
+    }
+
+    console.log(`[P2P] API request: ${method} ${url}`);
+
+    try {
+      // Inject the request into Fastify
+      const response = await this.fastify.inject({
+        method: method as any,
+        url,
+        payload: body ? JSON.stringify(body) : undefined,
+        headers: {
+          'content-type': 'application/json',
+          // Skip auth for P2P requests - they're already authenticated via relay
+          'x-p2p-request': 'true'
+        }
+      });
+
+      console.log(`[P2P] API response: ${response.statusCode} for ${url}`);
+
+      this.p2pManager.sendApiResponse(peerId, requestId || '', {
+        ok: response.statusCode >= 200 && response.statusCode < 300,
+        status: response.statusCode,
+        data: response.json()
+      });
+    } catch (error) {
+      console.error(`[P2P] API error for ${url}:`, error);
+      this.p2pManager.sendApiResponse(peerId, requestId || '', {
+        ok: false,
+        status: 500,
+        data: { error: error instanceof Error ? error.message : 'Internal error' }
+      });
+    }
   }
 
   private handleP2PPlaybackCommand(peerId: string, msg: { requestId?: string; payload?: unknown }): void {
