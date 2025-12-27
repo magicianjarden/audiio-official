@@ -28,26 +28,26 @@ export function Footer() {
 
             <div className="footer-column">
               <h4>Community</h4>
-              <a href="https://github.com/audiio/audiio" target="_blank" rel="noopener noreferrer">
+              <a href="https://github.com/magicianjarden/audiio-official" target="_blank" rel="noopener noreferrer">
                 GitHub
               </a>
-              <a href="https://github.com/audiio/audiio/discussions" target="_blank" rel="noopener noreferrer">
+              <a href="https://github.com/magicianjarden/audiio-official/discussions" target="_blank" rel="noopener noreferrer">
                 Discussions
               </a>
-              <a href="https://github.com/audiio/audiio/issues" target="_blank" rel="noopener noreferrer">
+              <a href="https://github.com/magicianjarden/audiio-official/issues" target="_blank" rel="noopener noreferrer">
                 Issues
               </a>
             </div>
 
             <div className="footer-column">
               <h4>Resources</h4>
-              <a href="https://github.com/audiio/audiio/wiki" target="_blank" rel="noopener noreferrer">
+              <a href="https://github.com/magicianjarden/audiio-official/wiki" target="_blank" rel="noopener noreferrer">
                 Documentation
               </a>
-              <a href="https://github.com/audiio/audiio/tree/main/packages/sdk" target="_blank" rel="noopener noreferrer">
+              <a href="https://github.com/magicianjarden/audiio-official/tree/main/packages/sdk" target="_blank" rel="noopener noreferrer">
                 Plugin SDK
               </a>
-              <a href="https://github.com/audiio/audiio/releases" target="_blank" rel="noopener noreferrer">
+              <a href="https://github.com/magicianjarden/audiio-official/releases" target="_blank" rel="noopener noreferrer">
                 Changelog
               </a>
             </div>
@@ -64,7 +64,7 @@ export function Footer() {
 
           <div className="footer-social">
             <a
-              href="https://github.com/audiio/audiio"
+              href="https://github.com/magicianjarden/audiio-official"
               target="_blank"
               rel="noopener noreferrer"
               className="social-link"

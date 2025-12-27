@@ -52,7 +52,9 @@
       "Bash(git mv:*)",
       "Bash(mkdir:*)",
       "Bash(cp:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(git push:*)",
+      "Bash(git merge:*)"
     ]
   }
 }

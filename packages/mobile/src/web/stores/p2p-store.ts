@@ -10,11 +10,13 @@
 
 import { create } from 'zustand';
 
-// Public Nostr relays (free to use)
+// Public Nostr relays (free to use, with valid SSL certs)
 const NOSTR_RELAYS = [
-  'wss://relay.damus.io',
   'wss://nos.lol',
-  'wss://relay.nostr.band'
+  'wss://relay.damus.io',
+  'wss://relay.primal.net',
+  'wss://nostr.mom',
+  'wss://relay.nostr.net'
 ];
 
 const APP_ID = 'audiio-mobile';
@@ -106,8 +108,43 @@ export const useP2PStore = create<P2PState>((set, get) => ({
     try {
       console.log(`[P2P] Connecting to room: ${normalizedCode}`);
 
-      // Connect to Nostr relay
-      const ws = new WebSocket(NOSTR_RELAYS[0]);
+      // Try relays in sequence until one works
+      let ws: WebSocket | null = null;
+      let relayIndex = 0;
+
+      const tryNextRelay = (): Promise<WebSocket> => {
+        return new Promise((resolve, reject) => {
+          if (relayIndex >= NOSTR_RELAYS.length) {
+            reject(new Error('All relays failed'));
+            return;
+          }
+
+          const relayUrl = NOSTR_RELAYS[relayIndex];
+          console.log(`[P2P] Trying relay: ${relayUrl}`);
+          const testWs = new WebSocket(relayUrl);
+
+          const timeout = setTimeout(() => {
+            testWs.close();
+            relayIndex++;
+            tryNextRelay().then(resolve).catch(reject);
+          }, 5000);
+
+          testWs.onopen = () => {
+            clearTimeout(timeout);
+            console.log(`[P2P] Connected to relay: ${relayUrl}`);
+            resolve(testWs);
+          };
+
+          testWs.onerror = () => {
+            clearTimeout(timeout);
+            console.log(`[P2P] Relay ${relayUrl} failed, trying next...`);
+            relayIndex++;
+            tryNextRelay().then(resolve).catch(reject);
+          };
+        });
+      };
+
+      ws = await tryNextRelay();
 
       return new Promise((resolve) => {
         const timeout = setTimeout(() => {

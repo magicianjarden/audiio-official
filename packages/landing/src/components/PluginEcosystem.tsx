@@ -97,7 +97,7 @@ export function PluginEcosystem() {
             <div className="sdk-header">
               <h3>Plugin SDK</h3>
               <a
-                href="https://github.com/audiio/audiio/tree/main/packages/sdk"
+                href="https://github.com/magicianjarden/audiio-official/tree/main/packages/sdk"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="sdk-link"
@@ -124,7 +124,7 @@ export default definePlugin({
         <div className="plugin-cta">
           <p>
             Can't find what you need? Build your own plugin with our
-            <a href="https://github.com/audiio/audiio" target="_blank" rel="noopener noreferrer">
+            <a href="https://github.com/magicianjarden/audiio-official" target="_blank" rel="noopener noreferrer">
               {' '}TypeScript SDK
             </a>.
           </p>
