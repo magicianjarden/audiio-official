@@ -21,14 +21,14 @@ const WebSocketImpl = typeof WebSocket !== 'undefined'
   ? WebSocket
   : require('ws');
 
-// Public Nostr relays (free to use)
-// Using popular, well-maintained relays with valid SSL certs
+// Public Nostr relays (free to use, no PoW required)
+// Prioritize relays that don't require proof-of-work
 const NOSTR_RELAYS = [
-  'wss://nos.lol',
   'wss://relay.damus.io',
-  'wss://relay.primal.net',
-  'wss://nostr.mom',
-  'wss://relay.nostr.net'
+  'wss://relay.snort.social',
+  'wss://nostr.wine',
+  'wss://relay.nostr.band',
+  'wss://purplepag.es'
 ];
 
 // Word lists for memorable connection codes

@@ -12,13 +12,13 @@ import { create } from 'zustand';
 import { schnorr } from '@noble/curves/secp256k1';
 import { bytesToHex } from '@noble/curves/abstract/utils';
 
-// Public Nostr relays (free to use, with valid SSL certs)
+// Public Nostr relays (free to use, no PoW required)
 const NOSTR_RELAYS = [
-  'wss://nos.lol',
   'wss://relay.damus.io',
-  'wss://relay.primal.net',
-  'wss://nostr.mom',
-  'wss://relay.nostr.net'
+  'wss://relay.snort.social',
+  'wss://nostr.wine',
+  'wss://relay.nostr.band',
+  'wss://purplepag.es'
 ];
 
 const APP_ID = 'audiio-mobile';
