@@ -12,6 +12,16 @@
       "types": "./dist/esm/index.d.ts",
       "import": "./dist/esm/index.js",
       "require": "./dist/cjs/index.js"
+    },
+    "./node": {
+      "types": "./dist/esm/node.d.ts",
+      "import": "./dist/esm/node.js",
+      "require": "./dist/cjs/node.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "node": ["./dist/esm/node.d.ts"]
     }
   },
   "scripts": {

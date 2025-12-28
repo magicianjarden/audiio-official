@@ -54,7 +54,12 @@
       "Bash(cp:*)",
       "Bash(git stash:*)",
       "Bash(git push:*)",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "Bash(pip install:*)",
+      "Bash(npm run package:*)",
+      "Bash(done)",
+      "Bash(file:*)",
+      "Bash(git init:*)"
     ]
   }
 }

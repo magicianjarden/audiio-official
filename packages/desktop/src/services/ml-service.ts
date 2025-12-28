@@ -63,7 +63,7 @@ function convertToMLTrack(unifiedTrack: UnifiedTrack): Track {
  */
 class MLService {
   private engine: import('@audiio/ml-core').MLEngine | null = null;
-  private storage: import('@audiio/ml-core').NodeStorage | null = null;
+  private storage: import('@audiio/ml-core/node').NodeStorage | null = null;
   private libraryProvider: LibraryDataProvider | null = null;
   private initialized = false;
   private initializing = false;
@@ -89,7 +89,8 @@ class MLService {
 
       // Dynamic import to avoid bundling issues
       const mlCore = await import('@audiio/ml-core');
-      const { getMLEngine, NodeStorage } = mlCore;
+      const { getMLEngine } = mlCore;
+      const { NodeStorage } = await import('@audiio/ml-core/node');
 
       // Create storage adapter
       const storagePath = config.storagePath || path.join(app.getPath('userData'), 'ml-data');
