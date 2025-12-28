@@ -59,7 +59,9 @@
       "Bash(npm run package:*)",
       "Bash(done)",
       "Bash(file:*)",
-      "Bash(git init:*)"
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git branch:*)"
     ]
   }
 }

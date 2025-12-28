@@ -161,6 +161,51 @@ declare global {
       // Check if ML algorithm is loaded
       isAddonLoaded?: (addonId: string) => Promise<boolean>;
 
+      // Lyrics API
+      lyrics?: {
+        /** Check if any lyrics provider is available */
+        isAvailable: () => Promise<boolean>;
+        /** Search for lyrics */
+        search: (artist: string, track: string, album?: string) => Promise<{
+          syncedLyrics?: string;
+          plainLyrics?: string;
+        } | null>;
+      };
+
+      // Plugin system
+      plugins?: {
+        /** Get list of loaded plugins */
+        getLoadedPlugins: () => Promise<Array<{
+          id: string;
+          name: string;
+          version: string;
+          roles: string[];
+          source: 'npm' | 'local' | 'user';
+        }>>;
+        /** Check if a specific plugin role is available */
+        hasRole: (role: string) => Promise<boolean>;
+        /** Reload all plugins */
+        reloadPlugins: () => Promise<void>;
+        /** Listen for plugin UI registration */
+        onPluginUIRegistered?: (callback: (registration: unknown) => void) => () => void;
+      };
+
+      // Karaoke API (vocal removal)
+      karaoke?: {
+        isAvailable: () => Promise<boolean>;
+        processTrack: (trackId: string, audioUrl: string) => Promise<{
+          success: boolean;
+          instrumentalUrl?: string;
+          error?: string;
+        }>;
+        getCached: (trackId: string) => Promise<{
+          success: boolean;
+          instrumentalUrl?: string;
+        } | null>;
+        onAvailabilityChange: (callback: (event: { available: boolean }) => void) => () => void;
+        onFullTrackReady?: (callback: (event: { trackId: string; result: unknown }) => void) => () => void;
+      };
+
       // Update algorithm settings
       algoUpdateSettings?: (settings: Record<string, unknown>) => Promise<{ success: boolean }>;
 

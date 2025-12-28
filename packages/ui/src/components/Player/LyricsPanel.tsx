@@ -12,7 +12,6 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import { useUIStore } from '../../stores/ui-store';
 import { usePlayerStore } from '../../stores/player-store';
 import { useLyricsStore } from '../../stores/lyrics-store';
-import { usePluginStore } from '../../stores/plugin-store';
 import { useKaraokeStore } from '../../stores/karaoke-store';
 import { useTranslatedLyrics } from '../../hooks/useTranslatedLyrics';
 import {
@@ -20,7 +19,6 @@ import {
   MusicNoteIcon,
   ChevronDownIcon,
   ChevronUpIcon,
-  BlockIcon,
   ExpandIcon,
   ContractIcon,
   MicIcon,
@@ -80,23 +78,17 @@ export const LyricsPanel: React.FC = () => {
     translationEnabled
   } = useTranslatedLyrics();
 
-  // Check if lyrics plugin is enabled
-  const lyricsPlugin = usePluginStore(state => state.plugins.find(p => p.id === 'lrclib-lyrics'));
-  const isLyricsEnabled = lyricsPlugin?.enabled ?? true;
-
   // Ref for basic lyrics mode auto-scroll
   const basicLyricsRef = useRef<HTMLDivElement>(null);
   const basicActiveLineRef = useRef<HTMLDivElement>(null);
 
   // Fetch lyrics when panel opens
   useEffect(() => {
-    if (isLyricsPanelOpen && currentTrack && isLyricsEnabled) {
+    if (isLyricsPanelOpen && currentTrack) {
       const artistName = currentTrack.artists[0]?.name || '';
       fetchLyrics(artistName, currentTrack.title, currentTrack.id);
-    } else if (!isLyricsEnabled) {
-      clearLyrics();
     }
-  }, [isLyricsPanelOpen, currentTrack?.id, isLyricsEnabled, fetchLyrics, clearLyrics]);
+  }, [isLyricsPanelOpen, currentTrack?.id, fetchLyrics]);
 
   // Update current line and word atomically for smooth scrubbing
   // Using atomic update prevents visual glitches when seeking
@@ -292,22 +284,14 @@ export const LyricsPanel: React.FC = () => {
 
         {/* Lyrics Display */}
         <div className="lyrics-fullscreen-content">
-          {!isLyricsEnabled && (
-            <div className="lyrics-fullscreen-message">
-              <BlockIcon size={64} />
-              <span>Lyrics plugin is disabled</span>
-              <span className="lyrics-fullscreen-hint">Enable LRCLIB Lyrics in Settings</span>
-            </div>
-          )}
-
-          {isLyricsEnabled && isLoading && (
+          {isLoading && (
             <div className="lyrics-fullscreen-message">
               <div className="lyrics-fullscreen-spinner" />
               <span>Loading lyrics...</span>
             </div>
           )}
 
-          {isLyricsEnabled && !isLoading && !lyrics && !linesWithWords && (
+          {!isLoading && !lyrics && !linesWithWords && (
             <div className="lyrics-fullscreen-message">
               <MusicNoteIcon size={64} />
               <span>No synced lyrics available</span>
@@ -316,7 +300,7 @@ export const LyricsPanel: React.FC = () => {
           )}
 
           {/* Sing-Along Mode - Word-by-word highlighting */}
-          {isLyricsEnabled && !isLoading && singAlongEnabled && linesWithWords && linesWithWords.length > 0 && (
+          {!isLoading && singAlongEnabled && linesWithWords && linesWithWords.length > 0 && (
             <SingAlongLyrics
               linesWithWords={
                 // Merge translations from lyrics into linesWithWords
@@ -337,7 +321,7 @@ export const LyricsPanel: React.FC = () => {
           )}
 
           {/* Basic Lyrics Mode - Line-by-line highlighting (like sidebar) */}
-          {isLyricsEnabled && !isLoading && !singAlongEnabled && lyrics && lyrics.length > 0 && (
+          {!isLoading && !singAlongEnabled && lyrics && lyrics.length > 0 && (
             <div className="lyrics-fullscreen-basic" ref={basicLyricsRef}>
               {lyrics.map((line, index) => {
                 const isActive = index === currentLineIndex;
@@ -449,30 +433,20 @@ export const LyricsPanel: React.FC = () => {
 
       {/* Lyrics Content */}
       <div className="lyrics-panel-content" ref={containerRef}>
-        {!isLyricsEnabled && (
-          <div className="lyrics-panel-state">
-            <BlockIcon size={48} />
-            <span>Lyrics Disabled</span>
-            <span className="lyrics-panel-hint">
-              Enable the LRCLIB Lyrics plugin in Settings → Plugins to see lyrics
-            </span>
-          </div>
-        )}
-
-        {isLyricsEnabled && isLoading && (
+        {isLoading && (
           <div className="lyrics-panel-state">
             <div className="lyrics-panel-spinner" />
             <span>Loading lyrics...</span>
           </div>
         )}
 
-        {isLyricsEnabled && error && (
+        {error && (
           <div className="lyrics-panel-state">
             <span className="lyrics-panel-error">{error}</span>
           </div>
         )}
 
-        {isLyricsEnabled && !isLoading && !error && lyrics && lyrics.length > 0 && (
+        {!isLoading && !error && lyrics && lyrics.length > 0 && (
           <div className={`lyrics-panel-synced ${singAlongEnabled ? 'sing-along-mode' : ''}`}>
             {lyrics.map((line, index) => {
               const isActive = index === currentLineIndex;
@@ -507,7 +481,7 @@ export const LyricsPanel: React.FC = () => {
           </div>
         )}
 
-        {isLyricsEnabled && !isLoading && !error && !lyrics && plainLyrics && (
+        {!isLoading && !error && !lyrics && plainLyrics && (
           <div className="lyrics-panel-plain">
             {plainLyrics.split('\n').map((line, index) => (
               <div key={index} className="lyrics-panel-line plain">
@@ -517,7 +491,7 @@ export const LyricsPanel: React.FC = () => {
           </div>
         )}
 
-        {isLyricsEnabled && !isLoading && !error && !lyrics && !plainLyrics && (
+        {!isLoading && !error && !lyrics && !plainLyrics && (
           <div className="lyrics-panel-state">
             <MusicNoteIcon size={48} />
             <span>No lyrics available</span>
@@ -529,7 +503,7 @@ export const LyricsPanel: React.FC = () => {
       </div>
 
       {/* Current Line Preview */}
-      {isLyricsEnabled && lyrics && currentLineIndex >= 0 && lyrics[currentLineIndex] && (
+      {lyrics && currentLineIndex >= 0 && lyrics[currentLineIndex] && (
         <div className="lyrics-panel-current">
           <div className="lyrics-panel-current-line">
             {lyrics[currentLineIndex]?.text || '...'}

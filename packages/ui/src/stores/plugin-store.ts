@@ -64,6 +64,28 @@ const syncPluginStatesWithMainProcess = async (plugins: Plugin[], pluginOrder: s
   console.log('Plugin states synced');
 };
 
+// Sync installed status from backend (updates which plugins are actually installed)
+const syncInstalledStatusFromBackend = async (updateFn: (updates: { id: string; installed: boolean }[]) => void) => {
+  if (!window.api?.plugins?.getLoadedPlugins) return;
+
+  try {
+    const loadedPlugins = await window.api.plugins.getLoadedPlugins();
+    console.log('[PluginStore] Loaded plugins from backend:', loadedPlugins.map(p => p.id));
+
+    // Create update list based on what's actually loaded
+    const updates = loadedPlugins.map(p => ({
+      id: p.id,
+      installed: true,
+    }));
+
+    if (updates.length > 0) {
+      updateFn(updates);
+    }
+  } catch (error) {
+    console.error('[PluginStore] Failed to sync installed status:', error);
+  }
+};
+
 // Notify main process of plugin order changes
 const notifyOrderChange = async (pluginOrder: string[]) => {
   if (window.api?.setAddonOrder) {
@@ -132,6 +154,10 @@ interface PluginState {
   getOrderedPlugins: () => Plugin[];
   /** Set the complete plugin order */
   setPluginOrder: (order: string[]) => void;
+  /** Update installed status for multiple plugins */
+  updateInstalledStatus: (updates: { id: string; installed: boolean }[]) => void;
+  /** Sync installed status from backend */
+  syncFromBackend: () => Promise<void>;
 }
 
 // Helper to notify main process of plugin settings changes
@@ -566,6 +592,25 @@ export const usePluginStore = create<PluginState>()(
         set({ pluginOrder: order });
         notifyOrderChange(order);
       },
+
+      updateInstalledStatus: (updates) => {
+        set((state) => ({
+          plugins: state.plugins.map((p) => {
+            const update = updates.find(u => u.id === p.id);
+            if (update) {
+              return { ...p, installed: update.installed };
+            }
+            return p;
+          }),
+        }));
+      },
+
+      syncFromBackend: async () => {
+        const updateFn = (updates: { id: string; installed: boolean }[]) => {
+          get().updateInstalledStatus(updates);
+        };
+        await syncInstalledStatusFromBackend(updateFn);
+      },
     }),
     {
       name: 'audiio-plugins',
@@ -606,6 +651,8 @@ export const usePluginStore = create<PluginState>()(
           // Small delay to ensure window.api is available
           setTimeout(() => {
             syncPluginStatesWithMainProcess(state.plugins, state.pluginOrder);
+            // Also sync installed status from backend
+            state.syncFromBackend();
           }, 100);
         }
       },

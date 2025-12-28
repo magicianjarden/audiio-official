@@ -2355,15 +2355,25 @@ function setupMLLibraryEvents(): void {
 }
 
 /**
+ * Dynamic import helper that bypasses TypeScript checking
+ * Used for optional plugin imports that may not be installed
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function dynamicPluginImport(specifier: string): Promise<any> {
+  const dynamicImportFn = new Function('specifier', 'return import(specifier)');
+  return dynamicImportFn(specifier);
+}
+
+/**
  * Initialize Sposify addon handlers
  */
 async function initializeSposify(): Promise<void> {
   try {
     // Dynamically import to avoid bundling issues if not installed
-    const { registerSposifyHandlers, setMainWindow } = await import('@audiio/sposify');
-    registerSposifyHandlers(app.getPath('userData'));
+    const sposifyModule = await dynamicPluginImport('@audiio/sposify');
+    sposifyModule.registerSposifyHandlers(app.getPath('userData'));
     if (mainWindow) {
-      setMainWindow(mainWindow);
+      sposifyModule.setMainWindow(mainWindow);
     }
     sposifyHandlersRegistered = true;
     console.log('[Sposify] Handlers registered');
@@ -2517,8 +2527,8 @@ app.on('before-quit', async () => {
   // Cleanup Sposify handlers
   if (sposifyHandlersRegistered) {
     try {
-      const { unregisterSposifyHandlers } = await import('@audiio/sposify');
-      unregisterSposifyHandlers();
+      const sposifyModule = await dynamicPluginImport('@audiio/sposify');
+      sposifyModule.unregisterSposifyHandlers();
       console.log('[Sposify] Handlers unregistered on quit');
     } catch (error) {
       // Ignore - addon may not be available

@@ -232,22 +232,44 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     set({ isLoading: true, error: null, lyrics: null, plainLyrics: null, currentTrackId: trackId });
 
     try {
-      const params = new URLSearchParams({
-        artist_name: artist,
-        track_name: track
-      });
+      let data: { syncedLyrics?: string; plainLyrics?: string; duration?: number } | null = null;
 
-      const response = await fetch(`https://lrclib.net/api/get?${params.toString()}`);
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          set({ isLoading: false, error: 'Lyrics not found' });
-          return;
+      // Try IPC lyrics API first (uses installed lyrics plugin)
+      if (window.api?.lyrics?.search) {
+        try {
+          const result = await window.api.lyrics.search(artist, track);
+          if (result) {
+            data = result;
+          }
+        } catch (e) {
+          console.log('[LyricsStore] IPC lyrics search failed, falling back to direct fetch');
         }
-        throw new Error(`HTTP ${response.status}`);
       }
 
-      const data = await response.json();
+      // Fallback to direct LRCLib API if no plugin or plugin failed
+      if (!data) {
+        const params = new URLSearchParams({
+          artist_name: artist,
+          track_name: track
+        });
+
+        const response = await fetch(`https://lrclib.net/api/get?${params.toString()}`);
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            set({ isLoading: false, error: 'Lyrics not found' });
+            return;
+          }
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        data = await response.json();
+      }
+
+      if (!data) {
+        set({ isLoading: false, error: 'No lyrics available' });
+        return;
+      }
 
       // Prefer synced lyrics, fall back to plain
       if (data.syncedLyrics) {
