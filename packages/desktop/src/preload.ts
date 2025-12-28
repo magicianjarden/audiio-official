@@ -118,6 +118,13 @@ const api = {
     return ipcRenderer.invoke('get-artist-latest-release', { artistId, source });
   },
 
+  // Lyrics API
+  lyrics: {
+    search: (artist: string, track: string, album?: string, duration?: number) => {
+      return ipcRenderer.invoke('get-lyrics', { title: track, artist, album, duration });
+    }
+  },
+
   getRecommendedTracks: (basedOn: 'artist' | 'genre', id: string) => {
     return ipcRenderer.invoke('get-recommended-tracks', { basedOn, id });
   },

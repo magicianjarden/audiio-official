@@ -702,6 +702,7 @@ function setupIPCHandlers(): void {
       // Get any lyrics provider from registry (capability-based)
       const providers = registry.getLyricsProviders();
       if (providers.length === 0) {
+        console.log('[Lyrics] No lyrics providers available');
         return null;
       }
 
@@ -711,7 +712,58 @@ function setupIPCHandlers(): void {
         return null;
       }
 
-      return await firstProvider.getLyrics({ title, artist, album, duration });
+      console.log(`[Lyrics] Using provider: ${firstProvider.id}`);
+      const result = await firstProvider.getLyrics({ title, artist, album, duration });
+
+      if (!result) {
+        return null;
+      }
+
+      // Transform provider result to UI-expected format
+      // Provider may return: { synced?: LyricsLine[], plain?: string, source }
+      // UI expects: { syncedLyrics?: string, plainLyrics?: string, duration?: number }
+      // Use any to handle various provider formats
+      const rawResult = result as any;
+      const transformed: { syncedLyrics?: string; plainLyrics?: string; duration?: number } = {};
+
+      // If synced is an array of LyricsLine, convert back to LRC format
+      if (rawResult.synced && Array.isArray(rawResult.synced)) {
+        const lrcLines = rawResult.synced.map((line: { time: number; text: string }) => {
+          const mins = Math.floor(line.time / 60000);
+          const secs = Math.floor((line.time % 60000) / 1000);
+          const ms = line.time % 1000;
+          return `[${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(Math.floor(ms / 10)).padStart(2, '0')}]${line.text}`;
+        });
+        transformed.syncedLyrics = lrcLines.join('\n');
+      } else if (typeof rawResult.synced === 'string') {
+        // Already LRC format
+        transformed.syncedLyrics = rawResult.synced;
+      } else if (rawResult.syncedLyrics) {
+        // Direct syncedLyrics field
+        transformed.syncedLyrics = typeof rawResult.syncedLyrics === 'string'
+          ? rawResult.syncedLyrics
+          : rawResult.syncedLyrics.map((line: { time: number; text: string }) => {
+              const mins = Math.floor(line.time / 60000);
+              const secs = Math.floor((line.time % 60000) / 1000);
+              const ms = line.time % 1000;
+              return `[${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(Math.floor(ms / 10)).padStart(2, '0')}]${line.text}`;
+            }).join('\n');
+      }
+
+      // Handle plain lyrics
+      if (rawResult.plain) {
+        transformed.plainLyrics = rawResult.plain;
+      } else if (rawResult.plainLyrics) {
+        transformed.plainLyrics = rawResult.plainLyrics;
+      } else if (rawResult.lyrics) {
+        transformed.plainLyrics = rawResult.lyrics;
+      }
+
+      if (duration) {
+        transformed.duration = duration;
+      }
+
+      return transformed;
     } catch (error) {
       console.error('Get lyrics error:', error);
       return null;
