@@ -617,6 +617,91 @@ const api = {
       };
     },
   },
+
+  // ========================================
+  // Plugin Repository APIs
+  // ========================================
+
+  repositories: {
+    // Get all repositories
+    list: () => {
+      return ipcRenderer.invoke('get-repositories');
+    },
+
+    // Add a new repository
+    add: (url: string) => {
+      return ipcRenderer.invoke('add-repository', url);
+    },
+
+    // Remove a repository
+    remove: (repoId: string) => {
+      return ipcRenderer.invoke('remove-repository', repoId);
+    },
+
+    // Enable/disable a repository
+    setEnabled: (repoId: string, enabled: boolean) => {
+      return ipcRenderer.invoke('set-repository-enabled', { repoId, enabled });
+    },
+
+    // Refresh a single repository
+    refresh: (repoId: string) => {
+      return ipcRenderer.invoke('refresh-repository', repoId);
+    },
+
+    // Refresh all repositories
+    refreshAll: () => {
+      return ipcRenderer.invoke('refresh-all-repositories');
+    },
+
+    // Get all available plugins from repositories
+    getAvailablePlugins: () => {
+      return ipcRenderer.invoke('get-available-plugins');
+    },
+
+    // Search plugins across all repositories
+    searchPlugins: (query: string) => {
+      return ipcRenderer.invoke('search-plugins', query);
+    },
+
+    // Check for plugin updates
+    checkUpdates: () => {
+      return ipcRenderer.invoke('check-plugin-updates');
+    },
+
+    // Install a plugin from any source (npm, git, local path)
+    installFromSource: (source: string) => {
+      return ipcRenderer.invoke('install-plugin-from-source', source);
+    },
+
+    // Uninstall a plugin
+    uninstallPlugin: (pluginId: string) => {
+      return ipcRenderer.invoke('uninstall-plugin-by-id', pluginId);
+    },
+
+    // Update a plugin
+    updatePlugin: (pluginId: string, source: string) => {
+      return ipcRenderer.invoke('update-plugin', { pluginId, source });
+    },
+
+    // Listen for installation progress
+    onInstallProgress: (callback: (progress: {
+      phase: 'downloading' | 'extracting' | 'installing' | 'building' | 'complete' | 'error';
+      progress: number;
+      message: string;
+      pluginId?: string;
+    }) => void) => {
+      const listener = (_: unknown, progress: {
+        phase: 'downloading' | 'extracting' | 'installing' | 'building' | 'complete' | 'error';
+        progress: number;
+        message: string;
+        pluginId?: string;
+      }) => callback(progress);
+      ipcRenderer.on('plugin-install-progress', listener);
+      return () => {
+        ipcRenderer.removeListener('plugin-install-progress', listener);
+      };
+    },
+  },
 };
 
 // Expose the API to the renderer process

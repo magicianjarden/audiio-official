@@ -13489,6 +13489,506 @@ input:focus-visible {
   color: var(--text-primary);
 }
 
+/* Plugin Tabs */
+.plugins-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 24px;
+  padding: 4px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+}
+
+.plugins-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.plugins-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.plugins-tab.active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.plugins-tab-count {
+  font-size: 12px;
+  padding: 2px 8px;
+  background: var(--bg-hover);
+  border-radius: 10px;
+  color: var(--text-muted);
+}
+
+.plugins-tab.active .plugins-tab-count {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.plugins-tab-badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  background: var(--color-error);
+  color: white;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+/* Browse Plugin Card */
+.browse-plugin-card {
+  cursor: default;
+}
+
+.browse-plugin-card .plugin-card-actions {
+  min-width: 110px;
+  justify-content: flex-end;
+}
+
+.plugin-installed-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.plugin-install-button,
+.plugin-update-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.plugin-install-button:hover,
+.plugin-update-button:hover {
+  background: var(--accent-hover);
+  transform: scale(1.02);
+}
+
+.plugin-install-button:disabled,
+.plugin-update-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Plugin Search */
+.plugins-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.plugins-search svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.plugins-search input {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+}
+
+.plugins-search input::placeholder {
+  color: var(--text-muted);
+}
+
+.plugins-refresh-btn {
+  padding: 8px;
+  background: var(--bg-hover);
+  border: none;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.plugins-refresh-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.plugins-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Loading State */
+.plugins-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px;
+  color: var(--text-secondary);
+}
+
+.plugins-loading svg {
+  margin-bottom: 16px;
+  color: var(--accent);
+}
+
+.plugins-loading p {
+  font-size: 14px;
+}
+
+/* Empty state action */
+.plugins-empty-action {
+  margin-top: 20px;
+  padding: 10px 20px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.plugins-empty-action:hover {
+  background: var(--accent-hover);
+  transform: scale(1.02);
+}
+
+/* Updates Tab */
+.plugins-updates-header {
+  margin-bottom: 16px;
+}
+
+.plugins-check-updates-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.plugins-check-updates-btn:hover {
+  background: var(--bg-tertiary);
+}
+
+.plugins-check-updates-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* Update Card */
+.update-card {
+  border-left: 3px solid var(--color-primary);
+}
+
+/* Repositories Tab */
+.plugins-repos-header {
+  margin-bottom: 24px;
+}
+
+.plugins-repos-description {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+.plugins-add-repo-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.plugins-add-repo-btn:hover {
+  background: var(--accent-hover);
+  transform: scale(1.02);
+}
+
+/* Repository Card */
+.repositories-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.repository-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  transition: all var(--transition-fast);
+}
+
+.repository-card.disabled {
+  opacity: 0.6;
+}
+
+.repository-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.repository-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.repository-url {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+.repository-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.repository-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.repository-action-btn {
+  padding: 8px;
+  background: var(--bg-hover);
+  border: none;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.repository-action-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.repository-action-btn.danger:hover {
+  background: var(--color-error-soft);
+  color: var(--color-error);
+}
+
+.repository-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.modal-content {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 480px;
+  animation: slideUp 0.3s ease-out;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.modal-close {
+  padding: 8px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all var(--transition-fast);
+}
+
+.modal-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+.modal-description {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.modal-list {
+  list-style: none;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.modal-list li {
+  padding: 6px 0;
+  color: var(--text-secondary);
+}
+
+.modal-list code {
+  background: var(--bg-hover);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.modal-input {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.modal-input:focus {
+  border-color: var(--accent);
+}
+
+.modal-input::placeholder {
+  color: var(--text-muted);
+}
+
+.modal-error {
+  color: var(--color-error);
+  font-size: 13px;
+  margin-top: 12px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-color);
+}
+
+.modal-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.modal-btn.secondary {
+  background: var(--bg-hover);
+  border: none;
+  color: var(--text-primary);
+}
+
+.modal-btn.secondary:hover {
+  background: var(--bg-tertiary);
+}
+
+.modal-btn.primary {
+  background: var(--accent);
+  border: none;
+  color: var(--text-on-accent);
+}
+
+.modal-btn.primary:hover {
+  background: var(--accent-hover);
+}
+
+.modal-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Spinning animation for refresh icons */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
 /* ========================================
    Plugin Detail View
    ======================================== */
