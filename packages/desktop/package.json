@@ -18,14 +18,8 @@
     "@audiio/mobile": "*"
   },
   "optionalDependencies": {
-    "@audiio/deezer-metadata": "*",
-    "@audiio/youtube-music": "*",
-    "@audiio/applemusic-artwork": "*",
-    "@audiio/lrclib-lyrics": "*",
-    "@audiio/karaoke": "*",
     "@audiio/ml-core": "*",
-    "@audiio/ml-sdk": "*",
-    "@audiio/algo": "*"
+    "@audiio/ml-sdk": "*"
   },
   "devDependencies": {
     "electron": "33.2.0",

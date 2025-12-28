@@ -18,6 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { usePluginStore, type Plugin, type PluginCategory } from '../../stores/plugin-store';
 import { useNavigationStore } from '../../stores/navigation-store';
+import { useSettingsStore } from '../../stores/settings-store';
 import {
   PluginIcon,
   AddIcon,
@@ -30,6 +31,7 @@ import {
   SettingsIcon,
   CheckIcon,
   CloseIcon,
+  FolderIcon,
 } from '@audiio/icons';
 
 // Tab types
@@ -468,6 +470,10 @@ const InstallFromURLModal: React.FC<InstallFromURLModalProps> = ({ isOpen, onClo
 export const PluginsView: React.FC = () => {
   const { plugins, togglePlugin, getOrderedPlugins, pluginOrder, setPluginOrder } = usePluginStore();
   const { openPlugin } = useNavigationStore();
+  const { pluginFolder, setPluginFolder } = useSettingsStore();
+
+  // Plugin folder notification
+  const [pluginNotification, setPluginNotification] = useState<string | null>(null);
 
   // Tab state
   const [activeTab, setActiveTab] = useState<PluginTab>('installed');
@@ -510,6 +516,49 @@ export const PluginsView: React.FC = () => {
   const installedPluginIds = new Set(installedPlugins.map(p => p.id));
 
   const enabledCount = plugins.filter(p => p.enabled).length;
+
+  // Browse for plugin folder
+  const handleBrowsePluginFolder = useCallback(async () => {
+    if (window.api?.selectFolder) {
+      const result = await window.api.selectFolder({
+        title: 'Select Plugin Folder',
+        defaultPath: pluginFolder || undefined,
+      });
+      if (result) {
+        setPluginFolder(result);
+      }
+    }
+  }, [pluginFolder, setPluginFolder]);
+
+  // Set up plugin folder watcher when pluginFolder changes
+  useEffect(() => {
+    if (window.api?.setPluginFolder) {
+      window.api.setPluginFolder(pluginFolder);
+    }
+  }, [pluginFolder]);
+
+  // Listen for plugin detection events
+  useEffect(() => {
+    if (!window.api?.onPluginDetected) return;
+
+    const unsubscribe = window.api.onPluginDetected(async (data) => {
+      console.log('[PluginsView] Plugin detected:', data.filename);
+
+      // Auto-install the plugin
+      if (window.api?.installPlugin) {
+        const result = await window.api.installPlugin(data.path);
+        if (result.success) {
+          setPluginNotification(`Installed: ${result.plugin.name}`);
+          setTimeout(() => setPluginNotification(null), 3000);
+        } else {
+          setPluginNotification(`Failed: ${result.error}`);
+          setTimeout(() => setPluginNotification(null), 5000);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Load repositories
   const loadRepositories = useCallback(async () => {
@@ -812,6 +861,49 @@ export const PluginsView: React.FC = () => {
               <AddIcon size={20} />
               <span>Install from URL</span>
             </button>
+          </div>
+
+          {/* Plugin Folder Picker */}
+          <div className="plugins-folder-section">
+            <div className="plugins-folder-header">
+              <FolderIcon size={18} />
+              <span>Plugin Drop Folder</span>
+            </div>
+            <p className="plugins-folder-description">
+              Drop <code>.audiio-plugin</code> files into this folder to install them automatically.
+            </p>
+            <div className="plugins-folder-input">
+              <input
+                type="text"
+                value={pluginFolder || ''}
+                placeholder="Select a folder for plugins"
+                readOnly
+              />
+              <button className="plugins-folder-browse" onClick={handleBrowsePluginFolder}>
+                <FolderIcon size={16} />
+                <span>Browse</span>
+              </button>
+              {pluginFolder && (
+                <button
+                  className="plugins-folder-clear"
+                  onClick={() => setPluginFolder(null)}
+                  title="Clear folder"
+                >
+                  <CloseIcon size={14} />
+                </button>
+              )}
+            </div>
+            {pluginFolder && (
+              <div className="plugins-folder-active">
+                <CheckIcon size={14} />
+                <span>Watching for new plugins</span>
+              </div>
+            )}
+            {pluginNotification && (
+              <div className={`plugins-folder-notification ${pluginNotification.startsWith('Failed') ? 'error' : 'success'}`}>
+                {pluginNotification}
+              </div>
+            )}
           </div>
         </>
       )}

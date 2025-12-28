@@ -23,6 +23,7 @@ import { PluginLoader } from './services/plugin-loader';
 import { mlService } from './services/ml-service';
 import { pluginRepositoryService } from './services/plugin-repository';
 import { pluginInstaller } from './services/plugin-installer';
+import { karaokeService } from './services/karaoke-service';
 
 // Tools with registered handlers (for cleanup on quit)
 const registeredToolHandlers: Set<string> = new Set();
@@ -95,17 +96,12 @@ async function initializeAddons(): Promise<void> {
   playbackOrchestrator = new PlaybackOrchestrator(trackResolver);
   metadataOrchestrator = new MetadataOrchestrator(registry);
 
-  // Set up karaoke event forwarding if karaoke plugin is loaded
-  const karaokePlugin = pluginLoader.getPlugin('karaoke');
-  if (karaokePlugin && karaokePlugin.instance) {
-    const karaokeInstance = karaokePlugin.instance as any;
-    if (typeof karaokeInstance.onFullTrackReady === 'function') {
-      karaokeInstance.onFullTrackReady((trackId: string, result: any) => {
-        console.log(`[Karaoke] Forwarding full track ready event to renderer: ${trackId}`);
-        mainWindow?.webContents.send('karaoke-full-track-ready', { trackId, result });
-      });
-    }
-  }
+  // Initialize built-in karaoke service and set up event forwarding
+  karaokeService.initialize();
+  karaokeService.onFullTrackReady((trackId: string, result: any) => {
+    console.log(`[Karaoke] Forwarding full track ready event to renderer: ${trackId}`);
+    mainWindow?.webContents.send('karaoke-full-track-ready', { trackId, result });
+  });
 
   console.log('[Plugins] Initialized:', registry.getAllAddonIds());
 }
@@ -155,15 +151,9 @@ function startDemucsServer(): void {
   // Check server health after a short delay
   setTimeout(async () => {
     try {
-      const karaokePlugin = pluginLoader?.getPlugin('karaoke');
-      if (karaokePlugin?.instance) {
-        const karaokeInstance = karaokePlugin.instance as any;
-        if (typeof karaokeInstance.isAvailable === 'function') {
-          const available = await karaokeInstance.isAvailable();
-          console.log('[Demucs] Server available:', available);
-          mainWindow?.webContents.send('karaoke-availability-change', { available });
-        }
-      }
+      const available = await karaokeService.isAvailable();
+      console.log('[Demucs] Server available:', available);
+      mainWindow?.webContents.send('karaoke-availability-change', { available });
     } catch {
       // Server not available yet
     }
@@ -1806,23 +1796,13 @@ function setupIPCHandlers(): void {
   });
 
   // =============================================
-  // Karaoke Handlers
+  // Karaoke Handlers (Built-in Service)
   // =============================================
-
-  // Helper to get karaoke processor from plugin loader
-  const getKaraokeProcessor = (): any | null => {
-    const karaokePlugin = pluginLoader?.getPlugin('karaoke');
-    return karaokePlugin?.instance || null;
-  };
 
   // Check if karaoke is available
   ipcMain.handle('karaoke-is-available', async () => {
     try {
-      const processor = getKaraokeProcessor();
-      if (!processor || typeof processor.isAvailable !== 'function') {
-        return { available: false };
-      }
-      const available = await processor.isAvailable();
+      const available = await karaokeService.isAvailable();
       return { available };
     } catch {
       return { available: false };
@@ -1832,12 +1812,8 @@ function setupIPCHandlers(): void {
   // Process a track for karaoke (get instrumental)
   ipcMain.handle('karaoke-process-track', async (_event, { trackId, audioUrl }: { trackId: string; audioUrl: string }) => {
     try {
-      const processor = getKaraokeProcessor();
-      if (!processor || typeof processor.processTrack !== 'function') {
-        return { success: false, error: 'Karaoke plugin not available' };
-      }
       console.log(`[Karaoke] Processing track: ${trackId}`);
-      const result = await processor.processTrack(trackId, audioUrl);
+      const result = await karaokeService.processTrack(trackId, audioUrl);
       console.log(`[Karaoke] Processing complete for: ${trackId}, cached: ${result.cached}`);
       return { success: true, result };
     } catch (error) {
@@ -1849,11 +1825,7 @@ function setupIPCHandlers(): void {
   // Check if track is cached
   ipcMain.handle('karaoke-has-cached', async (_event, trackId: string) => {
     try {
-      const processor = getKaraokeProcessor();
-      if (!processor || typeof processor.hasCached !== 'function') {
-        return { cached: false };
-      }
-      const cached = await processor.hasCached(trackId);
+      const cached = await karaokeService.hasCached(trackId);
       return { cached };
     } catch {
       return { cached: false };
@@ -1863,11 +1835,7 @@ function setupIPCHandlers(): void {
   // Get cached instrumental
   ipcMain.handle('karaoke-get-cached', async (_event, trackId: string) => {
     try {
-      const processor = getKaraokeProcessor();
-      if (!processor || typeof processor.getCached !== 'function') {
-        return { success: false, error: 'Karaoke plugin not available' };
-      }
-      const result = await processor.getCached(trackId);
+      const result = await karaokeService.getCached(trackId);
       return { success: true, result };
     } catch (error) {
       return { success: false, error: String(error) };
@@ -1877,11 +1845,7 @@ function setupIPCHandlers(): void {
   // Clear cache for a track
   ipcMain.handle('karaoke-clear-cache', async (_event, trackId: string) => {
     try {
-      const processor = getKaraokeProcessor();
-      if (!processor || typeof processor.clearCache !== 'function') {
-        return { success: false, error: 'Karaoke plugin not available' };
-      }
-      await processor.clearCache(trackId);
+      await karaokeService.clearCache(trackId);
       return { success: true };
     } catch (error) {
       return { success: false, error: String(error) };
@@ -1891,11 +1855,7 @@ function setupIPCHandlers(): void {
   // Clear all karaoke cache
   ipcMain.handle('karaoke-clear-all-cache', async () => {
     try {
-      const processor = getKaraokeProcessor();
-      if (!processor || typeof processor.clearAllCache !== 'function') {
-        return { success: false, error: 'Karaoke plugin not available' };
-      }
-      await processor.clearAllCache();
+      await karaokeService.clearAllCache();
       return { success: true };
     } catch (error) {
       return { success: false, error: String(error) };
@@ -2454,16 +2414,6 @@ function setupMLLibraryEvents(): void {
 }
 
 /**
- * Dynamic import helper that bypasses TypeScript checking
- * Used for optional plugin imports that may not be installed
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function dynamicPluginImport(specifier: string): Promise<any> {
-  const dynamicImportFn = new Function('specifier', 'return import(specifier)');
-  return dynamicImportFn(specifier);
-}
-
-/**
  * Initialize tool plugin handlers
  * Dynamically loads any tool plugins and registers their IPC handlers
  */
@@ -2480,23 +2430,6 @@ async function initializeToolHandlers(): Promise<void> {
       }
     } catch (error) {
       console.warn(`[Tool:${tool.id}] Failed to register handlers:`, (error as Error).message);
-    }
-  }
-
-  // For backwards compatibility, try to load sposify if installed but not yet loaded via plugin system
-  if (!registeredToolHandlers.has('sposify')) {
-    try {
-      const sposifyModule = await dynamicPluginImport('@audiio/sposify');
-      if (sposifyModule.registerSposifyHandlers) {
-        sposifyModule.registerSposifyHandlers(app.getPath('userData'));
-        if (mainWindow) {
-          sposifyModule.setMainWindow?.(mainWindow);
-        }
-        registeredToolHandlers.add('sposify');
-        console.log('[Tool:sposify] Legacy handlers registered');
-      }
-    } catch {
-      // Sposify not installed - this is fine
     }
   }
 }
@@ -2645,16 +2578,10 @@ app.on('before-quit', async () => {
   // Cleanup tool handlers
   for (const toolId of registeredToolHandlers) {
     try {
-      // First try to get the tool from registry
       const tool = registry.getTool(toolId);
       if (tool?.unregisterHandlers) {
         tool.unregisterHandlers();
         console.log(`[Tool:${toolId}] Handlers unregistered on quit`);
-      } else if (toolId === 'sposify') {
-        // Legacy sposify cleanup
-        const sposifyModule = await dynamicPluginImport('@audiio/sposify');
-        sposifyModule.unregisterSposifyHandlers?.();
-        console.log('[Tool:sposify] Legacy handlers unregistered on quit');
       }
     } catch {
       // Ignore - tool may not be available

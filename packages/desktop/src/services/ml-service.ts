@@ -104,19 +104,7 @@ class MLService {
       });
 
       // Storage is configured via the engine's internal components
-
-      // Try to load the audiio-algo algorithm (dynamic import to avoid TS errors if not installed)
-      try {
-        const dynamicImportFn = new Function('specifier', 'return import(specifier)');
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const audiioAlgo = await dynamicImportFn('@audiio/algo') as any;
-        const algorithm = audiioAlgo.createAudiioAlgorithm();
-        await this.engine.registerAlgorithm(algorithm);
-        console.log('[MLService] Audiio Algorithm registered');
-      } catch (error) {
-        console.warn('[MLService] Failed to load Audiio Algorithm:', error);
-        console.log('[MLService] Continuing without algorithm...');
-      }
+      // Algorithms are registered via the plugin system, not hardcoded
 
       // Initialize the engine
       await this.engine.initialize();

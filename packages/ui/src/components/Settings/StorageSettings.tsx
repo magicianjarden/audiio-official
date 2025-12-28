@@ -1,20 +1,17 @@
 /**
- * StorageSettings - Configure download folder, local music, and plugins
+ * StorageSettings - Configure download folder and local music
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useSettingsStore, type LocalMusicFolder } from '../../stores/settings-store';
 import { useLibraryStore } from '../../stores/library-store';
 import {
   FolderIcon,
   DownloadIcon,
   MusicNoteIcon,
-  PluginIcon,
   AddIcon,
   TrashIcon,
   RefreshIcon,
-  CheckIcon,
-  ChevronRightIcon,
 } from '@audiio/icons';
 
 // ========================================
@@ -136,10 +133,8 @@ const LocalMusicFolderCard: React.FC<LocalMusicFolderCardProps> = ({
 export const StorageSettings: React.FC = () => {
   const {
     downloadFolder,
-    pluginFolder,
     localMusicFolders,
     setDownloadFolder,
-    setPluginFolder,
     addLocalMusicFolder,
     removeLocalMusicFolder,
     updateLocalMusicFolder,
@@ -148,37 +143,6 @@ export const StorageSettings: React.FC = () => {
   const { setLocalFolderPlaylistTracks, deleteLocalFolderPlaylist } = useLibraryStore();
 
   const [isAddingFolder, setIsAddingFolder] = useState(false);
-  const [pluginNotification, setPluginNotification] = useState<string | null>(null);
-
-  // Set up plugin folder watcher when pluginFolder changes
-  useEffect(() => {
-    if (window.api?.setPluginFolder) {
-      window.api.setPluginFolder(pluginFolder);
-    }
-  }, [pluginFolder]);
-
-  // Listen for plugin detection events
-  useEffect(() => {
-    if (!window.api?.onPluginDetected) return;
-
-    const unsubscribe = window.api.onPluginDetected(async (data) => {
-      console.log('[StorageSettings] Plugin detected:', data.filename);
-
-      // Auto-install the plugin
-      if (window.api?.installPlugin) {
-        const result = await window.api.installPlugin(data.path);
-        if (result.success) {
-          setPluginNotification(`Installed: ${result.plugin.name}`);
-          setTimeout(() => setPluginNotification(null), 3000);
-        } else {
-          setPluginNotification(`Failed: ${result.error}`);
-          setTimeout(() => setPluginNotification(null), 5000);
-        }
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
 
   // Browse for download folder
   const handleBrowseDownload = useCallback(async () => {
@@ -192,19 +156,6 @@ export const StorageSettings: React.FC = () => {
       }
     }
   }, [downloadFolder, setDownloadFolder]);
-
-  // Browse for plugin folder
-  const handleBrowsePlugin = useCallback(async () => {
-    if (window.api?.selectFolder) {
-      const result = await window.api.selectFolder({
-        title: 'Select Plugin Folder',
-        defaultPath: pluginFolder || undefined,
-      });
-      if (result) {
-        setPluginFolder(result);
-      }
-    }
-  }, [pluginFolder, setPluginFolder]);
 
   // Add local music folder
   const handleAddMusicFolder = useCallback(async () => {
@@ -350,35 +301,6 @@ export const StorageSettings: React.FC = () => {
         )}
       </div>
 
-      {/* Plugin Folder */}
-      <div className="storage-section">
-        <h3 className="storage-section-title">
-          <PluginIcon size={18} />
-          Plugins
-        </h3>
-        <FolderPicker
-          label="Plugin Folder"
-          description="Drop plugins here to install them automatically"
-          icon={<PluginIcon size={20} />}
-          value={pluginFolder}
-          placeholder="Select a folder for plugins"
-          onChange={setPluginFolder}
-          onBrowse={handleBrowsePlugin}
-        />
-        {pluginFolder && (
-          <div className="storage-plugin-hint">
-            <CheckIcon size={14} />
-            <span>
-              Watching for new plugins. Drop <code>.audiio-plugin</code> files into this folder to install.
-            </span>
-          </div>
-        )}
-        {pluginNotification && (
-          <div className={`storage-plugin-notification ${pluginNotification.startsWith('Failed') ? 'error' : 'success'}`}>
-            {pluginNotification}
-          </div>
-        )}
-      </div>
     </div>
   );
 };

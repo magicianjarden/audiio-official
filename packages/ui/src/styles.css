@@ -13489,6 +13489,122 @@ input:focus-visible {
   color: var(--text-primary);
 }
 
+/* Plugin Folder Section */
+.plugins-folder-section {
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+}
+
+.plugins-folder-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.plugins-folder-description {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+}
+
+.plugins-folder-description code {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.plugins-folder-input {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.plugins-folder-input input {
+  flex: 1;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.plugins-folder-input input::placeholder {
+  color: var(--text-muted);
+}
+
+.plugins-folder-browse {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.plugins-folder-browse:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+}
+
+.plugins-folder-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.plugins-folder-clear:hover {
+  background: var(--color-error-bg, rgba(255, 100, 100, 0.1));
+  color: var(--color-error, #ff6666);
+}
+
+.plugins-folder-active {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-success, #4ade80);
+}
+
+.plugins-folder-notification {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.plugins-folder-notification.success {
+  background: var(--color-success-bg, rgba(74, 222, 128, 0.1));
+  color: var(--color-success, #4ade80);
+}
+
+.plugins-folder-notification.error {
+  background: var(--color-error-bg, rgba(255, 100, 100, 0.1));
+  color: var(--color-error, #ff6666);
+}
+
 /* Plugin Tabs */
 .plugins-tabs {
   display: flex;

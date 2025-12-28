@@ -31,20 +31,6 @@ export interface PluginLoadResult {
   error?: string;
 }
 
-/**
- * Legacy plugin package names (for backwards compatibility during migration)
- * Maps old package names to new plugin pattern names
- */
-const LEGACY_PLUGIN_NAMES: Record<string, string> = {
-  '@audiio/deezer-metadata': '@audiio/plugin-deezer',
-  '@audiio/youtube-music': '@audiio/plugin-youtube-music',
-  '@audiio/applemusic-artwork': '@audiio/plugin-applemusic',
-  '@audiio/lrclib-lyrics': '@audiio/plugin-lrclib',
-  '@audiio/karaoke': '@audiio/plugin-karaoke',
-  '@audiio/sposify': '@audiio/plugin-sposify',
-  '@audiio/algo': '@audiio/plugin-algo'
-};
-
 export class PluginLoader {
   private registry: AddonRegistry;
   private loadedPlugins: Map<string, LoadedPlugin> = new Map();
@@ -106,14 +92,7 @@ export class PluginLoader {
    * Find the npm package name for a plugin ID
    */
   private findPackageNameForPlugin(pluginId: string): string | null {
-    // Check if it's a legacy plugin name
-    for (const [legacyName, newName] of Object.entries(LEGACY_PLUGIN_NAMES)) {
-      if (newName.includes(pluginId) || legacyName.includes(pluginId)) {
-        return legacyName;
-      }
-    }
-
-    // Try standard plugin pattern
+    // Use standard plugin pattern
     return `@audiio/plugin-${pluginId}`;
   }
 
@@ -290,13 +269,8 @@ export class PluginLoader {
       const scopeEntries = fs.readdirSync(audiioScopePath);
 
       for (const entry of scopeEntries) {
-        // Check for plugin pattern or legacy plugin names
-        const isPlugin = entry.startsWith('plugin-') ||
-                        Object.keys(LEGACY_PLUGIN_NAMES).some(legacy =>
-                          legacy.replace('@audiio/', '') === entry
-                        );
-
-        if (!isPlugin) continue;
+        // Only look for standard plugin pattern (plugin-*)
+        if (!entry.startsWith('plugin-')) continue;
 
         const packageName = `@audiio/${entry}`;
         try {
