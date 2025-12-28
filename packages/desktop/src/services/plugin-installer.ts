@@ -139,41 +139,16 @@ class PluginInstallerService {
         message: `Cloning repository...`,
       });
 
-      // Clone the repository (use sparse checkout for subdirectory if specified)
-      if (subdirectory) {
-        // Use sparse checkout to only get the subdirectory
-        await this.runCommand('git', ['clone', '--depth', '1', '--filter=blob:none', '--sparse', repoUrl, this.tempDir], {
-          onProgress: (output) => {
-            onProgress?.({
-              phase: 'downloading',
-              progress: 20,
-              message: output,
-            });
-          },
-        });
-
-        // Configure sparse checkout for the subdirectory
-        await this.runCommand('git', ['sparse-checkout', 'set', subdirectory], {
-          cwd: this.tempDir,
-          onProgress: (output) => {
-            onProgress?.({
-              phase: 'downloading',
-              progress: 30,
-              message: output,
-            });
-          },
-        });
-      } else {
-        await this.runCommand('git', ['clone', '--depth', '1', repoUrl, this.tempDir], {
-          onProgress: (output) => {
-            onProgress?.({
-              phase: 'downloading',
-              progress: 30,
-              message: output,
-            });
-          },
-        });
-      }
+      // Clone the repository (shallow clone, then extract subdirectory if needed)
+      await this.runCommand('git', ['clone', '--depth', '1', repoUrl, this.tempDir], {
+        onProgress: (output) => {
+          onProgress?.({
+            phase: 'downloading',
+            progress: 30,
+            message: output,
+          });
+        },
+      });
 
       // Determine the plugin source directory
       const pluginSourceDir = subdirectory
