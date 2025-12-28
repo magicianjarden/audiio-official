@@ -61,7 +61,11 @@ export type {
   ArtistFullContent,
   // Audio processor types
   AudioProcessorResult,
-  AudioProcessor
+  AudioProcessor,
+  // Tool types
+  ToolType,
+  PluginUIRegistry,
+  Tool
 } from './types/addon';
 
 // Registry

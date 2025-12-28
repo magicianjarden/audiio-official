@@ -103,7 +103,8 @@ export type AddonRole =
   | 'stream-provider'
   | 'lyrics-provider'
   | 'scrobbler'
-  | 'audio-processor';
+  | 'audio-processor'
+  | 'tool';
 
 export interface AddonManifest {
   /** Unique identifier (e.g., "deezer", "youtube-music") */
@@ -404,4 +405,79 @@ export interface AudioProcessor extends BaseAddon {
 
   /** Clear cache for a track */
   clearCache(trackId: string): Promise<void>;
+}
+
+// ============================================
+// Tool Contract (Data Transfer, Cloud Mounts, Integrations)
+// ============================================
+
+/** Tool types for categorization */
+export type ToolType =
+  | 'data-transfer'   // Import/export data (Sposify, backups)
+  | 'cloud-mount'     // Connect cloud storage (Google Drive, Dropbox)
+  | 'integration'     // Third-party service connections
+  | 'utility';        // Stats, analytics, file converters
+
+/** Plugin UI Registry for dynamic UI registration */
+export interface PluginUIRegistry {
+  /** Register a sidebar item */
+  registerSidebarItem(item: {
+    id: string;
+    label: string;
+    icon: string;
+    section: 'tools' | 'library' | 'playlists';
+    order?: number;
+  }): void;
+
+  /** Register a view/page component */
+  registerView(view: {
+    id: string;
+    component: unknown; // React.ComponentType - typed in implementation
+    route?: string;
+  }): void;
+
+  /** Register a settings section */
+  registerSettings(settings: {
+    id: string;
+    label: string;
+    component: unknown; // React.ComponentType - typed in implementation
+  }): void;
+
+  /** Register a player control button */
+  registerPlayerControl(control: {
+    id: string;
+    icon: string;
+    tooltip: string;
+    onClick: () => void;
+    isActive?: () => boolean;
+  }): void;
+}
+
+export interface Tool extends BaseAddon {
+  /** Unique tool identifier */
+  readonly id: string;
+
+  /** Human-readable name */
+  readonly name: string;
+
+  /** Tool category */
+  readonly toolType: ToolType;
+
+  /** Icon name or URL */
+  readonly icon?: string;
+
+  /** Optional UI registration */
+  registerUI?(registry: PluginUIRegistry): void;
+
+  /** Optional IPC handlers for Electron main process */
+  registerHandlers?(ipcMain: unknown, app: unknown): void;
+
+  /** Unregister IPC handlers */
+  unregisterHandlers?(): void;
+
+  /** Execute the tool's main action (if applicable) */
+  execute?(): Promise<void>;
+
+  /** Check if tool is available/ready */
+  isAvailable?(): Promise<boolean>;
 }

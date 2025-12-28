@@ -8,7 +8,8 @@ import type {
   MetadataProvider,
   StreamProvider,
   LyricsProvider,
-  Scrobbler
+  Scrobbler,
+  Tool
 } from '../types/addon';
 
 interface RegisteredAddon {
@@ -204,6 +205,29 @@ export class AddonRegistry {
       .filter((r): r is RegisteredAddon => r !== undefined && r.enabled)
       .sort((a, b) => this.getEffectivePriority(b) - this.getEffectivePriority(a))
       .map(r => r.addon as Scrobbler);
+  }
+
+  /**
+   * Get all tools sorted by priority
+   */
+  getTools(): Tool[] {
+    const ids = this.roleIndex.get('tool') || new Set();
+    return Array.from(ids)
+      .map(id => this.addons.get(id))
+      .filter((r): r is RegisteredAddon => r !== undefined && r.enabled)
+      .sort((a, b) => this.getEffectivePriority(b) - this.getEffectivePriority(a))
+      .map(r => r.addon as Tool);
+  }
+
+  /**
+   * Get tool by ID
+   */
+  getTool(id: string): Tool | null {
+    const tool = this.get<Tool>(id);
+    if (tool && tool.manifest.roles.includes('tool')) {
+      return tool;
+    }
+    return null;
   }
 
   /**

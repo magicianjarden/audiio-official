@@ -21,9 +21,11 @@ import {
 import { getLibraryBridge, type LibraryBridge } from './services/library-bridge';
 import { PluginLoader } from './services/plugin-loader';
 import { mlService } from './services/ml-service';
+import { pluginRepositoryService } from './services/plugin-repository';
+import { pluginInstaller } from './services/plugin-installer';
 
-// Sposify addon - lazy loaded
-let sposifyHandlersRegistered = false;
+// Tools with registered handlers (for cleanup on quit)
+const registeredToolHandlers: Set<string> = new Set();
 
 // Demucs server process
 let demucsProcess: ChildProcess | null = null;
@@ -1899,6 +1901,103 @@ function setupIPCHandlers(): void {
       return { success: false, error: String(error) };
     }
   });
+
+  // =============================================
+  // Plugin Repository Handlers
+  // =============================================
+
+  // Get all repositories
+  ipcMain.handle('get-repositories', () => {
+    return pluginRepositoryService.getRepositories();
+  });
+
+  // Add a repository
+  ipcMain.handle('add-repository', async (_event, url: string) => {
+    return await pluginRepositoryService.addRepository(url);
+  });
+
+  // Remove a repository
+  ipcMain.handle('remove-repository', (_event, repoId: string) => {
+    const success = pluginRepositoryService.removeRepository(repoId);
+    return { success };
+  });
+
+  // Enable/disable a repository
+  ipcMain.handle('set-repository-enabled', (_event, { repoId, enabled }: { repoId: string; enabled: boolean }) => {
+    const success = pluginRepositoryService.setRepositoryEnabled(repoId, enabled);
+    return { success };
+  });
+
+  // Refresh a repository
+  ipcMain.handle('refresh-repository', async (_event, repoId: string) => {
+    return await pluginRepositoryService.refreshRepository(repoId);
+  });
+
+  // Refresh all repositories
+  ipcMain.handle('refresh-all-repositories', async () => {
+    const results = await pluginRepositoryService.refreshAllRepositories();
+    // Convert Map to object for IPC serialization
+    const resultObj: Record<string, { success: boolean; error?: string }> = {};
+    for (const [id, result] of results) {
+      resultObj[id] = { success: result.success, error: result.error };
+    }
+    return resultObj;
+  });
+
+  // Get available plugins from all repositories
+  ipcMain.handle('get-available-plugins', async () => {
+    return await pluginRepositoryService.getAvailablePlugins();
+  });
+
+  // Search plugins
+  ipcMain.handle('search-plugins', async (_event, query: string) => {
+    return await pluginRepositoryService.searchPlugins(query);
+  });
+
+  // Check for plugin updates
+  ipcMain.handle('check-plugin-updates', async () => {
+    // Get installed plugins
+    const loadedPlugins = pluginLoader?.getLoadedPlugins() || [];
+    const installedPlugins = loadedPlugins.map(p => ({
+      id: p.manifest.id,
+      version: p.manifest.version
+    }));
+    return await pluginRepositoryService.checkUpdates(installedPlugins);
+  });
+
+  // =============================================
+  // Plugin Installation Handlers
+  // =============================================
+
+  // Install a plugin from any source (npm, git, local)
+  ipcMain.handle('install-plugin-from-source', async (_event, source: string) => {
+    return await pluginInstaller.install(source, (progress) => {
+      // Forward progress to renderer
+      mainWindow?.webContents.send('plugin-install-progress', progress);
+    });
+  });
+
+  // Uninstall a plugin
+  ipcMain.handle('uninstall-plugin-by-id', async (_event, pluginId: string) => {
+    const result = await pluginInstaller.uninstall(pluginId);
+    if (result.success) {
+      // Reload plugins after uninstall
+      await pluginLoader?.reloadPlugins();
+    }
+    return result;
+  });
+
+  // Update a plugin
+  ipcMain.handle('update-plugin', async (_event, { pluginId, source }: { pluginId: string; source: string }) => {
+    const result = await pluginInstaller.update(pluginId, source, (progress) => {
+      mainWindow?.webContents.send('plugin-install-progress', { ...progress, pluginId });
+    });
+    if (result.success) {
+      // Reload plugins after update
+      await pluginLoader?.reloadPlugins();
+    }
+    return result;
+  });
 }
 
 /**
@@ -2365,21 +2464,40 @@ async function dynamicPluginImport(specifier: string): Promise<any> {
 }
 
 /**
- * Initialize Sposify addon handlers
+ * Initialize tool plugin handlers
+ * Dynamically loads any tool plugins and registers their IPC handlers
  */
-async function initializeSposify(): Promise<void> {
-  try {
-    // Dynamically import to avoid bundling issues if not installed
-    const sposifyModule = await dynamicPluginImport('@audiio/sposify');
-    sposifyModule.registerSposifyHandlers(app.getPath('userData'));
-    if (mainWindow) {
-      sposifyModule.setMainWindow(mainWindow);
+async function initializeToolHandlers(): Promise<void> {
+  // Get all loaded tools from the registry
+  const tools = registry.getTools();
+
+  for (const tool of tools) {
+    try {
+      if (tool.registerHandlers) {
+        tool.registerHandlers(ipcMain, app);
+        registeredToolHandlers.add(tool.id);
+        console.log(`[Tool:${tool.id}] Handlers registered`);
+      }
+    } catch (error) {
+      console.warn(`[Tool:${tool.id}] Failed to register handlers:`, (error as Error).message);
     }
-    sposifyHandlersRegistered = true;
-    console.log('[Sposify] Handlers registered');
-  } catch (error) {
-    // Sposify addon not installed - this is fine
-    console.log('[Sposify] Addon not available:', (error as Error).message);
+  }
+
+  // For backwards compatibility, try to load sposify if installed but not yet loaded via plugin system
+  if (!registeredToolHandlers.has('sposify')) {
+    try {
+      const sposifyModule = await dynamicPluginImport('@audiio/sposify');
+      if (sposifyModule.registerSposifyHandlers) {
+        sposifyModule.registerSposifyHandlers(app.getPath('userData'));
+        if (mainWindow) {
+          sposifyModule.setMainWindow?.(mainWindow);
+        }
+        registeredToolHandlers.add('sposify');
+        console.log('[Tool:sposify] Legacy handlers registered');
+      }
+    } catch {
+      // Sposify not installed - this is fine
+    }
   }
 }
 
@@ -2455,8 +2573,8 @@ app.whenReady().then(async () => {
     createWindow();
     setupPlaybackEvents();
 
-    // Initialize Sposify addon (after window creation)
-    await initializeSposify();
+    // Initialize tool plugin handlers (after window creation)
+    await initializeToolHandlers();
 
     // Connect library events to ML service for learning
     setupMLLibraryEvents();
@@ -2524,16 +2642,25 @@ app.on('before-quit', async () => {
     console.log('[Plugins] Folder watcher stopped on quit');
   }
 
-  // Cleanup Sposify handlers
-  if (sposifyHandlersRegistered) {
+  // Cleanup tool handlers
+  for (const toolId of registeredToolHandlers) {
     try {
-      const sposifyModule = await dynamicPluginImport('@audiio/sposify');
-      sposifyModule.unregisterSposifyHandlers();
-      console.log('[Sposify] Handlers unregistered on quit');
-    } catch (error) {
-      // Ignore - addon may not be available
+      // First try to get the tool from registry
+      const tool = registry.getTool(toolId);
+      if (tool?.unregisterHandlers) {
+        tool.unregisterHandlers();
+        console.log(`[Tool:${toolId}] Handlers unregistered on quit`);
+      } else if (toolId === 'sposify') {
+        // Legacy sposify cleanup
+        const sposifyModule = await dynamicPluginImport('@audiio/sposify');
+        sposifyModule.unregisterSposifyHandlers?.();
+        console.log('[Tool:sposify] Legacy handlers unregistered on quit');
+      }
+    } catch {
+      // Ignore - tool may not be available
     }
   }
+  registeredToolHandlers.clear();
 
   // Dispose addons
   for (const addonId of registry.getAllAddonIds()) {

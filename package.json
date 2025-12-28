@@ -14,7 +14,7 @@
     "build": "turbo run build",
     "build:core": "npm run build --workspace=@audiio/core",
     "build:sdk": "npm run build --workspace=@audiio/sdk",
-    "build:ml": "npm run build --workspace=@audiio/ml-sdk && npm run build --workspace=@audiio/ml-core && npm run build --workspace=@audiio/algo",
+    "build:ml": "npm run build --workspace=@audiio/ml-sdk && npm run build --workspace=@audiio/ml-core",
     "build:all": "npm run build:core && npm run build:sdk && npm run build:ml && turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",

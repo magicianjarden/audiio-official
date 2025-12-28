@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type PluginCategory = 'metadata' | 'streaming' | 'lyrics' | 'translation' | 'scrobbling' | 'analysis' | 'audio' | 'other';
+export type PluginCategory = 'metadata' | 'streaming' | 'lyrics' | 'translation' | 'scrobbling' | 'analysis' | 'audio' | 'tool' | 'other';
 
 // Map UI plugin IDs to actual addon IDs in the main process
 const pluginToAddonId: Record<string, string> = {
@@ -425,7 +425,7 @@ const defaultPlugins: Plugin[] = [
     description: 'Import your Spotify data, enrich tracks with pre-computed audio features, match local files by ISRC, and discover millions of curated playlists from Anna\'s Archive.',
     version: '1.0.0',
     author: 'Audiio Team',
-    category: 'metadata',
+    category: 'tool',
     enabled: true,
     installed: false,
     privacyAccess: [

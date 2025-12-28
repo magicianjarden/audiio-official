@@ -32,20 +32,8 @@ export interface PluginLoadResult {
 }
 
 /**
- * Official Audiio plugins that can be installed via npm
- */
-export const OFFICIAL_PLUGINS = [
-  '@audiio/plugin-deezer',
-  '@audiio/plugin-youtube-music',
-  '@audiio/plugin-applemusic',
-  '@audiio/plugin-lrclib',
-  '@audiio/plugin-karaoke',
-  '@audiio/plugin-sposify',
-  '@audiio/plugin-algo'
-] as const;
-
-/**
- * Legacy plugin package names (for backwards compatibility)
+ * Legacy plugin package names (for backwards compatibility during migration)
+ * Maps old package names to new plugin pattern names
  */
 const LEGACY_PLUGIN_NAMES: Record<string, string> = {
   '@audiio/deezer-metadata': '@audiio/plugin-deezer',
@@ -96,28 +84,37 @@ export class PluginLoader {
   async loadAllPlugins(): Promise<PluginLoadResult[]> {
     const results: PluginLoadResult[] = [];
 
-    // Try to load official plugins (both new and legacy names)
-    for (const pkgName of OFFICIAL_PLUGINS) {
-      const result = await this.loadNpmPlugin(pkgName);
-      results.push(result);
-    }
-
-    // Try legacy package names for backwards compatibility
-    for (const [legacyName] of Object.entries(LEGACY_PLUGIN_NAMES)) {
-      // Skip if we already loaded the new version
-      const newName = LEGACY_PLUGIN_NAMES[legacyName];
-      if (results.some(r => r.success && r.pluginId === newName)) {
-        continue;
+    // Discover and load npm plugins
+    const npmPlugins = await this.discoverNpmPlugins();
+    for (const manifest of npmPlugins) {
+      // Try to find the package name for this plugin
+      const packageName = this.findPackageNameForPlugin(manifest.id);
+      if (packageName) {
+        const result = await this.loadNpmPlugin(packageName);
+        results.push(result);
       }
-      const result = await this.loadNpmPlugin(legacyName);
-      results.push(result);
     }
 
-    // Load user plugins
+    // Load user plugins from plugins directory
     const userResults = await this.loadUserPlugins();
     results.push(...userResults);
 
     return results;
+  }
+
+  /**
+   * Find the npm package name for a plugin ID
+   */
+  private findPackageNameForPlugin(pluginId: string): string | null {
+    // Check if it's a legacy plugin name
+    for (const [legacyName, newName] of Object.entries(LEGACY_PLUGIN_NAMES)) {
+      if (newName.includes(pluginId) || legacyName.includes(pluginId)) {
+        return legacyName;
+      }
+    }
+
+    // Try standard plugin pattern
+    return `@audiio/plugin-${pluginId}`;
   }
 
   /**
@@ -271,34 +268,91 @@ export class PluginLoader {
   }
 
   /**
-   * Discover plugins from npm (check node_modules)
+   * Discover plugins from npm (check node_modules for @audiio/plugin-* packages)
    */
   private async discoverNpmPlugins(): Promise<PluginManifest[]> {
     const manifests: PluginManifest[] = [];
 
-    // Check each official plugin
-    for (const pkgName of [...OFFICIAL_PLUGINS, ...Object.keys(LEGACY_PLUGIN_NAMES)]) {
-      try {
-        const pkgJsonPath = require.resolve(`${pkgName}/package.json`);
-        const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
+    // Try to find all @audiio packages in node_modules
+    const nodeModulesPath = this.findNodeModulesPath();
+    if (!nodeModulesPath) {
+      console.log('[PluginLoader] node_modules not found');
+      return manifests;
+    }
 
-        // Extract audiio plugin metadata if available
-        const audiioMeta = pkgJson.audiio || {};
+    const audiioScopePath = path.join(nodeModulesPath, '@audiio');
+    if (!fs.existsSync(audiioScopePath)) {
+      console.log('[PluginLoader] @audiio scope not found in node_modules');
+      return manifests;
+    }
 
-        manifests.push({
-          id: audiioMeta.id || pkgJson.name,
-          name: audiioMeta.name || pkgJson.name,
-          version: pkgJson.version,
-          description: pkgJson.description,
-          roles: audiioMeta.roles || [],
-          author: pkgJson.author
-        });
-      } catch {
-        // Package not installed - skip
+    try {
+      const scopeEntries = fs.readdirSync(audiioScopePath);
+
+      for (const entry of scopeEntries) {
+        // Check for plugin pattern or legacy plugin names
+        const isPlugin = entry.startsWith('plugin-') ||
+                        Object.keys(LEGACY_PLUGIN_NAMES).some(legacy =>
+                          legacy.replace('@audiio/', '') === entry
+                        );
+
+        if (!isPlugin) continue;
+
+        const packageName = `@audiio/${entry}`;
+        try {
+          const pkgJsonPath = path.join(audiioScopePath, entry, 'package.json');
+          if (!fs.existsSync(pkgJsonPath)) continue;
+
+          const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
+
+          // Extract audiio plugin metadata if available
+          const audiioMeta = pkgJson.audiio || {};
+
+          manifests.push({
+            id: audiioMeta.id || pkgJson.name,
+            name: audiioMeta.name || pkgJson.name,
+            version: pkgJson.version,
+            description: pkgJson.description,
+            roles: audiioMeta.roles || [],
+            author: pkgJson.author
+          });
+
+          console.log(`[PluginLoader] Discovered npm plugin: ${packageName}`);
+        } catch {
+          // Invalid package - skip
+        }
       }
+    } catch (error) {
+      console.warn('[PluginLoader] Error scanning @audiio scope:', error);
     }
 
     return manifests;
+  }
+
+  /**
+   * Find the node_modules path for plugin discovery
+   */
+  private findNodeModulesPath(): string | null {
+    // Try relative to app resources first (production)
+    const resourcesPath = process.resourcesPath || app.getAppPath();
+    const prodNodeModules = path.join(resourcesPath, 'node_modules');
+    if (fs.existsSync(prodNodeModules)) {
+      return prodNodeModules;
+    }
+
+    // Try relative to app path (development)
+    const devNodeModules = path.join(app.getAppPath(), 'node_modules');
+    if (fs.existsSync(devNodeModules)) {
+      return devNodeModules;
+    }
+
+    // Try relative to __dirname
+    const dirNodeModules = path.join(__dirname, '..', '..', 'node_modules');
+    if (fs.existsSync(dirNodeModules)) {
+      return dirNodeModules;
+    }
+
+    return null;
   }
 
   /**

@@ -14,12 +14,11 @@
  * @example
  * ```typescript
  * import { getMLEngine } from '@audiio/ml-core';
- * import { AudiioAlgorithm } from '@audiio/algo';
  *
  * const engine = getMLEngine();
  *
- * // Register the official algorithm
- * await engine.registerAlgorithm(new AudiioAlgorithm());
+ * // Register an algorithm plugin
+ * await engine.registerAlgorithm(myAlgorithmPlugin);
  *
  * // Initialize
  * await engine.initialize();

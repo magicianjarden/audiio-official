@@ -49,6 +49,11 @@ export type {
   AudioProcessor,
   AudioProcessorResult,
 
+  // Tool types
+  Tool,
+  ToolType,
+  PluginUIRegistry,
+
   // Media processing types
   HLSConversionOptions,
   ConversionResult,
@@ -64,6 +69,7 @@ export { BaseMetadataProvider } from './base/BaseMetadataProvider';
 export { BaseStreamProvider } from './base/BaseStreamProvider';
 export { BaseLyricsProvider } from './base/BaseLyricsProvider';
 export { BaseAudioProcessor } from './base/BaseAudioProcessor';
+export { BaseTool } from './base/BaseTool';
 
 // Registration
 export { defineAddon, type AddonDefinition } from './registration';
@@ -79,7 +85,7 @@ export interface PluginManifest {
   /** Plugin description */
   description?: string;
   /** Plugin roles/capabilities */
-  roles: ('metadata-provider' | 'stream-provider' | 'lyrics-provider' | 'audio-processor' | 'scrobbler')[];
+  roles: ('metadata-provider' | 'stream-provider' | 'lyrics-provider' | 'audio-processor' | 'scrobbler' | 'tool')[];
   /** Entry point file (relative to package root) */
   main?: string;
   /** Author name or object */
