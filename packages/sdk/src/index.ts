@@ -67,3 +67,53 @@ export { BaseAudioProcessor } from './base/BaseAudioProcessor';
 
 // Registration
 export { defineAddon, type AddonDefinition } from './registration';
+
+// Plugin manifest types
+export interface PluginManifest {
+  /** Unique plugin identifier */
+  id: string;
+  /** Human-readable plugin name */
+  name: string;
+  /** Plugin version (semver) */
+  version: string;
+  /** Plugin description */
+  description?: string;
+  /** Plugin roles/capabilities */
+  roles: ('metadata-provider' | 'stream-provider' | 'lyrics-provider' | 'audio-processor' | 'scrobbler')[];
+  /** Entry point file (relative to package root) */
+  main?: string;
+  /** Author name or object */
+  author?: string | { name: string; email?: string };
+}
+
+/**
+ * Audiio plugin package.json extension
+ * Add this to your package.json to identify your package as an Audiio plugin
+ */
+export interface AudiioPluginPackageJson {
+  /** Standard npm package name (e.g., "@audiio/plugin-deezer") */
+  name: string;
+  /** Package version */
+  version: string;
+  /** Main entry point */
+  main: string;
+  /** TypeScript types entry point */
+  types?: string;
+  /** Audiio-specific plugin metadata */
+  audiio: {
+    /** Plugin type identifier */
+    type: 'plugin';
+    /** Unique plugin ID (short name, e.g., "deezer") */
+    id: string;
+    /** Plugin capabilities */
+    roles: PluginManifest['roles'];
+  };
+  /** Required peer dependency */
+  peerDependencies: {
+    '@audiio/sdk': string;
+  };
+}
+
+// Plugin templates are available in the `templates` folder.
+// Copy them to your plugin project as starting points.
+// Templates are NOT exported at runtime - they are reference code only.

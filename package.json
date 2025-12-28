@@ -4,8 +4,7 @@
   "private": true,
   "description": "Unified modular music platform",
   "workspaces": [
-    "packages/*",
-    "addons/*"
+    "packages/*"
   ],
   "scripts": {
     "dev": "turbo run dev --concurrency=20",
