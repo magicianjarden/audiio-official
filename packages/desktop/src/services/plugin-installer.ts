@@ -151,13 +151,25 @@ class PluginInstallerService {
       });
 
       // Determine the plugin source directory
-      const pluginSourceDir = subdirectory
+      let pluginSourceDir = subdirectory
         ? path.join(this.tempDir, subdirectory)
         : this.tempDir;
 
       // Verify the subdirectory exists
       if (subdirectory && !fs.existsSync(pluginSourceDir)) {
         throw new Error(`Subdirectory not found in repository: ${subdirectory}`);
+      }
+
+      // If subdirectory specified, copy it to a clean location to avoid workspace issues
+      // (npm install in a workspace subfolder tries to install all workspace deps)
+      if (subdirectory) {
+        const isolatedDir = path.join(path.dirname(this.tempDir), 'audiio-plugin-isolated');
+        if (fs.existsSync(isolatedDir)) {
+          await fs.promises.rm(isolatedDir, { recursive: true });
+        }
+        await this.copyDirectory(pluginSourceDir, isolatedDir);
+        pluginSourceDir = isolatedDir;
+        console.log(`[PluginInstaller] Isolated plugin to: ${isolatedDir}`);
       }
 
       // Read and validate manifest
@@ -232,8 +244,9 @@ class PluginInstallerService {
       // If using subdirectory, copy instead of rename (since we can't move across mounts)
       if (subdirectory) {
         await this.copyDirectory(pluginSourceDir, destDir);
-        // Cleanup temp directory
+        // Cleanup temp directories (both clone and isolated)
         await fs.promises.rm(this.tempDir, { recursive: true }).catch(() => {});
+        await fs.promises.rm(pluginSourceDir, { recursive: true }).catch(() => {});
       } else {
         await fs.promises.rename(this.tempDir, destDir);
       }
@@ -261,9 +274,13 @@ class PluginInstallerService {
         message: errorMessage,
       });
 
-      // Cleanup temp directory
+      // Cleanup temp directories
       if (fs.existsSync(this.tempDir)) {
         await fs.promises.rm(this.tempDir, { recursive: true }).catch(() => {});
+      }
+      const isolatedDir = path.join(path.dirname(this.tempDir), 'audiio-plugin-isolated');
+      if (fs.existsSync(isolatedDir)) {
+        await fs.promises.rm(isolatedDir, { recursive: true }).catch(() => {});
       }
 
       return { success: false, error: errorMessage };
