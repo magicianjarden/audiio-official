@@ -71,6 +71,19 @@ const api = {
     return ipcRenderer.invoke('get-addon-priorities');
   },
 
+  // Extended plugin management
+  getLoadedPlugins: () => {
+    return ipcRenderer.invoke('get-loaded-plugins');
+  },
+
+  reloadPlugins: () => {
+    return ipcRenderer.invoke('reload-plugins');
+  },
+
+  isPluginLoaded: (pluginId: string) => {
+    return ipcRenderer.invoke('is-plugin-loaded', pluginId);
+  },
+
   getAnimatedArtwork: (album: string, artist: string, track?: string) => {
     return ipcRenderer.invoke('get-animated-artwork', { album, artist, track });
   },

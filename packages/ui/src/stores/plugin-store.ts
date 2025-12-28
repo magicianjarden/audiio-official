@@ -157,7 +157,7 @@ const defaultPlugins: Plugin[] = [
     author: 'Audiio Team',
     category: 'metadata',
     enabled: true,
-    installed: true,
+    installed: false,
     privacyAccess: [
       { type: 'network', label: 'Network Access', description: 'Connects to Deezer API to fetch track metadata and artwork', required: true },
       { type: 'playback', label: 'Playback Info', description: 'Reads current track info to search for metadata', required: true },
@@ -183,7 +183,7 @@ const defaultPlugins: Plugin[] = [
     author: 'Audiio Team',
     category: 'metadata',
     enabled: false,
-    installed: true,
+    installed: false,
     privacyAccess: [
       { type: 'network', label: 'Network Access', description: 'Connects to iTunes API to search for albums and fetch artwork', required: true },
       { type: 'playback', label: 'Playback Info', description: 'Reads current track info to search for matching artwork', required: true },
@@ -215,7 +215,7 @@ const defaultPlugins: Plugin[] = [
     author: 'Audiio Team',
     category: 'streaming',
     enabled: true,
-    installed: true,
+    installed: false,
     privacyAccess: [
       { type: 'network', label: 'Network Access', description: 'Streams audio content from YouTube servers', required: true },
       { type: 'playback', label: 'Playback Control', description: 'Controls audio playback and manages stream quality', required: true },
@@ -230,7 +230,7 @@ const defaultPlugins: Plugin[] = [
     author: 'Audiio Team',
     category: 'lyrics',
     enabled: true,
-    installed: true,
+    installed: false,
     privacyAccess: [
       { type: 'network', label: 'Network Access', description: 'Fetches lyrics from LRCLIB servers', required: true },
       { type: 'playback', label: 'Playback Info', description: 'Reads current track and position for lyrics sync', required: true },
@@ -244,7 +244,7 @@ const defaultPlugins: Plugin[] = [
     author: 'Audiio Team',
     category: 'translation',
     enabled: true,
-    installed: true,
+    installed: false,
     privacyAccess: [
       { type: 'network', label: 'Network Access', description: 'Sends lyrics to translation APIs (MyMemory, Lingva)', required: true },
       { type: 'playback', label: 'Playback Info', description: 'Reads current lyrics for translation', required: true },
@@ -267,7 +267,7 @@ const defaultPlugins: Plugin[] = [
     author: 'Community',
     category: 'scrobbling',
     enabled: false,
-    installed: true,
+    installed: false,
     privacyAccess: [
       { type: 'network', label: 'Network Access', description: 'Sends listening data to Last.fm servers', required: true },
       { type: 'playback', label: 'Playback History', description: 'Tracks what songs you listen to and for how long', required: true },
@@ -282,7 +282,7 @@ const defaultPlugins: Plugin[] = [
     author: 'Audiio Team',
     category: 'metadata',
     enabled: false,
-    installed: true,
+    installed: false,
     privacyAccess: [
       { type: 'network', label: 'Network Access', description: 'Connects to Spotify API for metadata and audio features', required: true },
       { type: 'playback', label: 'Playback Info', description: 'Reads current track for metadata lookup', required: true },
@@ -310,7 +310,7 @@ const defaultPlugins: Plugin[] = [
     author: 'Audiio Team',
     category: 'analysis',
     enabled: true,
-    installed: true,
+    installed: false,
     privacyAccess: [
       { type: 'playback', label: 'Playback Info', description: 'Analyzes currently playing audio for features', required: true },
     ],
@@ -337,7 +337,7 @@ const defaultPlugins: Plugin[] = [
     author: 'Audiio Team',
     category: 'analysis',
     enabled: true,
-    installed: true,
+    installed: false,
     privacyAccess: [
       { type: 'playback', label: 'Playback History', description: 'Tracks listening patterns and preferences for personalized recommendations', required: true },
       { type: 'library', label: 'Library Access', description: 'Reads your music library to analyze and score tracks', required: true },
@@ -401,7 +401,7 @@ const defaultPlugins: Plugin[] = [
     author: 'Audiio Team',
     category: 'metadata',
     enabled: true,
-    installed: true,
+    installed: false,
     privacyAccess: [
       { type: 'library', label: 'Library Access', description: 'Access your music library to match and enrich tracks', required: true },
       { type: 'storage', label: 'Local Storage', description: 'Read Spotify export files and store matched data', required: true },
@@ -435,7 +435,7 @@ const defaultPlugins: Plugin[] = [
     author: 'Audiio Team',
     category: 'audio',
     enabled: true,
-    installed: true,
+    installed: false,
     privacyAccess: [
       { type: 'network', label: 'Local Processing', description: 'Sends audio to local Demucs server for vocal separation', required: true },
       { type: 'playback', label: 'Playback Info', description: 'Reads current track to process and swap audio source', required: true },
@@ -456,7 +456,7 @@ export const usePluginStore = create<PluginState>()(
         const newPlugin: Plugin = {
           ...pluginData,
           enabled: false,
-          installed: true,
+          installed: false,
         };
         set((state) => ({
           plugins: [...state.plugins, newPlugin],

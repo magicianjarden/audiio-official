@@ -436,6 +436,45 @@ function setupIPCHandlers(): void {
     });
   });
 
+  // Get loaded plugins with full details
+  ipcMain.handle('get-loaded-plugins', () => {
+    if (!pluginLoader) {
+      return [];
+    }
+    return pluginLoader.getLoadedPlugins().map(plugin => ({
+      id: plugin.manifest.id,
+      name: plugin.manifest.name,
+      version: plugin.manifest.version,
+      description: plugin.manifest.description,
+      roles: plugin.manifest.roles,
+      source: plugin.source,
+      packageName: plugin.packageName
+    }));
+  });
+
+  // Reload all plugins
+  ipcMain.handle('reload-plugins', async () => {
+    if (!pluginLoader) {
+      return { success: false, error: 'Plugin loader not initialized' };
+    }
+    try {
+      const results = await pluginLoader.reloadPlugins();
+      const loaded = results.filter(r => r.success);
+      console.log(`[Plugins] Reloaded ${loaded.length} plugins`);
+      return { success: true, loaded: loaded.length };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Check if a specific plugin is loaded
+  ipcMain.handle('is-plugin-loaded', (_event, pluginId: string) => {
+    if (!pluginLoader) {
+      return false;
+    }
+    return pluginLoader.isPluginLoaded(pluginId);
+  });
+
   ipcMain.handle('set-addon-enabled', (_event, { addonId, enabled }: { addonId: string; enabled: boolean }) => {
     console.log(`Setting addon ${addonId} enabled: ${enabled}`);
     registry.setEnabled(addonId, enabled);
