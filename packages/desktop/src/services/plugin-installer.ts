@@ -211,9 +211,14 @@ class PluginInstallerService {
         },
       });
 
-      // Build if package.json has a build script
+      // Check if plugin is already built (dist/ exists with index.js)
+      const distDir = path.join(pluginSourceDir, 'dist');
+      const distIndexPath = path.join(distDir, 'index.js');
+      const isPrebuilt = fs.existsSync(distIndexPath);
+
+      // Only build if not pre-built and has a build script
       const pkgJsonPath = path.join(pluginSourceDir, 'package.json');
-      if (fs.existsSync(pkgJsonPath)) {
+      if (!isPrebuilt && fs.existsSync(pkgJsonPath)) {
         const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
         if (pkgJson.scripts?.build) {
           onProgress?.({
@@ -233,6 +238,8 @@ class PluginInstallerService {
             },
           });
         }
+      } else if (isPrebuilt) {
+        console.log(`[PluginInstaller] Plugin is pre-built, skipping build step`);
       }
 
       onProgress?.({
