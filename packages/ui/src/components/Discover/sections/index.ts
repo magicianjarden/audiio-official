@@ -74,3 +74,20 @@ export type { DecadeMixSectionProps } from './DecadeMixSection';
 export type { SeasonalSectionProps } from './SeasonalSection';
 export type { BlindPicksSectionProps } from './BlindPicksSection';
 export type { SimilarArtistsSectionProps } from './SimilarArtistsSection';
+
+// New plugin/ML-powered sections
+export { LyricsHighlightSection } from './LyricsHighlightSection';
+export { FreshFindsSection } from './FreshFindsSection';
+export { DeepCutsSection } from './DeepCutsSection';
+export { FocusModeSection } from './FocusModeSection';
+export { StreamingHighlightsSection } from './StreamingHighlightsSection';
+export { AudioAnalysisSection } from './AudioAnalysisSection';
+export { SimilarTracksSection } from './SimilarTracksSection';
+
+export type { LyricsHighlightSectionProps } from './LyricsHighlightSection';
+export type { FreshFindsSectionProps } from './FreshFindsSection';
+export type { DeepCutsSectionProps } from './DeepCutsSection';
+export type { FocusModeSectionProps } from './FocusModeSection';
+export type { StreamingHighlightsSectionProps } from './StreamingHighlightsSection';
+export type { AudioAnalysisSectionProps } from './AudioAnalysisSection';
+export type { SimilarTracksSectionProps } from './SimilarTracksSection';

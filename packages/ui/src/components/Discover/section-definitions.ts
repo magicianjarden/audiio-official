@@ -45,6 +45,14 @@ import {
   SeasonalSection,
   BlindPicksSection,
   SimilarArtistsSection,
+  // Plugin/ML-powered sections
+  LyricsHighlightSection,
+  FreshFindsSection,
+  DeepCutsSection,
+  FocusModeSection,
+  StreamingHighlightsSection,
+  AudioAnalysisSection,
+  SimilarTracksSection,
 } from './sections';
 
 // ============================================
@@ -810,9 +818,7 @@ const similarArtistsSectionDef: SectionDefinition = {
   component: SimilarArtistsSection as React.ComponentType<any>,
   displayName: 'Artists For You',
   description: 'Artists similar to your favorites',
-  requirements: {
-    minListens: 5,
-  },
+  requirements: {},
   constraints: {
     maxPerPage: 1,
     cooldownSections: 5,
@@ -829,7 +835,164 @@ const similarArtistsSectionDef: SectionDefinition = {
 };
 
 // ============================================
-// Register All Sections (Expanded - 30+ sections)
+// Plugin/ML-Powered Section Definitions
+// ============================================
+
+const lyricsHighlightSectionDef: SectionDefinition = {
+  type: 'lyrics-highlight',
+  component: LyricsHighlightSection as React.ComponentType<any>,
+  displayName: 'Lyrical Gems',
+  description: 'Tracks with notable lyrics (requires lyrics plugin)',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 6,
+  },
+  weights: {
+    base: 55,
+    personalizedBoost: 15,
+  },
+  generateConfig: () => ({
+    title: 'Lyrical Gems',
+    subtitle: 'Songs worth singing along to',
+    isPersonalized: true,
+  }),
+};
+
+const freshFindsSectionDef: SectionDefinition = {
+  type: 'fresh-finds',
+  component: FreshFindsSection as React.ComponentType<any>,
+  displayName: 'Fresh Finds',
+  description: 'ML-powered new music discovery',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 4,
+  },
+  weights: {
+    base: 70,
+    personalizedBoost: 15,
+    newUserBoost: 10,
+  },
+  generateConfig: () => ({
+    title: 'Fresh Finds',
+    subtitle: 'Expand your horizons',
+    isPersonalized: true,
+  }),
+};
+
+const deepCutsSectionDef: SectionDefinition = {
+  type: 'deep-cuts',
+  component: DeepCutsSection as React.ComponentType<any>,
+  displayName: 'Deep Cuts',
+  description: 'Hidden gems based on your favorites',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 5,
+  },
+  weights: {
+    base: 60,
+    personalizedBoost: 20,
+  },
+  generateConfig: () => ({
+    title: 'Deep Cuts',
+    subtitle: 'Hidden gems you might love',
+    isPersonalized: true,
+  }),
+};
+
+const focusModeSectionDef: SectionDefinition = {
+  type: 'focus-mode',
+  component: FocusModeSection as React.ComponentType<any>,
+  displayName: 'Focus Mode',
+  description: 'ML-curated music for concentration',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 6,
+  },
+  weights: {
+    base: 55,
+    personalizedBoost: 10,
+    timeRelevance: (hour) => {
+      // Boost during work hours
+      if (hour >= 9 && hour < 17) return 20;
+      return 0;
+    },
+  },
+  generateConfig: () => ({
+    title: 'Deep Work',
+    subtitle: 'Music for productivity',
+    isPersonalized: true,
+  }),
+};
+
+const streamingHighlightsSectionDef: SectionDefinition = {
+  type: 'streaming-highlights',
+  component: StreamingHighlightsSection as React.ComponentType<any>,
+  displayName: 'Streaming Picks',
+  description: 'Content from your streaming services',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 5,
+  },
+  weights: {
+    base: 60,
+    personalizedBoost: 15,
+  },
+  generateConfig: () => ({
+    title: 'Streaming Picks',
+    subtitle: 'From your connected services',
+    isPersonalized: true,
+  }),
+};
+
+const audioAnalysisSectionDef: SectionDefinition = {
+  type: 'audio-analysis',
+  component: AudioAnalysisSection as React.ComponentType<any>,
+  displayName: 'AI Enhanced',
+  description: 'Smart recommendations via audio analysis',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 5,
+  },
+  weights: {
+    base: 55,
+    personalizedBoost: 15,
+  },
+  generateConfig: () => ({
+    title: 'AI Enhanced',
+    subtitle: 'Smart recommendations',
+    isPersonalized: true,
+  }),
+};
+
+const similarTracksSectionDef: SectionDefinition = {
+  type: 'similar-tracks',
+  component: SimilarTracksSection as React.ComponentType<any>,
+  displayName: 'Similar Tracks',
+  description: 'ML-powered track similarity',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    cooldownSections: 4,
+  },
+  weights: {
+    base: 70,
+    personalizedBoost: 20,
+  },
+  generateConfig: () => ({
+    title: 'Similar Tracks',
+    subtitle: 'More like what you\'re playing',
+    isPersonalized: true,
+  }),
+};
+
+// ============================================
+// Register All Sections (Expanded - 40+ sections)
 // ============================================
 
 export function registerAllSections(): void {
@@ -880,6 +1043,15 @@ export function registerAllSections(): void {
 
   // Feature sections (lower frequency)
   sectionRegistry.register(artistSpotlightSectionDef);
+
+  // Plugin/ML-powered sections
+  sectionRegistry.register(lyricsHighlightSectionDef);
+  sectionRegistry.register(freshFindsSectionDef);
+  sectionRegistry.register(deepCutsSectionDef);
+  sectionRegistry.register(focusModeSectionDef);
+  sectionRegistry.register(streamingHighlightsSectionDef);
+  sectionRegistry.register(audioAnalysisSectionDef);
+  sectionRegistry.register(similarTracksSectionDef);
 
   console.log('[SectionRegistry] Registered', sectionRegistry.getAll().length, 'sections');
 }

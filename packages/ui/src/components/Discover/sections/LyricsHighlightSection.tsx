@@ -1,183 +1,95 @@
 /**
- * LyricsHighlightSection - Quote cards featuring lyrics with artwork backdrop
- * Displays memorable lyrics from trending/personalized tracks
+ * LyricsHighlightSection - Shows tracks with notable lyrics
+ * Dynamically uses any available lyrics-provider plugin
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import type { UnifiedTrack } from '@audiio/core';
+import { TrackCard } from '../TrackCard';
 import { usePlayerStore } from '../../../stores/player-store';
+import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
 import { usePluginStore } from '../../../stores/plugin-store';
-import { BaseSectionWrapper, useSectionTracks } from './base/BaseSection';
+import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
 import type { BaseSectionProps } from '../section-registry';
-import { PlayIcon, MusicNoteIcon, QuoteIcon } from '@audiio/icons';
-
-export interface LyricsQuote {
-  trackId: string;
-  track: UnifiedTrack;
-  line: string;
-  startTime?: number; // For synced lyrics
-}
 
 export interface LyricsHighlightSectionProps extends BaseSectionProps {
-  quotes?: LyricsQuote[];
+  maxItems?: number;
 }
-
-// Sample lyrics for demo when lyrics API isn't available
-const SAMPLE_QUOTES = [
-  "Just keep swimming through the waves",
-  "Dancing in the moonlight tonight",
-  "We're all just searching for a feeling",
-  "Every ending is a new beginning",
-  "The rhythm takes control of me",
-];
 
 export const LyricsHighlightSection: React.FC<LyricsHighlightSectionProps> = ({
   id,
-  title,
+  title = 'Lyrical Gems',
   subtitle,
-  query,
-  isPersonalized,
-  context,
-  quotes: propQuotes,
   onSeeAll,
+  maxItems = 8,
 }) => {
-  const { play, setQueue, currentTrack, isPlaying } = usePlayerStore();
-  const { hasCapability } = usePluginStore();
+  const { play, setQueue } = usePlayerStore();
+  const { showContextMenu } = useTrackContextMenu();
+  const { hasCapability, getPluginsByRole } = usePluginStore();
 
-  // Check if any lyrics provider is enabled
-  const hasLyrics = hasCapability('lyrics-provider');
+  // Check if any lyrics provider is available
+  const hasLyricsProvider = hasCapability('lyrics-provider');
+  const lyricsPlugins = getPluginsByRole('lyrics-provider');
 
-  // Fetch tracks if no quotes provided
-  const { tracks, isLoading, error } = useSectionTracks(
-    propQuotes ? undefined : query,
-    { limit: 4 }
-  );
+  const {
+    generatePersonalizedPlaylist,
+    getTracksFromPlaylist,
+    isReady: embeddingReady,
+    tracksIndexed,
+  } = useEmbeddingPlaylist();
 
-  const [quotes, setQuotes] = useState<LyricsQuote[]>(propQuotes ?? []);
+  // Generate tracks - prioritize ones that work well with lyrics
+  const tracks = useMemo(() => {
+    if (!embeddingReady || tracksIndexed < 1) {
+      return [];
+    }
 
-  // Generate demo quotes from tracks when no real lyrics available
-  useEffect(() => {
-    if (propQuotes || tracks.length === 0) return;
+    const playlist = generatePersonalizedPlaylist({ limit: maxItems });
+    if (!playlist || playlist.tracks.length === 0) {
+      return [];
+    }
 
-    // In a real implementation, this would fetch lyrics from the lyrics provider
-    // For now, use sample quotes with track data
-    const generatedQuotes: LyricsQuote[] = tracks.slice(0, 4).map((track, i) => ({
-      trackId: track.id,
-      track,
-      line: SAMPLE_QUOTES[i % SAMPLE_QUOTES.length],
-    }));
+    return getTracksFromPlaylist(playlist);
+  }, [embeddingReady, tracksIndexed, maxItems, generatePersonalizedPlaylist, getTracksFromPlaylist]);
 
-    setQuotes(generatedQuotes);
-  }, [propQuotes, tracks]);
-
-  const handleQuoteClick = (quote: LyricsQuote) => {
-    const allTracks = quotes.map((q) => q.track);
-    setQueue(allTracks, allTracks.indexOf(quote.track));
-    play(quote.track);
+  const handleTrackClick = (track: UnifiedTrack, index: number) => {
+    setQueue(tracks, index);
+    play(track);
   };
 
-  if (!isLoading && quotes.length === 0) {
+  // Hide if no lyrics capability or no tracks
+  if (!hasLyricsProvider || (!embeddingReady && tracksIndexed < 1) || tracks.length === 0) {
     return null;
   }
 
+  const sectionTitle = title;
+  const sectionSubtitle = subtitle || `Powered by ${lyricsPlugins[0]?.name || 'lyrics provider'}`;
+
   return (
-    <BaseSectionWrapper
-      id={id}
-      type="lyrics-highlight"
-      title={title}
-      subtitle={subtitle}
-      isPersonalized={isPersonalized}
-      isLoading={isLoading}
-      error={error}
-      context={context}
-      onSeeAll={onSeeAll}
-      className="lyrics-highlight-section"
-    >
-      <div className="lyrics-grid">
-        {quotes.map((quote, index) => (
-          <LyricsCard
-            key={quote.trackId}
-            quote={quote}
-            index={index}
-            isPlaying={currentTrack?.id === quote.trackId && isPlaying}
-            onClick={() => handleQuoteClick(quote)}
+    <section id={id} className="discover-horizontal-section discover-lyrics-section">
+      <div className="discover-section-header">
+        <div className="discover-section-title-row">
+          <h2 className="discover-section-title">{sectionTitle}</h2>
+          <span className="discover-section-subtitle">{sectionSubtitle}</span>
+        </div>
+        {onSeeAll && (
+          <button className="discover-section-more" onClick={onSeeAll}>
+            See all
+          </button>
+        )}
+      </div>
+
+      <div className="discover-horizontal-scroll">
+        {tracks.map((track, index) => (
+          <TrackCard
+            key={track.id}
+            track={track}
+            onClick={() => handleTrackClick(track, index)}
+            onContextMenu={showContextMenu}
           />
         ))}
       </div>
-    </BaseSectionWrapper>
-  );
-};
-
-interface LyricsCardProps {
-  quote: LyricsQuote;
-  index: number;
-  isPlaying: boolean;
-  onClick: () => void;
-}
-
-const LyricsCard: React.FC<LyricsCardProps> = ({
-  quote,
-  index,
-  isPlaying,
-  onClick,
-}) => {
-  const { track, line } = quote;
-  const artwork = track.artwork?.large ?? track.artwork?.medium;
-
-  return (
-    <div
-      className={`lyrics-card ${isPlaying ? 'playing' : ''}`}
-      style={{ animationDelay: `${index * 100}ms` }}
-      onClick={onClick}
-    >
-      {/* Background artwork with blur */}
-      <div className="lyrics-card-bg">
-        {artwork ? (
-          <img src={artwork} alt="" aria-hidden="true" />
-        ) : (
-          <div className="lyrics-card-bg-placeholder" />
-        )}
-        <div className="lyrics-card-bg-overlay" />
-      </div>
-
-      {/* Content */}
-      <div className="lyrics-card-content">
-        <QuoteIcon size={24} className="lyrics-quote-icon" />
-
-        <blockquote className="lyrics-quote">
-          "{line}"
-        </blockquote>
-
-        <div className="lyrics-card-track">
-          <div className="lyrics-track-artwork">
-            {artwork ? (
-              <img src={artwork} alt={track.title} />
-            ) : (
-              <MusicNoteIcon size={16} />
-            )}
-          </div>
-
-          <div className="lyrics-track-info">
-            <span className="lyrics-track-title">{track.title}</span>
-            <span className="lyrics-track-artist">
-              {track.artists.map((a) => a.name).join(', ')}
-            </span>
-          </div>
-        </div>
-
-        <button className="lyrics-card-play">
-          <PlayIcon size={20} />
-        </button>
-
-        {isPlaying && (
-          <div className="lyrics-card-playing">
-            <span className="playing-bar" />
-            <span className="playing-bar" />
-            <span className="playing-bar" />
-          </div>
-        )}
-      </div>
-    </div>
+    </section>
   );
 };
 
