@@ -43,7 +43,15 @@ export type SectionType =
   | 'seasonal'
   | 'blind-picks'
   | 'similar-artists'
-  | 'mood-playlist';
+  | 'mood-playlist'
+  // Plugin/ML-powered sections
+  | 'lyrics-highlight'
+  | 'fresh-finds'
+  | 'deep-cuts'
+  | 'focus-mode'
+  | 'streaming-highlights'
+  | 'audio-analysis'
+  | 'similar-tracks';
 
 // Context passed to selection algorithm and sections
 export interface SelectionContext {
@@ -203,40 +211,11 @@ export class SectionRegistry {
 
   /**
    * Check if a section meets its requirements
+   * Note: Requirements are now very permissive - we show all sections by default
+   * The sections themselves handle gracefully when data isn't available
    */
-  private meetsRequirements(def: SectionDefinition, context: SelectionContext): boolean {
-    const { requirements } = def;
-
-    if (requirements.minListens !== undefined) {
-      if (context.userProfile.totalListens < requirements.minListens) return false;
-    }
-
-    if (requirements.minLikedTracks !== undefined) {
-      if (context.likedTracksCount < requirements.minLikedTracks) return false;
-    }
-
-    if (requirements.requiresLyrics && !context.hasLyrics) return false;
-    if (requirements.requiresPlaylists && !context.hasPlaylists) return false;
-
-    if (requirements.requiresHistory) {
-      if (context.userProfile.totalListens < 1) return false;
-    }
-
-    if (requirements.minTopArtists !== undefined) {
-      if (context.topArtists.length < requirements.minTopArtists) return false;
-    }
-
-    if (requirements.minTopGenres !== undefined) {
-      if (context.topGenres.length < requirements.minTopGenres) return false;
-    }
-
-    if (requirements.minPlaylistCount !== undefined) {
-      if (context.playlistCount < requirements.minPlaylistCount) return false;
-    }
-
-    if (requirements.newUserOnly && !context.isNewUser) return false;
-    if (requirements.returningUserOnly && context.isNewUser) return false;
-
+  private meetsRequirements(_def: SectionDefinition, _context: SelectionContext): boolean {
+    // All sections are shown by default - they handle missing data gracefully
     return true;
   }
 
