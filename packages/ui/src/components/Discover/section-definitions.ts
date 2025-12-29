@@ -861,7 +861,7 @@ export function registerAllSections(): void {
   sectionRegistry.register(largeCardsSectionDef);
 
   // New variety sections
-  sectionRegistry.register(moodGradientSectionDef);
+  // moodGradientSectionDef removed - the Calm/Balanced/Intense spectrum was confusing
   sectionRegistry.register(genreExplorerSectionDef);
   sectionRegistry.register(weeklyRotationSectionDef);
   sectionRegistry.register(moodPlaylistSectionDef);

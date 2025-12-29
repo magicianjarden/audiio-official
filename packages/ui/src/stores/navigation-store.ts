@@ -18,7 +18,15 @@ export type View =
   | 'stats'
   | 'artist-detail'
   | 'album-detail'
+  | 'section-detail'
   | `plugin-view-${string}`; // Dynamic plugin views
+
+export interface SectionDetailData {
+  title: string;
+  subtitle?: string;
+  query: string;
+  type: string;
+}
 
 interface NavigationState {
   currentView: View;
@@ -26,6 +34,7 @@ interface NavigationState {
   selectedPluginId: string | null;
   selectedArtistId: string | null;
   selectedAlbumId: string | null;
+  selectedSectionData: SectionDetailData | null;
   // Cache artist/album data for detail views
   selectedArtistData: SearchArtist | null;
   selectedAlbumData: SearchAlbum | null;
@@ -39,6 +48,7 @@ interface NavigationState {
   openPlugin: (pluginId: string) => void;
   openArtist: (artistId: string, artistData?: SearchArtist) => void;
   openAlbum: (albumId: string, albumData?: SearchAlbum) => void;
+  openSectionDetail: (data: SectionDetailData) => void;
   setSearchQuery: (query: string) => void;
   setSearchActive: (active: boolean) => void;
   clearSearch: () => void;
@@ -51,6 +61,7 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
   selectedPluginId: null,
   selectedArtistId: null,
   selectedAlbumId: null,
+  selectedSectionData: null,
   selectedArtistData: null,
   selectedAlbumData: null,
   searchQuery: '',
@@ -63,6 +74,7 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
       selectedPluginId: null,
       selectedArtistId: null,
       selectedAlbumId: null,
+      selectedSectionData: null,
       selectedArtistData: null,
       selectedAlbumData: null,
     });
@@ -92,6 +104,13 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
     });
   },
 
+  openSectionDetail: (data) => {
+    set({
+      currentView: 'section-detail',
+      selectedSectionData: data,
+    });
+  },
+
   setSearchQuery: (query) => {
     set({ searchQuery: query, isSearchActive: query.length > 0 });
   },
@@ -118,6 +137,8 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
       set({ ...clearSearch, currentView: 'home', selectedArtistId: null, selectedArtistData: null });
     } else if (currentView === 'album-detail') {
       set({ ...clearSearch, currentView: 'home', selectedAlbumId: null, selectedAlbumData: null });
+    } else if (currentView === 'section-detail') {
+      set({ ...clearSearch, currentView: 'home', selectedSectionData: null });
     } else if (currentView === 'stats') {
       set({ ...clearSearch, currentView: 'home' });
     } else if (currentView.startsWith('plugin-view-')) {

@@ -50,9 +50,6 @@ export const BaseSectionWrapper: React.FC<BaseSectionWrapperProps> = ({
           <div className="discover-section-title-row">
             <h2 className="discover-section-title">{title}</h2>
             {subtitle && <span className="discover-section-subtitle">{subtitle}</span>}
-            {isPersonalized && (
-              <span className="discover-section-personalized-tag">For You</span>
-            )}
           </div>
           {onSeeAll && (
             <button className="discover-section-more" onClick={onSeeAll}>

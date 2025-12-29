@@ -5,7 +5,6 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigationStore } from '../../stores/navigation-store';
-import { useSearchStore } from '../../stores/search-store';
 import { useRecommendationStore } from '../../stores/recommendation-store';
 import { useLibraryStore } from '../../stores/library-store';
 import { usePluginStore } from '../../stores/plugin-store';
@@ -29,8 +28,7 @@ if (!registryInitialized) {
 }
 
 export const Discover: React.FC = () => {
-  const { setSearchQuery } = useNavigationStore();
-  const { search } = useSearchStore();
+  const { openSectionDetail } = useNavigationStore();
   const { getTopGenres, getTopArtists, userProfile } = useRecommendationStore();
   const { likedTracks, playlists } = useLibraryStore();
   const { hasCapability } = usePluginStore();
@@ -69,10 +67,16 @@ export const Discover: React.FC = () => {
     });
   }, [selectionContext.userProfile.totalListens, selectionContext.likedTracksCount]);
 
-  const handleSearch = useCallback((query: string) => {
-    setSearchQuery(query);
-    search(query);
-  }, [setSearchQuery, search]);
+  const handleSeeAll = useCallback((config: SectionConfig) => {
+    if (config.query) {
+      openSectionDetail({
+        title: config.title || 'Browse',
+        subtitle: config.subtitle,
+        query: config.query,
+        type: config.type,
+      });
+    }
+  }, [openSectionDetail]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -81,19 +85,12 @@ export const Discover: React.FC = () => {
     return 'Good evening';
   };
 
-  const hasPersonalization = userProfile.totalListens > 5 || likedTracks.length > 0;
-
   return (
     <div className="discover">
       {/* Hero Section with Greeting */}
       <header className="discover-hero">
         <div className="discover-hero-content">
           <h1 className="discover-greeting">{getGreeting()}</h1>
-          {hasPersonalization && (
-            <span className="discover-personalized-badge">
-              Personalized for you
-            </span>
-          )}
         </div>
         <DiscoverySliderMini className="discover-hero-slider" />
       </header>
@@ -106,7 +103,7 @@ export const Discover: React.FC = () => {
             config={sectionConfig}
             context={selectionContext}
             index={index}
-            onSeeAll={() => sectionConfig.query && handleSearch(sectionConfig.query)}
+            onSeeAll={() => handleSeeAll(sectionConfig)}
           />
         ))}
       </div>

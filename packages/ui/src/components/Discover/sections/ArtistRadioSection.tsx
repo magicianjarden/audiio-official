@@ -36,8 +36,13 @@ export const ArtistRadioSection: React.FC<ArtistRadioSectionProps> = ({
     tracksIndexed,
   } = useEmbeddingPlaylist();
 
-  // Get top artist from context
-  const topArtist = context?.topArtists?.[0];
+  // Rotate through top artists based on current date to add variety
+  // This ensures different artists are featured on different days
+  const artistCount = context?.topArtists?.length || 0;
+  const dayOfYear = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
+  const artistIndex = artistCount > 0 ? dayOfYear % artistCount : 0;
+
+  const topArtist = context?.topArtists?.[artistIndex];
   const artistId = topArtist?.toLowerCase().replace(/\s+/g, '-');
   const artistName = topArtist || '';
 
@@ -91,7 +96,6 @@ export const ArtistRadioSection: React.FC<ArtistRadioSectionProps> = ({
         <div className="discover-section-title-row">
           <h2 className="discover-section-title">{sectionTitle}</h2>
           <span className="discover-section-subtitle">{sectionSubtitle}</span>
-          <span className="discover-section-personalized-tag">For You</span>
         </div>
         {onSeeAll && (
           <button className="discover-section-more" onClick={onSeeAll}>

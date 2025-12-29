@@ -90,7 +90,6 @@ export const BecauseYouLikeSection: React.FC<BecauseYouLikeSectionProps> = ({
       <div className="discover-section-header">
         <div className="discover-section-title-row">
           <h2 className="discover-section-title">{sectionTitle}</h2>
-          <span className="discover-section-personalized-tag">For You</span>
         </div>
         {onSeeAll && (
           <button className="discover-section-more" onClick={onSeeAll}>

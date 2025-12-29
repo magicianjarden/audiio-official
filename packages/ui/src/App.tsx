@@ -13,6 +13,7 @@ import { PluginDetailView } from './components/Plugins/PluginDetailView';
 import { SettingsView } from './components/Settings/SettingsView';
 import { ArtistDetailView } from './components/Artist/ArtistDetailView';
 import { AlbumDetailView } from './components/Album/AlbumDetailView';
+import { SectionDetailView } from './components/Discover/SectionDetailView';
 import { StatsView } from './components/Stats';
 import { QueuePopover } from './components/Queue/QueuePopover';
 import { Player } from './components/Player/Player';
@@ -165,6 +166,8 @@ const MainContent: React.FC = () => {
       return <ArtistDetailView />;
     case 'album-detail':
       return <AlbumDetailView />;
+    case 'section-detail':
+      return <SectionDetailView />;
     default:
       return <Discover />;
   }
