@@ -1,6 +1,7 @@
 /**
  * ArtistRadioSection - "More like [Artist Name]" based on user's top artist
  * Uses ML ranking for intelligent track ordering
+ * Uses the UNIFIED plugin pipeline for data (embedding provider handles artist-radio)
  */
 
 import React, { useMemo } from 'react';
@@ -8,9 +9,9 @@ import type { UnifiedTrack } from '@audiio/core';
 import { TrackCard } from '../TrackCard';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import type { BaseSectionProps } from '../section-registry';
-import { debugLog } from '../../../utils/debug';
+import type { StructuredSectionQuery } from '../types';
 
 export interface ArtistRadioSectionProps extends BaseSectionProps {
   artistName?: string;
@@ -28,14 +29,6 @@ export const ArtistRadioSection: React.FC<ArtistRadioSectionProps> = ({
   const { play, setQueue } = usePlayerStore();
   const { showContextMenu } = useTrackContextMenu();
 
-  // Embedding-based playlist generation
-  const {
-    generateArtistRadio,
-    getTracksFromPlaylist,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
-
   // Rotate through top artists based on current date to add variety
   // This ensures different artists are featured on different days
   const artistCount = context?.topArtists?.length || 0;
@@ -46,36 +39,29 @@ export const ArtistRadioSection: React.FC<ArtistRadioSectionProps> = ({
   const artistId = topArtist?.toLowerCase().replace(/\s+/g, '-');
   const artistName = topArtist || '';
 
-  // Use embedding-based generation only
-  const tracks = useMemo(() => {
-    if (!artistId) {
-      return [];
-    }
+  // Build structured query for the unified pipeline
+  // embeddingProvider will handle this with artist-radio generation
+  const structuredQuery = useMemo((): StructuredSectionQuery => ({
+    strategy: 'plugin',
+    sectionType: 'artist-radio',
+    title: title || `More like ${artistName}`,
+    subtitle: subtitle || 'Based on your listening',
+    embedding: {
+      method: 'artist-radio',
+      seedArtistId: artistId || '',
+      artistName: artistName,
+      exploration: 0.3,
+    },
+    limit: maxItems,
+  }), [title, subtitle, artistName, artistId, maxItems]);
 
-    if (!embeddingReady) {
-      debugLog('[ArtistRadio]', 'Embedding not ready');
-      return [];
-    }
-
-    if (tracksIndexed < 1) {
-      debugLog('[ArtistRadio]', 'No tracks indexed');
-      return [];
-    }
-
-    const playlist = generateArtistRadio(artistId, { limit: maxItems });
-    if (!playlist || playlist.tracks.length === 0) {
-      debugLog('[ArtistRadio]', `No tracks for artist "${topArtist}"`);
-      return [];
-    }
-
-    debugLog(
-      '[ArtistRadio]',
-      `Generated "${topArtist}" radio: ${playlist.tracks.length} tracks (indexed: ${tracksIndexed})`
-    );
-    return getTracksFromPlaylist(playlist);
-  }, [artistId, embeddingReady, tracksIndexed, maxItems, generateArtistRadio, getTracksFromPlaylist, topArtist]);
-
-  const isLoading = artistId && !embeddingReady;
+  // Use unified plugin pipeline - embeddingProvider handles artist-radio
+  const { tracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: !!artistId,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: maxItems,
+  });
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     setQueue(tracks, index);

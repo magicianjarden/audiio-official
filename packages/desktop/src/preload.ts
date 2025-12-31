@@ -42,6 +42,38 @@ const api = {
     };
   },
 
+  // ========================================
+  // Window Control APIs (for frameless title bar)
+  // ========================================
+
+  windowMinimize: () => {
+    return ipcRenderer.invoke('window-minimize');
+  },
+
+  windowMaximize: () => {
+    return ipcRenderer.invoke('window-maximize');
+  },
+
+  windowClose: () => {
+    return ipcRenderer.invoke('window-close');
+  },
+
+  windowIsMaximized: () => {
+    return ipcRenderer.invoke('window-is-maximized');
+  },
+
+  onWindowMaximizedChange: (callback: (isMaximized: boolean) => void) => {
+    const listener = (_: unknown, isMaximized: boolean) => callback(isMaximized);
+    ipcRenderer.on('window-maximized-change', listener);
+    return () => {
+      ipcRenderer.removeListener('window-maximized-change', listener);
+    };
+  },
+
+  getPlatform: () => {
+    return ipcRenderer.invoke('get-platform');
+  },
+
   // Plugin management
   getAddons: () => {
     return ipcRenderer.invoke('get-addons');
@@ -521,9 +553,9 @@ const api = {
     },
 
     // Listen for full track ready events (push notification - no polling needed!)
-    onFullTrackReady: (callback: (data: { trackId: string; result: { audioBase64: string; mimeType: string; isPartial: boolean } }) => void) => {
+    onFullTrackReady: (callback: (data: { trackId: string; result: { instrumentalUrl?: string; audioBase64?: string; mimeType: string; isPartial: boolean } }) => void) => {
       console.log('[Preload] Registering karaoke-full-track-ready listener');
-      const listener = (_: unknown, data: { trackId: string; result: { audioBase64: string; mimeType: string; isPartial: boolean } }) => {
+      const listener = (_: unknown, data: { trackId: string; result: { instrumentalUrl?: string; audioBase64?: string; mimeType: string; isPartial: boolean } }) => {
         console.log('[Preload] Received karaoke-full-track-ready event:', data?.trackId);
         callback(data);
       };
@@ -531,6 +563,100 @@ const api = {
       return () => {
         console.log('[Preload] Removing karaoke-full-track-ready listener');
         ipcRenderer.removeListener('karaoke-full-track-ready', listener);
+      };
+    },
+
+    // Listen for progress updates (real-time via WebSocket, with ETA)
+    onProgress: (callback: (data: { trackId: string; progress: number; stage: string; eta?: number }) => void) => {
+      const listener = (_: unknown, data: { trackId: string; progress: number; stage: string; eta?: number }) => callback(data);
+      ipcRenderer.on('karaoke-progress', listener);
+      return () => {
+        ipcRenderer.removeListener('karaoke-progress', listener);
+      };
+    },
+
+    // Listen for FIRST CHUNK ready (instant playback - ~3-4 seconds!)
+    onFirstChunkReady: (callback: (data: { trackId: string; url: string }) => void) => {
+      console.log('[Preload] Registering karaoke-first-chunk-ready listener');
+      const listener = (_: unknown, data: { trackId: string; url: string }) => {
+        console.log('[Preload] First chunk ready for instant playback:', data?.trackId);
+        callback(data);
+      };
+      ipcRenderer.on('karaoke-first-chunk-ready', listener);
+      return () => {
+        ipcRenderer.removeListener('karaoke-first-chunk-ready', listener);
+      };
+    },
+
+    // Listen for CHUNK UPDATED (progressive streaming - audio file has grown)
+    onChunkUpdated: (callback: (data: { trackId: string; url: string; chunkNumber: number }) => void) => {
+      const listener = (_: unknown, data: { trackId: string; url: string; chunkNumber: number }) => {
+        console.log('[Preload] Chunk updated:', data?.trackId, 'chunk:', data?.chunkNumber);
+        callback(data);
+      };
+      ipcRenderer.on('karaoke-chunk-updated', listener);
+      return () => {
+        ipcRenderer.removeListener('karaoke-chunk-updated', listener);
+      };
+    },
+
+    // Queue tracks for predictive processing
+    predictivePrefetch: (tracks: Array<{ id: string; url: string }>) => {
+      return ipcRenderer.invoke('karaoke-predictive-prefetch', tracks);
+    },
+
+    // Get server capabilities (hardware, RTF, etc.)
+    getCapabilities: () => {
+      return ipcRenderer.invoke('karaoke-get-capabilities');
+    },
+  },
+
+  // ========================================
+  // Components APIs (Optional Components like Demucs)
+  // ========================================
+
+  components: {
+    // Get Demucs component status
+    getDemucsStatus: () => {
+      return ipcRenderer.invoke('component-demucs-status');
+    },
+
+    // Install Demucs component
+    installDemucs: () => {
+      return ipcRenderer.invoke('component-demucs-install');
+    },
+
+    // Cancel Demucs installation
+    cancelDemucsInstall: () => {
+      return ipcRenderer.invoke('component-demucs-cancel-install');
+    },
+
+    // Uninstall Demucs component
+    uninstallDemucs: () => {
+      return ipcRenderer.invoke('component-demucs-uninstall');
+    },
+
+    // Set Demucs enabled state
+    setDemucsEnabled: (enabled: boolean) => {
+      return ipcRenderer.invoke('component-demucs-set-enabled', enabled);
+    },
+
+    // Start Demucs server
+    startDemucsServer: () => {
+      return ipcRenderer.invoke('component-demucs-start-server');
+    },
+
+    // Stop Demucs server
+    stopDemucsServer: () => {
+      return ipcRenderer.invoke('component-demucs-stop-server');
+    },
+
+    // Listen for install progress events
+    onInstallProgress: (callback: (progress: { phase: string; progress: number; message: string; bytesDownloaded?: number; totalBytes?: number }) => void) => {
+      const listener = (_: unknown, progress: { phase: string; progress: number; message: string; bytesDownloaded?: number; totalBytes?: number }) => callback(progress);
+      ipcRenderer.on('component-install-progress', listener);
+      return () => {
+        ipcRenderer.removeListener('component-install-progress', listener);
       };
     },
   },

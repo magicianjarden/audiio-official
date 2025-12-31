@@ -292,7 +292,7 @@ export const PluginDetailView: React.FC = () => {
         </section>
 
         <section className="plugin-detail-section">
-          <PrivacyCard privacyAccess={plugin.privacyAccess} />
+          <PrivacyCard privacyAccess={plugin.privacyAccess || []} />
         </section>
 
         <section className="plugin-detail-section">

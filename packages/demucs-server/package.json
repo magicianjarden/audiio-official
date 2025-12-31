@@ -5,7 +5,6 @@
   "private": true,
   "scripts": {
     "install:deps": "pip install -r requirements.txt",
-    "start": "python server.py",
-    "dev": "python server.py"
+    "start": "python server.py"
   }
 }

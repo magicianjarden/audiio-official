@@ -281,10 +281,15 @@ function extractGenres(track: UnifiedTrack): string[] {
 }
 
 function extractArtistIds(track: UnifiedTrack): { id: string; name: string }[] {
-  return track.artists.map(a => ({
-    id: a.id || a.name.toLowerCase().replace(/\s+/g, '-'),
-    name: a.name
-  }));
+  if (!track.artists || !Array.isArray(track.artists)) {
+    return [];
+  }
+  return track.artists
+    .filter(a => a && a.name)
+    .map(a => ({
+      id: a.id || a.name.toLowerCase().replace(/\s+/g, '-'),
+      name: a.name
+    }));
 }
 
 /**

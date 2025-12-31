@@ -8,6 +8,13 @@
 
 import { sectionRegistry, type SectionDefinition } from './section-registry';
 import {
+  buildArtistRadioQuery,
+  buildDiscoveryQuery,
+  buildGenreQuery,
+  buildMoodQuery,
+  buildPersonalizedQuery,
+} from './query-builders';
+import {
   // Primary sections
   HeroSection,
   HorizontalSection,
@@ -177,6 +184,7 @@ const artistRadioSectionDef: SectionDefinition = {
     subtitle: ctx.topArtists[0] ? 'Based on your listening' : 'Discover similar artists',
     query: ctx.topArtists[0] ? `${ctx.topArtists[0]} similar` : 'popular artists 2024',
     isPersonalized: ctx.topArtists.length > 0,
+    whyExplanation: ctx.topArtists[0] ? `You've played ${ctx.topArtists[0]} a lot` : undefined,
   }),
 };
 
@@ -196,11 +204,36 @@ const becauseYouLikeSectionDef1: SectionDefinition = {
     base: 65,
     personalizedBoost: 20,
   },
-  generateConfig: (ctx) => ({
-    title: ctx.topArtists[0] ? `Because you like ${ctx.topArtists[0]}` : 'You Might Like',
-    query: ctx.topArtists[0] ? `${ctx.topArtists[0]} similar artists` : 'recommended music 2024',
-    isPersonalized: ctx.topArtists.length > 0,
-  }),
+  generateConfig: (ctx) => {
+    const artist = ctx.topArtists[0];
+    const title = artist ? `Because you like ${artist}` : 'You Might Like';
+
+    if (artist) {
+      const artistId = artist.toLowerCase().replace(/\s+/g, '-');
+      return {
+        title,
+        query: `${artist} similar artists`,
+        structuredQuery: buildArtistRadioQuery(artistId, artist, title, {
+          exploration: 0.3,
+          includeCollaborative: true,
+          sectionType: 'because-you-like',
+        }),
+        isPersonalized: true,
+        whyExplanation: `Fans of ${artist} love these`,
+      };
+    }
+
+    return {
+      title,
+      query: 'recommended music 2024',
+      structuredQuery: buildDiscoveryQuery(title, {
+        exploration: 0.5,
+        sectionType: 'because-you-like',
+      }),
+      isPersonalized: false,
+      whyExplanation: undefined,
+    };
+  },
 };
 
 const becauseYouLikeSectionDef2: SectionDefinition = {
@@ -219,11 +252,36 @@ const becauseYouLikeSectionDef2: SectionDefinition = {
     base: 55,
     personalizedBoost: 15,
   },
-  generateConfig: (ctx) => ({
-    title: ctx.topArtists[1] ? `Because you like ${ctx.topArtists[1]}` : 'More For You',
-    query: ctx.topArtists[1] ? `${ctx.topArtists[1]} similar` : 'discover new music',
-    isPersonalized: ctx.topArtists.length > 1,
-  }),
+  generateConfig: (ctx) => {
+    const artist = ctx.topArtists[1];
+    const title = artist ? `Because you like ${artist}` : 'More For You';
+
+    if (artist) {
+      const artistId = artist.toLowerCase().replace(/\s+/g, '-');
+      return {
+        title,
+        query: `${artist} similar`,
+        structuredQuery: buildArtistRadioQuery(artistId, artist, title, {
+          exploration: 0.35,
+          includeCollaborative: true,
+          sectionType: 'because-you-like',
+        }),
+        isPersonalized: true,
+        whyExplanation: `Your taste for ${artist}`,
+      };
+    }
+
+    return {
+      title,
+      query: 'discover new music',
+      structuredQuery: buildDiscoveryQuery(title, {
+        exploration: 0.6,
+        sectionType: 'because-you-like',
+      }),
+      isPersonalized: false,
+      whyExplanation: undefined,
+    };
+  },
 };
 
 const newReleasesSectionDef: SectionDefinition = {
@@ -245,6 +303,7 @@ const newReleasesSectionDef: SectionDefinition = {
     subtitle: ctx.topGenres[0] ? `In ${ctx.topGenres[0]}` : 'Fresh music',
     query: ctx.topGenres[0] ? `new releases ${ctx.topGenres[0]} 2024` : 'new releases 2024 latest',
     isPersonalized: ctx.topGenres.length > 0,
+    whyExplanation: ctx.topGenres[0] ? `Fresh ${ctx.topGenres[0]} for you` : 'Just dropped this week',
   }),
 };
 
@@ -317,6 +376,7 @@ const gridSectionDef: SectionDefinition = {
     title: ctx.topGenres[0] ? `${ctx.topGenres[0]} Mix` : 'Discover',
     query: ctx.topGenres[0] ? `${ctx.topGenres[0]} best 2024` : 'discover new music',
     isPersonalized: ctx.topGenres.length > 0,
+    whyExplanation: ctx.topGenres[0] ? `Your love for ${ctx.topGenres[0]}` : undefined,
   }),
 };
 
@@ -367,24 +427,28 @@ const largeCardsSectionDef: SectionDefinition = {
         title: 'Morning Energy',
         query: 'upbeat energizing morning',
         embedding: { type: 'mood', id: 'uplifting' },
+        whyExplanation: 'Perfect for starting your day',
       };
     } else if (hour >= 12 && hour < 18) {
       return {
         title: 'Afternoon Vibes',
         query: 'popular trending afternoon',
         embedding: { type: 'mood', id: 'focus' },
+        whyExplanation: 'Keep the momentum going',
       };
     } else if (hour >= 18 && hour < 22) {
       return {
         title: 'Evening Wind Down',
         query: 'chill relaxing evening',
         embedding: { type: 'mood', id: 'chill' },
+        whyExplanation: 'Time to unwind',
       };
     } else {
       return {
         title: 'Night Mode',
         query: 'ambient calm night lofi',
         embedding: { type: 'mood', id: 'chill' },
+        whyExplanation: 'Late night listening',
       };
     }
   },
@@ -457,12 +521,21 @@ const genreExplorerSectionDef: SectionDefinition = {
     personalizedBoost: 10,
     newUserBoost: 20,
   },
-  generateConfig: () => ({
-    title: 'Explore Genres',
-    subtitle: 'Find your next favorite sound',
-    query: 'music genres discover variety',
-    isPersonalized: false,
-  }),
+  generateConfig: (ctx) => {
+    const topGenre = ctx.topGenres[0] || 'pop';
+    return {
+      title: 'Explore Genres',
+      subtitle: 'Find your next favorite sound',
+      query: 'music genres discover variety',
+      structuredQuery: buildGenreQuery(topGenre, 'Explore Genres', {
+        exploration: 0.5,
+        includeCollaborative: true,
+        sectionType: 'genre-explorer',
+        subtitle: 'Find your next favorite sound',
+      }),
+      isPersonalized: false,
+    };
+  },
 };
 
 const weeklyRotationSectionDef: SectionDefinition = {
@@ -580,6 +653,12 @@ const horizontalSectionDef2: SectionDefinition = {
     subtitle: 'Wind down with these tracks',
     query: 'chill lofi relaxing music',
     embedding: { type: 'mood', id: 'chill' },
+    structuredQuery: buildMoodQuery('chill', 'Chill Vibes', {
+      exploration: 0.3,
+      includeCollaborative: true,
+      sectionType: 'horizontal',
+      subtitle: 'Wind down with these tracks',
+    }),
     isPersonalized: false,
   }),
 };
@@ -608,6 +687,12 @@ const horizontalSectionDef3: SectionDefinition = {
     subtitle: 'Get pumped up',
     query: 'upbeat energetic workout music',
     embedding: { type: 'mood', id: 'energetic' },
+    structuredQuery: buildMoodQuery('energetic', 'Energy Boost', {
+      exploration: 0.3,
+      includeCollaborative: true,
+      sectionType: 'horizontal',
+      subtitle: 'Get pumped up',
+    }),
     isPersonalized: false,
   }),
 };
@@ -653,10 +738,11 @@ const onRepeatSectionDef: SectionDefinition = {
     base: 70,
     personalizedBoost: 20,
   },
-  generateConfig: () => ({
+  generateConfig: (ctx) => ({
     title: 'On Repeat',
     subtitle: 'Your heavy rotation',
     isPersonalized: true,
+    whyExplanation: ctx.userProfile.totalListens > 50 ? `${ctx.userProfile.totalListens}+ plays and counting` : 'Your favorites',
   }),
 };
 
@@ -674,10 +760,11 @@ const discoverWeeklySectionDef: SectionDefinition = {
     base: 75,
     personalizedBoost: 15,
   },
-  generateConfig: () => ({
+  generateConfig: (ctx) => ({
     title: 'Discover Weekly',
     subtitle: 'Your personalized mix of new and familiar',
     isPersonalized: true,
+    whyExplanation: ctx.topGenres[0] ? `Curated from your ${ctx.topGenres[0]} taste` : 'Fresh picks for you',
   }),
 };
 
@@ -697,10 +784,20 @@ const topMixSectionDef: SectionDefinition = {
     base: 70,
     personalizedBoost: 25,
   },
-  generateConfig: () => ({
+  generateConfig: (ctx) => ({
     title: 'Your Top Mix',
     subtitle: 'Based on everything you love',
+    query: 'personalized mix recommendations',
+    structuredQuery: buildPersonalizedQuery('Your Top Mix', {
+      exploration: 0.2,
+      includeCollaborative: true,
+      contextHour: ctx.hour,
+      contextDayOfWeek: ctx.dayOfWeek,
+      sectionType: 'top-mix',
+      subtitle: 'Based on everything you love',
+    }),
     isPersonalized: true,
+    whyExplanation: ctx.likedTracksCount > 0 ? `From ${ctx.likedTracksCount} liked tracks` : 'Matched to your taste',
   }),
 };
 
@@ -752,7 +849,7 @@ const activitySectionDef: SectionDefinition = {
 const decadeMixSectionDef: SectionDefinition = {
   type: 'decade-mix',
   component: DecadeMixSection as React.ComponentType<any>,
-  displayName: 'Decade Mixes',
+  displayName: 'Decades',
   description: 'Music through the years',
   requirements: {},
   constraints: {
@@ -765,8 +862,8 @@ const decadeMixSectionDef: SectionDefinition = {
     newUserBoost: 10,
   },
   generateConfig: () => ({
-    title: 'Decade Mixes',
-    subtitle: 'Music through the years',
+    title: 'Decades',
+    subtitle: 'Music from your library through the years',
     isPersonalized: false,
   }),
 };
@@ -808,7 +905,7 @@ const blindPicksSectionDef: SectionDefinition = {
   },
   generateConfig: () => ({
     title: 'Blind Picks',
-    subtitle: 'Expand your horizons',
+    subtitle: 'Songs you haven\'t heard yet',
     isPersonalized: false,
   }),
 };
@@ -816,8 +913,8 @@ const blindPicksSectionDef: SectionDefinition = {
 const similarArtistsSectionDef: SectionDefinition = {
   type: 'similar-artists',
   component: SimilarArtistsSection as React.ComponentType<any>,
-  displayName: 'Artists For You',
-  description: 'Artists similar to your favorites',
+  displayName: 'Artist Radios',
+  description: 'Artist radios based on your favorites',
   requirements: {},
   constraints: {
     maxPerPage: 1,
@@ -828,8 +925,8 @@ const similarArtistsSectionDef: SectionDefinition = {
     personalizedBoost: 20,
   },
   generateConfig: () => ({
-    title: 'Artists For You',
-    subtitle: 'Based on your listening',
+    title: 'Artist Radios',
+    subtitle: 'Click to play artist radio',
     isPersonalized: true,
   }),
 };
@@ -874,10 +971,20 @@ const freshFindsSectionDef: SectionDefinition = {
     personalizedBoost: 15,
     newUserBoost: 10,
   },
-  generateConfig: () => ({
+  generateConfig: (ctx) => ({
     title: 'Fresh Finds',
     subtitle: 'Expand your horizons',
+    query: 'new music discovery 2024',
+    structuredQuery: buildDiscoveryQuery('Fresh Finds', {
+      exploration: 0.8,
+      includeCollaborative: true,
+      contextHour: ctx.hour,
+      contextDayOfWeek: ctx.dayOfWeek,
+      sectionType: 'fresh-finds',
+      subtitle: 'Expand your horizons',
+    }),
     isPersonalized: true,
+    whyExplanation: ctx.topGenres[0] ? `Beyond your usual ${ctx.topGenres[0]}` : 'AI-curated for discovery',
   }),
 };
 
@@ -895,10 +1002,18 @@ const deepCutsSectionDef: SectionDefinition = {
     base: 60,
     personalizedBoost: 20,
   },
-  generateConfig: () => ({
+  generateConfig: (ctx) => ({
     title: 'Deep Cuts',
     subtitle: 'Hidden gems you might love',
+    query: 'hidden gems underground music',
+    structuredQuery: buildDiscoveryQuery('Deep Cuts', {
+      exploration: 0.6,
+      includeCollaborative: true,
+      sectionType: 'deep-cuts',
+      subtitle: 'Hidden gems you might love',
+    }),
     isPersonalized: true,
+    whyExplanation: ctx.topArtists[0] ? `Like ${ctx.topArtists[0]}, but deeper` : 'Less played, equally loved',
   }),
 };
 
@@ -924,6 +1039,13 @@ const focusModeSectionDef: SectionDefinition = {
   generateConfig: () => ({
     title: 'Deep Work',
     subtitle: 'Music for productivity',
+    query: 'focus concentration ambient lofi',
+    structuredQuery: buildMoodQuery('focus', 'Deep Work', {
+      exploration: 0.2,
+      includeCollaborative: true,
+      sectionType: 'focus-mode',
+      subtitle: 'Music for productivity',
+    }),
     isPersonalized: true,
   }),
 };
@@ -987,6 +1109,13 @@ const similarTracksSectionDef: SectionDefinition = {
   generateConfig: () => ({
     title: 'Similar Tracks',
     subtitle: 'More like what you\'re playing',
+    query: 'similar tracks recommendations',
+    structuredQuery: buildPersonalizedQuery('Similar Tracks', {
+      exploration: 0.3,
+      includeCollaborative: true,
+      sectionType: 'similar-tracks',
+      subtitle: 'More like what you\'re playing',
+    }),
     isPersonalized: true,
   }),
 };
@@ -995,7 +1124,14 @@ const similarTracksSectionDef: SectionDefinition = {
 // Register All Sections (Expanded - 40+ sections)
 // ============================================
 
+// Guard to prevent duplicate registration
+let sectionsRegistered = false;
+
 export function registerAllSections(): void {
+  if (sectionsRegistered) {
+    return; // Already registered
+  }
+
   // Quick access sections (shown at top)
   sectionRegistry.register(quickPicksSectionDef);
   sectionRegistry.register(heroSectionDef);
@@ -1053,6 +1189,7 @@ export function registerAllSections(): void {
   sectionRegistry.register(audioAnalysisSectionDef);
   sectionRegistry.register(similarTracksSectionDef);
 
+  sectionsRegistered = true;
   console.log('[SectionRegistry] Registered', sectionRegistry.getAll().length, 'sections');
 }
 

@@ -1,15 +1,16 @@
 /**
  * SimilarArtistsSection - Grid of artists similar to your favorites
- * Artist discovery based on your taste profile
+ * Uses the plugin pipeline to fetch tracks and groups by artist
  */
 
 import React, { useMemo } from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import { usePlayerStore } from '../../../stores/player-store';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import { BaseSectionWrapper } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
-import { PlayIcon, MusicNoteIcon } from '@audiio/icons';
+import type { StructuredSectionQuery } from '../types';
+import { PlayIcon, MusicNoteIcon, RadioIcon } from '@audiio/icons';
 
 interface ArtistCard {
   id: string;
@@ -33,37 +34,40 @@ export const SimilarArtistsSection: React.FC<SimilarArtistsSectionProps> = ({
 }) => {
   const { play, setQueue } = usePlayerStore();
 
-  const {
-    generatePersonalizedPlaylist,
-    getTracksFromPlaylist,
-    getTasteStats,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
+  // Build structured query for plugin pipeline
+  const structuredQuery: StructuredSectionQuery = {
+    strategy: 'plugin',
+    sectionType: 'similar-artists',
+    title,
+    subtitle,
+    embedding: {
+      method: 'personalized',
+      exploration: 0.3,
+      includeCollaborative: true,
+    },
+    limit: 50, // Get more tracks to find diverse artists
+  };
 
-  const tasteStats = getTasteStats();
+  // Use plugin pipeline for data fetching
+  const { tracks: rawTracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: true,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: 50,
+  });
 
-  // Get tracks and group by artist
+  // Group tracks by artist
   const artists = useMemo(() => {
-    if (!embeddingReady || tracksIndexed < 1) {
+    if (rawTracks.length === 0) {
       return [];
     }
-
-    const playlist = generatePersonalizedPlaylist({
-      limit: 50, // Get more tracks to find diverse artists
-      exploration: 0.3,
-    });
-
-    if (!playlist) return [];
-
-    const tracks = getTracksFromPlaylist(playlist);
 
     // Group by artist
     const artistMap = new Map<string, ArtistCard>();
 
-    for (const track of tracks) {
-      const artist = track.artists[0];
-      if (!artist) continue;
+    for (const track of rawTracks) {
+      const artist = track.artists?.[0];
+      if (!artist?.name) continue;
 
       const artistId = artist.id || artist.name.toLowerCase().replace(/\s+/g, '-');
 
@@ -90,7 +94,7 @@ export const SimilarArtistsSection: React.FC<SimilarArtistsSectionProps> = ({
     return Array.from(artistMap.values())
       .sort((a, b) => b.trackCount - a.trackCount)
       .slice(0, maxArtists);
-  }, [embeddingReady, tracksIndexed, maxArtists, generatePersonalizedPlaylist, getTracksFromPlaylist]);
+  }, [rawTracks, maxArtists]);
 
   const handleArtistPlay = (artist: ArtistCard) => {
     if (artist.tracks.length > 0 && artist.tracks[0]) {
@@ -99,9 +103,8 @@ export const SimilarArtistsSection: React.FC<SimilarArtistsSectionProps> = ({
     }
   };
 
-  if (!embeddingReady || artists.length === 0 || !tasteStats.isValid) {
-    return null;
-  }
+  // Show empty state instead of hiding
+  const showEmptyState = !isLoading && artists.length === 0;
 
   return (
     <BaseSectionWrapper
@@ -114,32 +117,48 @@ export const SimilarArtistsSection: React.FC<SimilarArtistsSectionProps> = ({
       onSeeAll={onSeeAll}
       className="similar-artists-section"
     >
-      <div className="similar-artists-grid">
-        {artists.map((artist) => (
-          <div
-            key={artist.id}
-            className="similar-artist-card"
-            onClick={() => handleArtistPlay(artist)}
-          >
-            <div className="similar-artist-artwork">
-              {artist.artwork ? (
-                <img src={artist.artwork} alt={artist.name} loading="lazy" />
-              ) : (
-                <div className="similar-artist-placeholder">
-                  <MusicNoteIcon size={32} />
+      {isLoading ? (
+        <div className="similar-artists-grid">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="similar-artist-card skeleton" />
+          ))}
+        </div>
+      ) : showEmptyState ? (
+        <div className="discover-empty-state">
+          <p>Discovering artists for you...</p>
+        </div>
+      ) : (
+        <div className="similar-artists-grid">
+          {artists.map((artist) => (
+            <div
+              key={artist.id}
+              className="similar-artist-card"
+              onClick={() => handleArtistPlay(artist)}
+            >
+              <div className="similar-artist-artwork">
+                {artist.artwork ? (
+                  <img src={artist.artwork} alt={artist.name} loading="lazy" />
+                ) : (
+                  <div className="similar-artist-placeholder">
+                    <MusicNoteIcon size={32} />
+                  </div>
+                )}
+                <div className="similar-artist-play-overlay">
+                  <PlayIcon size={24} />
                 </div>
-              )}
-              <div className="similar-artist-play-overlay">
-                <PlayIcon size={24} />
+                {/* Radio indicator badge */}
+                <div className="similar-artist-radio-badge" title="Plays artist radio">
+                  <RadioIcon size={12} />
+                </div>
+              </div>
+              <div className="similar-artist-info">
+                <span className="similar-artist-name">{artist.name}</span>
+                <span className="similar-artist-radio-label">Radio • {artist.trackCount} tracks</span>
               </div>
             </div>
-            <div className="similar-artist-info">
-              <span className="similar-artist-name">{artist.name}</span>
-              <span className="similar-artist-tracks">{artist.trackCount} tracks</span>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </BaseSectionWrapper>
   );
 };

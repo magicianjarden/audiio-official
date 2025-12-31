@@ -1,12 +1,22 @@
 /**
  * Lyrics store - manages lyrics fetching and syncing
- * Uses LRCLib API for synced lyrics
  *
- * Also provides word-level timing for sing-along mode by interpolating
- * word positions based on line duration and word lengths.
+ * Supports multiple lyrics formats:
+ * - Standard LRC: [mm:ss.xx]Text
+ * - Enhanced LRC (ELRC): [mm:ss.xx]<mm:ss.xx>Word - syllable-level timing
+ * - SRT: Standard subtitle format
+ * - Plain text
+ *
+ * Optimized with:
+ * - Persistent IndexedDB cache for instant loads
+ * - Pre-computed word timings stored in cache
+ * - Background prefetching on track change
+ * - Native word timing from ELRC when available
  */
 
 import { create } from 'zustand';
+import { lyricsCache } from '../services/lyrics-cache';
+import { parseLyrics, type LyricsFormat } from '../utils/lyrics-parser';
 
 export interface LyricLine {
   time: number; // Time in milliseconds
@@ -36,6 +46,10 @@ interface LyricsState {
   offset: number; // Offset in milliseconds for sync adjustment
   nextLineIndex: number; // For upcoming line preview
 
+  // Lyrics format info
+  lyricsFormat: LyricsFormat | null;
+  hasNativeWordTiming: boolean; // True if ELRC with syllable-level timing
+
   // Sing-along mode state
   singAlongEnabled: boolean;
   linesWithWords: LineWithWords[] | null;
@@ -43,6 +57,7 @@ interface LyricsState {
 
   // Actions
   fetchLyrics: (artist: string, track: string, trackId: string) => Promise<void>;
+  prefetchLyrics: (artist: string, track: string, trackId: string) => Promise<void>; // Background prefetch
   updateCurrentLine: (positionMs: number) => void;
   clearLyrics: () => void;
   seekToLine: (index: number) => number; // Returns time in ms
@@ -59,106 +74,6 @@ interface LyricsState {
   updatePositionAtomic: (positionMs: number) => void;
 }
 
-/**
- * Parse LRC format lyrics into structured array
- * Format: [mm:ss.xx]Lyric text
- */
-function parseLRC(lrc: string): LyricLine[] {
-  const lines: LyricLine[] = [];
-  const regex = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)$/;
-
-  for (const line of lrc.split('\n')) {
-    const match = regex.exec(line.trim());
-    if (match && match[1] && match[2] && match[3]) {
-      const minutes = parseInt(match[1], 10);
-      const seconds = parseInt(match[2], 10);
-      // Handle both .xx and .xxx formats
-      let centiseconds = parseInt(match[3], 10);
-      if (match[3].length === 2) {
-        centiseconds *= 10; // Convert centiseconds to milliseconds
-      }
-      const text = match[4]?.trim() ?? '';
-
-      const time = (minutes * 60 + seconds) * 1000 + centiseconds;
-      lines.push({ time, text });
-    }
-  }
-
-  // Sort by time (should already be sorted, but just in case)
-  lines.sort((a, b) => a.time - b.time);
-
-  return lines;
-}
-
-/**
- * Interpolate word timings for a line based on word lengths
- * Words are distributed proportionally by character count within the line duration
- */
-function interpolateWordTiming(
-  line: LyricLine,
-  lineIndex: number,
-  nextLineTime: number | null,
-  trackDuration?: number
-): WordTiming[] {
-  const text = line.text.trim();
-  if (!text) return [];
-
-  const words = text.split(/\s+/);
-  if (words.length === 0) return [];
-
-  // Calculate line duration
-  // Use next line time, or estimate 5 seconds if last line
-  const defaultDuration = 5000;
-  const lineDuration = nextLineTime !== null
-    ? Math.min(nextLineTime - line.time, 10000) // Cap at 10 seconds
-    : Math.min(trackDuration ? trackDuration - line.time : defaultDuration, 10000);
-
-  // Calculate total characters (for proportional timing)
-  const totalChars = words.reduce((sum, word) => sum + word.length, 0);
-  if (totalChars === 0) return [];
-
-  // Small gap between words (50ms)
-  const wordGap = Math.min(50, lineDuration / (words.length * 4));
-  const availableDuration = lineDuration - (wordGap * (words.length - 1));
-
-  let currentTime = line.time;
-  const wordTimings: WordTiming[] = [];
-
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i];
-    if (!word) continue;
-
-    // Duration proportional to word length
-    const wordDuration = (word.length / totalChars) * availableDuration;
-
-    wordTimings.push({
-      word,
-      startTime: currentTime,
-      endTime: currentTime + wordDuration,
-      lineIndex,
-      wordIndex: i
-    });
-
-    currentTime += wordDuration + wordGap;
-  }
-
-  return wordTimings;
-}
-
-/**
- * Generate word timings for all lyrics lines
- */
-function generateLinesWithWords(lyrics: LyricLine[], trackDuration?: number): LineWithWords[] {
-  return lyrics.map((line, index) => {
-    const nextLine = lyrics[index + 1];
-    const nextLineTime = nextLine ? nextLine.time : null;
-
-    return {
-      ...line,
-      words: interpolateWordTiming(line, index, nextLineTime, trackDuration)
-    };
-  });
-}
 
 /**
  * Binary search to find the current word index within a line
@@ -217,6 +132,10 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
   currentTrackId: null,
   offset: 0,
 
+  // Lyrics format info
+  lyricsFormat: null,
+  hasNativeWordTiming: false,
+
   // Sing-along mode state
   singAlongEnabled: false,
   linesWithWords: null,
@@ -232,6 +151,21 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
     set({ isLoading: true, error: null, lyrics: null, plainLyrics: null, currentTrackId: trackId });
 
     try {
+      // Check persistent cache first (instant load!)
+      const cached = await lyricsCache.get(trackId);
+      if (cached && (cached.lyrics || cached.plainLyrics)) {
+        console.log('[LyricsStore] Cache hit - instant load');
+        set({
+          lyrics: cached.lyrics,
+          linesWithWords: cached.linesWithWords,
+          plainLyrics: cached.plainLyrics,
+          isLoading: false,
+          currentLineIndex: -1,
+          currentWordIndex: -1
+        });
+        return;
+      }
+
       let data: { syncedLyrics?: string; plainLyrics?: string; duration?: number } | null = null;
 
       // Use IPC lyrics API (goes through installed lyrics plugin)
@@ -258,21 +192,53 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
 
       // Prefer synced lyrics, fall back to plain
       if (data.syncedLyrics) {
-        const parsedLyrics = parseLRC(data.syncedLyrics);
-        // Generate word timings for sing-along mode
-        const linesWithWords = generateLinesWithWords(parsedLyrics, data.duration ? data.duration * 1000 : undefined);
+        // Use multi-format parser (auto-detects LRC, ELRC, SRT)
+        const trackDurationMs = data.duration ? data.duration * 1000 : undefined;
+        const parsed = parseLyrics(data.syncedLyrics, trackDurationMs);
+
+        console.log(`[LyricsStore] Parsed ${parsed.format} format, native word timing: ${parsed.hasNativeWordTiming}`);
+
+        // Store in persistent cache with pre-computed word timings
+        lyricsCache.set({
+          id: trackId,
+          artist,
+          title: track,
+          syncedLyrics: data.syncedLyrics,
+          plainLyrics: data.plainLyrics || null,
+          lyrics: parsed.lines,
+          linesWithWords: parsed.linesWithWords,
+          duration: data.duration || null
+        }).catch(err => console.warn('[LyricsStore] Cache write failed:', err));
+
         set({
-          lyrics: parsedLyrics,
-          linesWithWords,
+          lyrics: parsed.lines,
+          linesWithWords: parsed.linesWithWords,
+          lyricsFormat: parsed.format,
+          hasNativeWordTiming: parsed.hasNativeWordTiming,
           plainLyrics: data.plainLyrics || null,
           isLoading: false,
           currentLineIndex: -1,
           currentWordIndex: -1
         });
       } else if (data.plainLyrics) {
+        // Plain lyrics don't need parsing - just store as-is
+        // Cache plain lyrics too
+        lyricsCache.set({
+          id: trackId,
+          artist,
+          title: track,
+          syncedLyrics: null,
+          plainLyrics: data.plainLyrics,
+          lyrics: null,
+          linesWithWords: null,
+          duration: data.duration || null
+        }).catch(err => console.warn('[LyricsStore] Cache write failed:', err));
+
         set({
           lyrics: null,
           plainLyrics: data.plainLyrics,
+          lyricsFormat: 'plain',
+          hasNativeWordTiming: false,
           isLoading: false
         });
       } else {
@@ -283,6 +249,57 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
         isLoading: false,
         error: error instanceof Error ? error.message : 'Failed to fetch lyrics'
       });
+    }
+  },
+
+  // Background prefetch - call when track starts playing (before panel opens)
+  prefetchLyrics: async (artist, track, trackId) => {
+    // Skip if already cached
+    const hasCached = await lyricsCache.has(trackId);
+    if (hasCached) {
+      console.log('[LyricsStore] Prefetch skipped - already cached');
+      return;
+    }
+
+    // Don't update UI state during prefetch
+    try {
+      if (!window.api?.lyrics?.search) return;
+
+      console.log('[LyricsStore] Prefetching lyrics in background...');
+      const result = await window.api.lyrics.search(artist, track);
+
+      if (result?.syncedLyrics) {
+        // Use multi-format parser
+        const trackDurationMs = result.duration ? result.duration * 1000 : undefined;
+        const parsed = parseLyrics(result.syncedLyrics, trackDurationMs);
+
+        await lyricsCache.set({
+          id: trackId,
+          artist,
+          title: track,
+          syncedLyrics: result.syncedLyrics,
+          plainLyrics: result.plainLyrics || null,
+          lyrics: parsed.lines,
+          linesWithWords: parsed.linesWithWords,
+          duration: result.duration || null
+        });
+        console.log(`[LyricsStore] Prefetch complete (${parsed.format}) - cached for instant load`);
+      } else if (result?.plainLyrics) {
+        await lyricsCache.set({
+          id: trackId,
+          artist,
+          title: track,
+          syncedLyrics: null,
+          plainLyrics: result.plainLyrics,
+          lyrics: null,
+          linesWithWords: null,
+          duration: result.duration || null
+        });
+        console.log('[LyricsStore] Prefetch complete (plain lyrics)');
+      }
+    } catch (err) {
+      // Silent fail for prefetch - user didn't ask for it
+      console.log('[LyricsStore] Prefetch failed (silent):', err);
     }
   },
 
@@ -308,6 +325,8 @@ export const useLyricsStore = create<LyricsState>((set, get) => ({
       lyrics: null,
       plainLyrics: null,
       linesWithWords: null,
+      lyricsFormat: null,
+      hasNativeWordTiming: false,
       currentLineIndex: -1,
       nextLineIndex: -1,
       currentWordIndex: -1,

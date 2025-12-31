@@ -57,3 +57,10 @@ export {
   type EmbeddingPlaylistOptions,
   type PlaylistResult,
 } from './useEmbeddingPlaylist';
+
+export {
+  usePluginData,
+  useSectionData,
+  type UsePluginDataOptions,
+  type UsePluginDataResult,
+} from './usePluginData';

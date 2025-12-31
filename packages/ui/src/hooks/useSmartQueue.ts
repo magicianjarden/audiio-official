@@ -214,7 +214,8 @@ export function useMLRecommendations({
     checkAndTrain
   } = useMLStore();
 
-  const { listenHistory } = useRecommendationStore();
+  // Only subscribe to length - avoids re-renders when array contents change
+  const listenHistoryLength = useRecommendationStore((s) => s.listenHistory.length);
 
   // Initialize model on mount
   useEffect(() => {
@@ -225,10 +226,10 @@ export function useMLRecommendations({
 
   // Check if training is needed when listen history changes
   useEffect(() => {
-    if (enabled && tracks.length > 0 && listenHistory.length >= 50) {
+    if (enabled && tracks.length > 0 && listenHistoryLength >= 50) {
       checkAndTrain(tracks);
     }
-  }, [enabled, listenHistory.length, tracks, checkAndTrain]);
+  }, [enabled, listenHistoryLength, tracks, checkAndTrain]);
 
   // Get recommendations
   const recommendations = enabled && tracks.length > 0
@@ -249,7 +250,7 @@ export function useMLRecommendations({
     trainingProgress,
     trainingMetrics,
     modelVersion,
-    canTrain: listenHistory.length >= 50,
+    canTrain: listenHistoryLength >= 50,
     triggerTraining
   };
 }

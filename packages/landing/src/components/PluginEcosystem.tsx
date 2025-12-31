@@ -3,7 +3,7 @@ import {
   LyricsIcon,
   MusicNoteIcon,
   StatsIcon,
-  MicIcon,
+  KaraokeIcon,
   GlobeIcon,
   ExternalLinkIcon,
 } from '@audiio/icons';
@@ -40,7 +40,7 @@ const plugins = [
     devInfo: 'Interface: AudioAnalyzer. Access to Web Audio API and TensorFlow.js.',
   },
   {
-    icon: MicIcon,
+    icon: KaraokeIcon,
     name: 'Karaoke Mode',
     description: 'Vocal removal and isolation',
     color: '#8b5cf6',

@@ -1,17 +1,17 @@
 /**
  * QuickPicksSection - Small tile grid for quick access
  * Similar to Spotify's "Good morning" tiles - shows recently played or recommended
- * Uses ML ranking for personalized track ordering
+ * Uses the UNIFIED plugin pipeline for data (embedding provider handles personalization)
  */
 
 import React, { useMemo } from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import { MusicNoteIcon } from '@audiio/icons';
 import type { BaseSectionProps } from '../section-registry';
-import { debugLog } from '../../../utils/debug';
+import type { StructuredSectionQuery } from '../types';
 
 export interface QuickPicksSectionProps extends BaseSectionProps {
   maxItems?: number;
@@ -26,41 +26,26 @@ export const QuickPicksSection: React.FC<QuickPicksSectionProps> = ({
   const { play, setQueue, currentTrack, isPlaying } = usePlayerStore();
   const { showContextMenu } = useTrackContextMenu();
 
-  // Embedding-based playlist generation
-  const {
-    generatePersonalizedPlaylist,
-    getTracksFromPlaylist,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
+  // Build structured query for the unified pipeline
+  // embeddingProvider will handle this with personalized ML generation
+  const structuredQuery = useMemo((): StructuredSectionQuery => ({
+    strategy: 'plugin',
+    sectionType: 'quick-picks',
+    title: title || 'Quick Picks',
+    embedding: {
+      method: 'personalized',
+      exploration: 0.1, // Low exploration for familiar picks
+    },
+    limit: maxItems,
+  }), [title, maxItems]);
 
-  // Use embedding-based personalized playlist only
-  const tracks = useMemo(() => {
-    if (!embeddingReady) {
-      debugLog('[QuickPicks]', 'Embedding not ready');
-      return [];
-    }
-
-    if (tracksIndexed < 1) {
-      debugLog('[QuickPicks]', 'No tracks indexed');
-      return [];
-    }
-
-    const playlist = generatePersonalizedPlaylist({
-      limit: maxItems,
-      exploration: 0.1, // Low exploration for familiar quick picks
-    });
-
-    if (!playlist || playlist.tracks.length === 0) {
-      debugLog('[QuickPicks]', 'No tracks from personalized playlist');
-      return [];
-    }
-
-    debugLog('[QuickPicks]', `Generated personalized: ${playlist.tracks.length} tracks (indexed: ${tracksIndexed})`);
-    return getTracksFromPlaylist(playlist);
-  }, [embeddingReady, tracksIndexed, maxItems, generatePersonalizedPlaylist, getTracksFromPlaylist]);
-
-  const isLoading = !embeddingReady;
+  // Use unified plugin pipeline - embeddingProvider handles personalization
+  const { tracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: true,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: maxItems,
+  });
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     setQueue(tracks, index);

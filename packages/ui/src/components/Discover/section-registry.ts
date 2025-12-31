@@ -6,6 +6,7 @@
 import type { ComponentType } from 'react';
 import type { UserProfile } from '../../stores/recommendation-store';
 import type { UnifiedTrack } from '@audiio/core';
+import type { StructuredSectionQuery } from './types';
 
 // Section type identifiers
 export type SectionType =
@@ -76,6 +77,7 @@ export interface BaseSectionProps {
   subtitle?: string;
   query?: string;
   isPersonalized?: boolean;
+  whyExplanation?: string;
   context: SelectionContext;
   onSeeAll?: () => void;
 }
@@ -140,8 +142,12 @@ export interface SectionConfig {
   type: SectionType;
   title: string;
   subtitle?: string;
+  /** @deprecated Use structuredQuery for ML-aware "See All" */
   query?: string;
+  /** Structured query for ML-aware "See All" navigation */
+  structuredQuery?: StructuredSectionQuery;
   isPersonalized: boolean;
+  whyExplanation?: string;
   priority: number;
 }
 
@@ -310,9 +316,50 @@ export class SectionRegistry {
       title: customConfig.title ?? def.displayName,
       subtitle: customConfig.subtitle,
       query: customConfig.query,
+      structuredQuery: customConfig.structuredQuery,
       isPersonalized: !context.isNewUser && (customConfig.isPersonalized ?? false),
+      whyExplanation: customConfig.whyExplanation,
       priority,
     };
+  }
+
+  /**
+   * Get ALL section configs without any limiting - for "show all" mode
+   */
+  getAllSectionConfigs(context: SelectionContext): SectionConfig[] {
+    const enrichedContext: SelectionContext = {
+      ...context,
+      isNewUser: context.userProfile.totalListens < NEW_USER_THRESHOLD,
+    };
+
+    const allSections = this.getEnabled();
+
+    // Group by preferred position
+    const topSections = allSections.filter(
+      (def) => def.constraints.preferredPosition === 'top'
+    );
+    const bottomSections = allSections.filter(
+      (def) => def.constraints.preferredPosition === 'bottom'
+    );
+    const middleSections = allSections.filter(
+      (def) => !def.constraints.preferredPosition || def.constraints.preferredPosition === 'middle'
+    );
+
+    // Build configs in order: top, middle, bottom
+    const configs: SectionConfig[] = [];
+    let priority = 0;
+
+    for (const def of topSections) {
+      configs.push(this.createSectionConfig(def, enrichedContext, priority++));
+    }
+    for (const def of middleSections) {
+      configs.push(this.createSectionConfig(def, enrichedContext, priority++));
+    }
+    for (const def of bottomSections) {
+      configs.push(this.createSectionConfig(def, enrichedContext, priority++));
+    }
+
+    return configs;
   }
 
   /**

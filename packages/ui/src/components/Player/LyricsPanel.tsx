@@ -16,12 +16,14 @@ import { useKaraokeStore } from '../../stores/karaoke-store';
 import { useTranslatedLyrics } from '../../hooks/useTranslatedLyrics';
 import {
   CloseIcon,
+  LyricsIcon,
   MusicNoteIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   ExpandIcon,
   ContractIcon,
-  MicIcon,
+  SingAlongIcon,
+  KaraokeIcon,
   PlayIcon,
   PauseIcon,
   NextIcon,
@@ -236,7 +238,7 @@ export const LyricsPanel: React.FC = () => {
               onClick={() => setSingAlongEnabled(!singAlongEnabled)}
               title={singAlongEnabled ? 'Switch to Basic Lyrics' : 'Switch to Sing-Along Mode'}
             >
-              <MusicNoteIcon size={20} />
+              {singAlongEnabled ? <SingAlongIcon size={20} /> : <LyricsIcon size={20} />}
               <span>{singAlongEnabled ? 'Sing-Along' : 'Lyrics'}</span>
             </button>
 
@@ -248,13 +250,13 @@ export const LyricsPanel: React.FC = () => {
                   onClick={toggleKaraoke}
                   title={karaokeEnabled ? (karaokeProcessing ? 'Processing...' : 'Disable Karaoke') : 'Enable Karaoke'}
                 >
-                  <MicIcon size={20} />
+                  <KaraokeIcon size={20} />
                   <span>{karaokeProcessing ? 'Processing...' : karaokeEnabled ? 'Sing' : 'Karaoke'}</span>
                 </button>
 
                 {karaokeEnabled && !karaokeProcessing && (
                   <div className="lyrics-fullscreen-slider karaoke-slider">
-                    <label>Vocals</label>
+                    <span className="karaoke-slider-label karaoke-slider-label-min">Karaoke</span>
                     <input
                       type="range"
                       min="0"
@@ -262,8 +264,9 @@ export const LyricsPanel: React.FC = () => {
                       step="0.05"
                       value={1 - vocalReduction}
                       onChange={handleVocalSliderChange}
+                      title={`Vocals: ${Math.round((1 - vocalReduction) * 100)}%`}
                     />
-                    <span>{Math.round((1 - vocalReduction) * 100)}%</span>
+                    <span className="karaoke-slider-label karaoke-slider-label-max">Original</span>
                   </div>
                 )}
               </>
@@ -313,8 +316,6 @@ export const LyricsPanel: React.FC = () => {
               }
               currentLineIndex={currentLineIndex}
               currentWordIndex={currentWordIndex}
-              positionMs={position}
-              offset={offset}
               onLineClick={handleLineClick}
               showTranslations={translationEnabled}
             />
@@ -385,13 +386,22 @@ export const LyricsPanel: React.FC = () => {
           </div>
         </div>
         <div className="lyrics-panel-header-actions">
+          {karaokeAvailable && (
+            <button
+              className={`lyrics-panel-karaoke ${karaokeEnabled ? 'active' : ''} ${karaokeProcessing ? 'processing' : ''}`}
+              onClick={toggleKaraoke}
+              title={karaokeEnabled ? (karaokeProcessing ? 'Processing...' : 'Disable Karaoke') : 'Enable Karaoke (Vocal Removal)'}
+            >
+              <KaraokeIcon size={18} />
+            </button>
+          )}
           {lyrics && lyrics.length > 0 && (
             <button
               className={`lyrics-panel-singalong ${singAlongEnabled ? 'active' : ''}`}
               onClick={() => setSingAlongEnabled(!singAlongEnabled)}
               title={singAlongEnabled ? 'Disable Sing-Along' : 'Enable Sing-Along'}
             >
-              <MicIcon size={18} />
+              <SingAlongIcon size={18} />
             </button>
           )}
           <TranslationToggle compact />
@@ -466,8 +476,6 @@ export const LyricsPanel: React.FC = () => {
                       words={wordTimings}
                       currentWordIndex={isActive ? currentWordIndex : isPast ? wordTimings.length : -1}
                       isActive={isActive}
-                      positionMs={position}
-                      offset={offset}
                     />
                   ) : (
                     <span className="lyrics-panel-line-original">{line.text || '\u00A0'}</span>
@@ -501,20 +509,6 @@ export const LyricsPanel: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Current Line Preview */}
-      {lyrics && currentLineIndex >= 0 && lyrics[currentLineIndex] && (
-        <div className="lyrics-panel-current">
-          <div className="lyrics-panel-current-line">
-            {lyrics[currentLineIndex]?.text || '...'}
-          </div>
-          {nextLineIndex >= 0 && lyrics[nextLineIndex] && (
-            <div className="lyrics-panel-next-line">
-              {lyrics[nextLineIndex]?.text}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 };

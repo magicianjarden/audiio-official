@@ -1,17 +1,18 @@
 /**
  * ActivitySection - Running, Cooking, Studying, Gaming playlists
  * Activity-based mood playlists with visual tiles
+ * Uses the UNIFIED plugin pipeline for data (embedding provider handles mood generation)
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import { BaseSectionWrapper } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
+import type { StructuredSectionQuery } from '../types';
 import { PlayIcon, MusicNoteIcon } from '@audiio/icons';
-import { debugLog } from '../../../utils/debug';
 
 interface ActivityProfile {
   id: string;
@@ -46,29 +47,30 @@ export const ActivitySection: React.FC<ActivitySectionProps> = ({
   const { showContextMenu } = useTrackContextMenu();
   const [activeActivity, setActiveActivity] = useState<string | null>(null);
 
-  const {
-    generateMoodPlaylist,
-    getTracksFromPlaylist,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
-
   const activeProfile = ACTIVITIES.find(a => a.id === activeActivity);
 
-  const tracks = useMemo(() => {
-    if (!activeActivity || !embeddingReady || tracksIndexed < 1) {
-      return [];
-    }
+  // Build structured query for the unified pipeline
+  // embeddingProvider will handle this with mood-based generation
+  const structuredQuery = useMemo((): StructuredSectionQuery => ({
+    strategy: 'plugin',
+    sectionType: 'activity',
+    title: activeProfile ? `${activeProfile.name} Mix` : title,
+    subtitle,
+    embedding: {
+      method: 'mood',
+      mood: activeProfile?.mood || 'chill',
+      exploration: 0.25,
+    },
+    limit: maxTracks,
+  }), [title, subtitle, activeProfile, maxTracks]);
 
-    const activity = ACTIVITIES.find(a => a.id === activeActivity);
-    if (!activity) return [];
-
-    const playlist = generateMoodPlaylist(activity.mood, { limit: maxTracks });
-    if (!playlist) return [];
-
-    debugLog('[Activity]', `Generated "${activity.name}" playlist: ${playlist.tracks.length} tracks`);
-    return getTracksFromPlaylist(playlist);
-  }, [activeActivity, embeddingReady, tracksIndexed, maxTracks, generateMoodPlaylist, getTracksFromPlaylist]);
+  // Use unified plugin pipeline - embeddingProvider handles mood generation
+  const { tracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: !!activeActivity,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: maxTracks,
+  });
 
   const handleActivityClick = useCallback((activityId: string) => {
     setActiveActivity(activeActivity === activityId ? null : activityId);
@@ -86,9 +88,8 @@ export const ActivitySection: React.FC<ActivitySectionProps> = ({
     play(track);
   };
 
-  if (!embeddingReady) {
-    return null;
-  }
+  // Always show the activity tiles, only hide track panel if loading/empty
+  // The section should render even without an active selection
 
   return (
     <BaseSectionWrapper

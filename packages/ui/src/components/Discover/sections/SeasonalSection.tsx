@@ -1,42 +1,35 @@
 /**
  * SeasonalSection - Summer vibes, Winter warmers, Holiday music
- * Season and holiday-aware music recommendations
+ * Uses the plugin pipeline for season-aware recommendations
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import { TrackCard } from '../TrackCard';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import { BaseSectionWrapper } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
-import { debugLog } from '../../../utils/debug';
+import type { StructuredSectionQuery } from '../types';
 
 interface SeasonConfig {
   name: string;
   mood: string;
   icon: string;
   gradient: [string, string];
+  searchTerms: string;
 }
 
 function getSeasonConfig(month: number): SeasonConfig {
-  // December holidays
-  if (month === 11) {
-    return {
-      name: 'Holiday Vibes',
-      mood: 'uplifting',
-      icon: '🎄',
-      gradient: ['#c41e3a', '#228b22'],
-    };
-  }
   // Winter (Dec-Feb in Northern Hemisphere)
-  if (month === 0 || month === 1) {
+  if (month === 11 || month === 0 || month === 1) {
     return {
       name: 'Winter Warmers',
       mood: 'chill',
       icon: '❄️',
       gradient: ['#667eea', '#764ba2'],
+      searchTerms: 'winter chill acoustic cozy',
     };
   }
   // Spring (Mar-May)
@@ -46,6 +39,7 @@ function getSeasonConfig(month: number): SeasonConfig {
       mood: 'uplifting',
       icon: '🌸',
       gradient: ['#ffecd2', '#fcb69f'],
+      searchTerms: 'spring uplifting fresh indie',
     };
   }
   // Summer (Jun-Aug)
@@ -55,6 +49,7 @@ function getSeasonConfig(month: number): SeasonConfig {
       mood: 'energetic',
       icon: '☀️',
       gradient: ['#f12711', '#f5af19'],
+      searchTerms: 'summer hits beach party dance',
     };
   }
   // Fall (Sep-Nov)
@@ -63,6 +58,7 @@ function getSeasonConfig(month: number): SeasonConfig {
     mood: 'chill',
     icon: '🍂',
     gradient: ['#ff9966', '#ff5e62'],
+    searchTerms: 'autumn fall chill acoustic',
   };
 }
 
@@ -79,36 +75,40 @@ export const SeasonalSection: React.FC<SeasonalSectionProps> = ({
   const { play, setQueue } = usePlayerStore();
   const { showContextMenu } = useTrackContextMenu();
 
-  const {
-    generateMoodPlaylist,
-    getTracksFromPlaylist,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
-
   const month = new Date().getMonth();
   const seasonConfig = getSeasonConfig(month);
 
-  const tracks = useMemo(() => {
-    if (!embeddingReady || tracksIndexed < 1) {
-      return [];
-    }
+  // Build structured query for plugin pipeline
+  const structuredQuery: StructuredSectionQuery = {
+    strategy: 'plugin',
+    sectionType: 'seasonal',
+    title: `${seasonConfig.icon} ${seasonConfig.name}`,
+    subtitle: 'Music for the season',
+    search: { query: seasonConfig.searchTerms },
+    embedding: {
+      method: 'mood',
+      mood: seasonConfig.mood,
+      exploration: 0.4,
+      includeCollaborative: true,
+    },
+    limit: maxItems,
+  };
 
-    const playlist = generateMoodPlaylist(seasonConfig.mood, { limit: maxItems });
-    if (!playlist) return [];
-
-    debugLog('[Seasonal]', `Generated "${seasonConfig.name}" playlist: ${playlist.tracks.length} tracks`);
-    return getTracksFromPlaylist(playlist);
-  }, [embeddingReady, tracksIndexed, seasonConfig.mood, maxItems, generateMoodPlaylist, getTracksFromPlaylist, seasonConfig.name]);
+  // Use plugin pipeline for data fetching
+  const { tracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: true,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: maxItems,
+  });
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     setQueue(tracks, index);
     play(track);
   };
 
-  if (!embeddingReady || tracks.length === 0) {
-    return null;
-  }
+  // Show empty state instead of hiding
+  const showEmptyState = !isLoading && tracks.length === 0;
 
   return (
     <BaseSectionWrapper
@@ -124,16 +124,28 @@ export const SeasonalSection: React.FC<SeasonalSectionProps> = ({
         '--seasonal-gradient-end': seasonConfig.gradient[1],
       } as React.CSSProperties}
     >
-      <div className="discover-horizontal-scroll">
-        {tracks.map((track, index) => (
-          <TrackCard
-            key={track.id}
-            track={track}
-            onClick={() => handleTrackClick(track, index)}
-            onContextMenu={showContextMenu}
-          />
-        ))}
-      </div>
+      {isLoading ? (
+        <div className="discover-horizontal-scroll">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="discover-card-skeleton" />
+          ))}
+        </div>
+      ) : showEmptyState ? (
+        <div className="discover-empty-state">
+          <p>Loading seasonal music...</p>
+        </div>
+      ) : (
+        <div className="discover-horizontal-scroll">
+          {tracks.map((track, index) => (
+            <TrackCard
+              key={track.id}
+              track={track}
+              onClick={() => handleTrackClick(track, index)}
+              onContextMenu={showContextMenu}
+            />
+          ))}
+        </div>
+      )}
     </BaseSectionWrapper>
   );
 };

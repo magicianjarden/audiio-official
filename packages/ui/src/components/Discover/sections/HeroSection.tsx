@@ -2,7 +2,7 @@
  * HeroSection - Made For You / Ever-Evolving Radio
  *
  * Centered layout with ambient glow, clean typography, and pill-style buttons.
- * Uses ML ranking for personalized featured content that evolves as you listen.
+ * Uses the UNIFIED plugin pipeline for personalized featured content.
  * Integrates with Smart Queue for seamless radio mode.
  */
 
@@ -13,10 +13,10 @@ import { useSmartQueueStore, useRadioState } from '../../../stores/smart-queue-s
 import { useRecommendationStore } from '../../../stores/recommendation-store';
 import { useLibraryStore } from '../../../stores/library-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import { PlayIcon, ShuffleIcon, MusicNoteIcon, RadioIcon, RefreshIcon } from '@audiio/icons';
 import { getAccentColor } from '../../../utils/theme-utils';
-import { debugLog } from '../../../utils/debug';
+import type { StructuredSectionQuery } from '../types';
 
 export interface HeroSectionProps {
   id: string;
@@ -88,18 +88,10 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   const { play, setQueue } = usePlayerStore();
   const { startRadio, enableAutoQueue } = useSmartQueueStore();
   const { isRadioMode, seed: radioSeed } = useRadioState();
-  const { userProfile } = useRecommendationStore();
+  // Use getState() pattern - don't subscribe to userProfile to avoid re-renders on every listen
+  const recStore = useRecommendationStore;
   const { likedTracks } = useLibraryStore();
   const { showContextMenu } = useTrackContextMenu();
-
-  // Embedding-based playlist generation
-  const {
-    generatePersonalizedPlaylist,
-    generateDiscoveryPlaylist,
-    getTracksFromPlaylist,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
 
   const [refreshKey, setRefreshKey] = useState(0);
   const [ambientColor, setAmbientColor] = useState<string>('var(--accent-primary)');
@@ -108,39 +100,31 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   // Check if this mix is currently playing as radio
   const isThisMixRadio = isRadioMode && radioSeed?.type === 'genre' && radioSeed.name === 'Made For You';
 
-  // Use embedding-based generation only
-  const tracks = useMemo(() => {
-    if (!embeddingReady) {
-      debugLog('[HeroSection]', 'Embedding not ready');
-      return [];
-    }
-
-    if (tracksIndexed < 1) {
-      debugLog('[HeroSection]', 'No tracks indexed');
-      return [];
-    }
-
-    const isNewUser = context?.isNewUser || tracksIndexed < 20;
+  // Build structured query for the unified pipeline
+  const structuredQuery = useMemo((): StructuredSectionQuery => {
+    const isNewUser = context?.isNewUser;
     const exploration = 0.15 + (refreshKey * 0.05); // More exploration on refreshes
 
-    const playlist = isNewUser
-      ? generateDiscoveryPlaylist({ limit: 20, exploration })
-      : generatePersonalizedPlaylist({ limit: 20, exploration });
+    return {
+      strategy: 'plugin',
+      sectionType: 'hero',
+      title,
+      subtitle,
+      embedding: {
+        method: isNewUser ? 'discovery' : 'personalized',
+        exploration,
+      },
+      limit: 20,
+    };
+  }, [title, subtitle, context?.isNewUser, refreshKey]);
 
-    if (!playlist || playlist.tracks.length === 0) {
-      debugLog('[HeroSection]', 'No tracks from embedding');
-      return [];
-    }
-
-    debugLog(
-      '[HeroSection]',
-      `Generated ${isNewUser ? 'discovery' : 'personalized'}: ${playlist.tracks.length} tracks (indexed: ${tracksIndexed}, avg similarity: ${playlist.stats.avgSimilarity.toFixed(2)})`
-    );
-    return getTracksFromPlaylist(playlist);
-  }, [embeddingReady, tracksIndexed, context?.isNewUser, refreshKey, generatePersonalizedPlaylist, generateDiscoveryPlaylist, getTracksFromPlaylist]);
-
-  const isLoading = !embeddingReady;
-  const isRefreshing = false; // No async refresh needed with useMemo
+  // Use unified plugin pipeline
+  const { tracks, isLoading, refetch } = usePluginData(structuredQuery, {
+    enabled: true,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: 20,
+  });
 
   const featuredTrack = tracks?.[0];
   const artworkUrl = featuredTrack?.artwork?.large || featuredTrack?.artwork?.medium;
@@ -186,6 +170,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   const handleStartRadio = useCallback(async () => {
     if (tracks.length === 0) return;
 
+    // Get userProfile at call time (not via subscription)
+    const userProfile = recStore.getState().userProfile;
+
     // Get user's top genre for the seed
     const topGenre = Object.entries(userProfile.genrePreferences)
       .sort((a, b) => (b[1] as any).score - (a[1] as any).score)[0];
@@ -198,15 +185,17 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
       artwork: artworkUrl
     };
 
-    // Combine liked tracks with current mix for radio candidates (deduplicate by id)
+    // Combine liked tracks with current mix for radio candidates
+    // NOTE: likedTracks is LibraryTrack[], extract .track
     const seenIds = new Set<string>();
-    const candidates = [...tracks, ...likedTracks].filter(t => {
+    const likedUnified = likedTracks.map(lt => lt.track);
+    const candidates = [...tracks, ...likedUnified].filter(t => {
       if (seenIds.has(t.id)) return false;
       seenIds.add(t.id);
       return true;
     });
     await startRadio(seed, candidates);
-  }, [tracks, userProfile, artworkUrl, likedTracks, startRadio]);
+  }, [tracks, artworkUrl, likedTracks, startRadio]); // Removed userProfile from deps
 
   // Manual refresh - increment refresh key to trigger re-generation
   const handleRefresh = useCallback(() => {
@@ -220,9 +209,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   const displayTitle = isThisMixRadio ? 'Made For You Radio' : title;
   const displaySubtitle = isThisMixRadio
     ? 'Endless personalized music'
-    : isRefreshing
-      ? 'Updating your mix...'
-      : subtitle;
+    : subtitle;
 
   return (
     <section
@@ -259,13 +246,6 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             className="hero-ambient-bg hero-ambient-bg--subtle"
             style={{ backgroundImage: artworkUrl ? `url(${artworkUrl})` : 'none' }}
           />
-
-          {/* Refresh indicator */}
-          {isRefreshing && (
-            <div className="hero-refresh-indicator">
-              <RefreshIcon size={16} className="spinning" />
-            </div>
-          )}
 
           {/* Centered content layout */}
           <div className="hero-content hero-content--centered">
@@ -325,10 +305,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 <button
                   className="hero-refresh-btn"
                   onClick={handleRefresh}
-                  disabled={isRefreshing}
                   title="Refresh mix"
                 >
-                  <RefreshIcon size={16} className={isRefreshing ? 'spinning' : ''} />
+                  <RefreshIcon size={16} />
                 </button>
               </div>
             </div>

@@ -1,6 +1,7 @@
 /**
  * AudioAnalysisSection - Shows enhanced tracks when audio analysis plugins are available
  * Dynamically adapts to audio-processor plugins for enhanced recommendations
+ * Uses the UNIFIED plugin pipeline for data (embedding provider handles analysis-based generation)
  */
 
 import React, { useMemo } from 'react';
@@ -9,8 +10,9 @@ import { TrackCard } from '../TrackCard';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
 import { usePluginStore } from '../../../stores/plugin-store';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import type { BaseSectionProps } from '../section-registry';
+import type { StructuredSectionQuery } from '../types';
 
 export interface AudioAnalysisSectionProps extends BaseSectionProps {
   maxItems?: number;
@@ -40,53 +42,47 @@ export const AudioAnalysisSection: React.FC<AudioAnalysisSectionProps> = ({
   const hasAudioProcessor = hasCapability('audio-processor');
   const audioPlugins = getPluginsByRole('audio-processor');
 
-  const {
-    generatePersonalizedPlaylist,
-    generateMoodPlaylist,
-    getTracksFromPlaylist,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
+  const defaultTitles = analysisTitles[analysisType] || analysisTitles.mixed;
+  const sectionTitle = title || defaultTitles.title;
+  const pluginInfo = audioPlugins.length > 0 ? ` via ${audioPlugins[0]?.name}` : '';
+  const sectionSubtitle = subtitle || defaultTitles.subtitle + pluginInfo;
 
-  // Generate tracks based on analysis type
-  const tracks = useMemo(() => {
-    if (!embeddingReady || tracksIndexed < 1) {
-      return [];
-    }
+  // Determine mood based on analysis type
+  const mood = analysisType === 'energy' ? 'energetic' : analysisType === 'mood' ? 'uplifting' : undefined;
+  const method = mood ? 'mood' : 'personalized';
 
-    let playlist;
+  // Build structured query for the unified pipeline
+  // embeddingProvider will handle this with mood or personalized generation
+  const structuredQuery = useMemo((): StructuredSectionQuery => ({
+    strategy: 'plugin',
+    sectionType: 'audio-analysis',
+    title: sectionTitle,
+    subtitle: sectionSubtitle,
+    embedding: {
+      method,
+      mood,
+      exploration: analysisType === 'energy' ? 0.3 : analysisType === 'mood' ? 0.4 : 0.35,
+    },
+    limit: maxItems,
+  }), [sectionTitle, sectionSubtitle, method, mood, analysisType, maxItems]);
 
-    if (analysisType === 'energy') {
-      playlist = generateMoodPlaylist('energetic', { limit: maxItems, exploration: 0.3 });
-    } else if (analysisType === 'mood') {
-      playlist = generateMoodPlaylist('uplifting', { limit: maxItems, exploration: 0.4 });
-    } else {
-      playlist = generatePersonalizedPlaylist({ limit: maxItems, exploration: 0.35 });
-    }
-
-    if (!playlist || playlist.tracks.length === 0) {
-      return [];
-    }
-
-    return getTracksFromPlaylist(playlist);
-  }, [embeddingReady, tracksIndexed, maxItems, analysisType, generatePersonalizedPlaylist, generateMoodPlaylist, getTracksFromPlaylist]);
+  // Use unified plugin pipeline - embeddingProvider handles generation
+  const { tracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: true,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: maxItems,
+  });
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     setQueue(tracks, index);
     play(track);
   };
 
-  const isLoading = !embeddingReady;
-
   // Show section if we have audio processor OR ML is ready
   if (!hasAudioProcessor && (!isLoading && tracks.length === 0)) {
     return null;
   }
-
-  const defaultTitles = analysisTitles[analysisType] || analysisTitles.mixed;
-  const sectionTitle = title || defaultTitles.title;
-  const pluginInfo = audioPlugins.length > 0 ? ` via ${audioPlugins[0].name}` : '';
-  const sectionSubtitle = subtitle || defaultTitles.subtitle + pluginInfo;
 
   return (
     <section id={id} className="discover-horizontal-section discover-audio-analysis-section">

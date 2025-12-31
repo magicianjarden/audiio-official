@@ -3,6 +3,7 @@
  *
  * Displays clickable mood tiles that generate playlists based on
  * audio feature profiles (energy, valence, danceability, BPM).
+ * Uses the UNIFIED plugin pipeline for data (embedding provider handles mood generation)
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
@@ -12,9 +13,9 @@ import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
 import { showSuccessToast } from '../../../stores/toast-store';
 import { BaseSectionWrapper } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
+import type { StructuredSectionQuery } from '../types';
 import { PlayIcon, ShuffleIcon, MusicNoteIcon } from '@audiio/icons';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
-import { debugLog } from '../../../utils/debug';
+import { usePluginData } from '../../../hooks/usePluginData';
 
 // Mood profile definitions
 interface MoodProfile {
@@ -93,47 +94,31 @@ export const MoodPlaylistSection: React.FC<MoodPlaylistSectionProps> = ({
   const [activeMood, setActiveMood] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Get embedding playlist hook
-  const {
-    generateMoodPlaylist,
-    getTracksFromPlaylist,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
-
   // Get active mood profile
   const activeProfile = MOOD_PROFILES.find(m => m.id === activeMood);
 
-  // Use embedding-based generation only
-  const tracks = useMemo(() => {
-    if (!activeMood) {
-      return [];
-    }
+  // Build structured query for the unified pipeline
+  // embeddingProvider will handle this with mood-based generation
+  const structuredQuery = useMemo((): StructuredSectionQuery => ({
+    strategy: 'plugin',
+    sectionType: 'mood-playlist',
+    title: activeProfile ? `${activeProfile.name} Playlist` : title,
+    subtitle,
+    embedding: {
+      method: 'mood',
+      mood: activeMood || 'chill',
+      exploration: 0.2,
+    },
+    limit: 20,
+  }), [title, subtitle, activeMood, activeProfile]);
 
-    if (!embeddingReady) {
-      debugLog('[MoodPlaylist]', 'Embedding not ready');
-      return [];
-    }
-
-    if (tracksIndexed < 1) {
-      debugLog('[MoodPlaylist]', 'No tracks indexed');
-      return [];
-    }
-
-    const playlist = generateMoodPlaylist(activeMood, { limit: 20 });
-    if (!playlist || playlist.tracks.length === 0) {
-      debugLog('[MoodPlaylist]', `No tracks for mood "${activeMood}"`);
-      return [];
-    }
-
-    debugLog(
-      '[MoodPlaylist]',
-      `Generated "${activeMood}" playlist: ${playlist.tracks.length} tracks (indexed: ${tracksIndexed}, avg similarity: ${playlist.stats.avgSimilarity.toFixed(2)})`
-    );
-    return getTracksFromPlaylist(playlist);
-  }, [activeMood, embeddingReady, tracksIndexed, generateMoodPlaylist, getTracksFromPlaylist]);
-
-  const isLoading = activeMood && !embeddingReady;
+  // Use unified plugin pipeline - embeddingProvider handles mood generation
+  const { tracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: !!activeMood,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: 20,
+  });
 
   const handleMoodClick = useCallback((moodId: string) => {
     if (activeMood === moodId) {

@@ -54,23 +54,28 @@ export interface UseMLRankingResult {
  * Hook for ML-based track ranking
  */
 export function useMLRanking(): UseMLRankingResult {
-  const recStore = useRecommendationStore();
-  const mlStore = useMLStore();
-  const playerStore = usePlayerStore();
+  // Use getState() for stable reference - prevents rerenders from store updates
+  const recStore = useRecommendationStore;
+  const mlStore = useMLStore;
+  const playerStore = usePlayerStore;
 
-  const isMLReady = mlStore.isModelLoaded;
-  const isTraining = mlStore.isTraining;
+  // Subscribe only to specific values we need for component updates
+  const isMLReady = useMLStore((s) => s.isModelLoaded);
+  const isTraining = useMLStore((s) => s.isTraining);
 
   /**
    * Build scoring context from current state
+   * Using getState() to avoid dependency on changing queue/index values
    */
   const buildContext = useCallback((
     explorationMode: 'exploit' | 'explore' | 'balanced' = 'balanced'
   ): ScoringContext => {
     const now = new Date();
-    const recentTracks = playerStore.queue.slice(
-      Math.max(0, playerStore.queueIndex - 5),
-      playerStore.queueIndex + 1
+    // Get current queue from store at call time (not via dependency)
+    const state = playerStore.getState();
+    const recentTracks = state.queue.slice(
+      Math.max(0, state.queueIndex - 5),
+      state.queueIndex + 1
     );
 
     return {
@@ -83,33 +88,39 @@ export function useMLRanking(): UseMLRankingResult {
       explorationMode,
       userMood: 'auto'
     };
-  }, [playerStore.queue, playerStore.queueIndex]);
+  }, []); // Empty deps - uses getState() for current values
 
   /**
    * Build user profile for scoring
+   * Using getState() for stable reference
    */
   const buildUserProfile = useCallback(() => {
+    const state = recStore.getState();
     return {
-      genrePreferences: recStore.userProfile.genrePreferences as unknown as Record<string, number>,
-      artistPreferences: recStore.userProfile.artistPreferences as unknown as Record<string, number>,
-      artistHistory: recStore.getArtistHistory(),
-      genreHistory: recStore.getGenreHistory(),
-      timePatterns: recStore.getTimePatternsForScoring()
+      genrePreferences: state.userProfile.genrePreferences as unknown as Record<string, number>,
+      artistPreferences: state.userProfile.artistPreferences as unknown as Record<string, number>,
+      artistHistory: state.getArtistHistory(),
+      genreHistory: state.getGenreHistory(),
+      timePatterns: state.getTimePatternsForScoring()
     };
-  }, [recStore]);
+  }, []); // Empty deps - uses getState()
 
   /**
    * Get base score for a track (ML or rule-based)
+   * Uses getState() for stable reference
    */
   const getTrackScore = useCallback((track: UnifiedTrack): number => {
-    if (isMLReady) {
-      return mlStore.getHybridScore(track);
+    const ml = mlStore.getState();
+    const rec = recStore.getState();
+    if (ml.isModelLoaded) {
+      return ml.getHybridScore(track);
     }
-    return recStore.calculateTrackScore(track);
-  }, [isMLReady, mlStore, recStore]);
+    return rec.calculateTrackScore(track);
+  }, []); // Empty deps - uses getState()
 
   /**
    * Async ranking with full advanced scoring
+   * Stable callback that uses getState() for current values
    */
   const rankTracks = useCallback(async (
     tracks: UnifiedTrack[],
@@ -132,20 +143,35 @@ export function useMLRanking(): UseMLRankingResult {
       }));
     }
 
+    // Filter out invalid tracks before processing
+    const validTracks = tracks.filter(track =>
+      track &&
+      track.id &&
+      typeof track.id === 'string'
+    );
+
+    if (validTracks.length === 0) {
+      return tracks.map(track => ({
+        track,
+        score: 0,
+        explanation: []
+      }));
+    }
+
     // Build context and profile
     const context = buildContext(explorationMode);
     const userProfile = buildUserProfile();
-    const playCounts = recStore.getPlayCounts();
+    const playCounts = recStore.getState().getPlayCounts();
 
     // Get base scores
     const baseScores = new Map<string, number>();
-    for (const track of tracks) {
+    for (const track of validTracks) {
       baseScores.set(track.id, getTrackScore(track));
     }
 
     // Apply advanced scoring
     const enhancedScores = await batchEnhancedScore(
-      tracks,
+      validTracks,
       baseScores,
       context,
       userProfile,
@@ -153,7 +179,7 @@ export function useMLRanking(): UseMLRankingResult {
     );
 
     // Build ranked results
-    let ranked: RankedTrack[] = tracks.map(track => {
+    let ranked: RankedTrack[] = validTracks.map(track => {
       const enhanced = enhancedScores.get(track.id);
       return {
         track,
@@ -181,7 +207,7 @@ export function useMLRanking(): UseMLRankingResult {
     }
 
     return ranked;
-  }, [buildContext, buildUserProfile, recStore, getTrackScore]);
+  }, [buildContext, buildUserProfile, getTrackScore]); // Removed recStore from deps
 
   /**
    * Synchronous ranking (faster, uses cached/simple scores)

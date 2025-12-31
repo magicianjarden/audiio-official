@@ -5,6 +5,7 @@ import { useLibraryStore } from '../../stores/library-store';
 import { useUIStore } from '../../stores/ui-store';
 import { useRecommendationStore } from '../../stores/recommendation-store';
 import { useNavigationStore } from '../../stores/navigation-store';
+import { useTrackContextMenu } from '../../contexts/ContextMenuContext';
 import { DislikeModal } from '../Modals/DislikeModal';
 import {
   PlayIcon,
@@ -57,6 +58,7 @@ export const Player: React.FC = () => {
   const { isQueueOpen, toggleQueue, expandPlayer, isLyricsPanelOpen, toggleLyricsPanel } = useUIStore();
   const { recordListen } = useRecommendationStore();
   const { openAlbum, openArtist } = useNavigationStore();
+  const { showContextMenu } = useTrackContextMenu();
 
   // Karaoke mode - processes track and provides instrumental URL
   const { isAvailable: karaokeAvailable, isEnabled: karaokeEnabled, isProcessing: karaokeProcessing, instrumentalUrl } = useKaraoke({
@@ -360,7 +362,13 @@ export const Player: React.FC = () => {
       />
 
       {/* Track Info */}
-      <div className="player-track" onClick={expandPlayer} role="button" tabIndex={0}>
+      <div
+        className="player-track"
+        onClick={expandPlayer}
+        onContextMenu={(e) => showContextMenu(e, currentTrack)}
+        role="button"
+        tabIndex={0}
+      >
         {artworkUrl ? (
           <img className="player-artwork" src={artworkUrl} alt={currentTrack.title} />
         ) : (

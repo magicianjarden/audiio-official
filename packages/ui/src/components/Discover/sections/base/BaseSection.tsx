@@ -1,13 +1,14 @@
 /**
  * BaseSection - Common wrapper for all Discover page sections
  * Provides loading states, error handling, animations, and consistent styling
- * Includes embedding-enhanced track fetching with search fallback
+ * Uses the UNIFIED plugin pipeline for track fetching
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { BaseSectionProps, SectionData, SelectionContext } from '../../section-registry';
 import type { UnifiedTrack } from '@audiio/core';
-import { useEmbeddingPlaylist } from '../../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../../hooks/usePluginData';
+import type { StructuredSectionQuery } from '../../types';
 import { debugLog, debugError } from '../../../../utils/debug';
 
 export interface BaseSectionWrapperProps extends BaseSectionProps {
@@ -17,6 +18,7 @@ export interface BaseSectionWrapperProps extends BaseSectionProps {
   className?: string;
   showHeader?: boolean;
   animationDelay?: number;
+  showWhyExplanation?: boolean;
 }
 
 /**
@@ -27,12 +29,14 @@ export const BaseSectionWrapper: React.FC<BaseSectionWrapperProps> = ({
   title,
   subtitle,
   isPersonalized,
+  whyExplanation,
   children,
   isLoading,
   error,
   className = '',
   showHeader = true,
   animationDelay = 0,
+  showWhyExplanation = true,
   onSeeAll,
 }) => {
   if (error) {
@@ -51,11 +55,18 @@ export const BaseSectionWrapper: React.FC<BaseSectionWrapperProps> = ({
             <h2 className="discover-section-title">{title}</h2>
             {subtitle && <span className="discover-section-subtitle">{subtitle}</span>}
           </div>
-          {onSeeAll && (
-            <button className="discover-section-more" onClick={onSeeAll}>
-              See all
-            </button>
-          )}
+          <div className="discover-section-actions">
+            {showWhyExplanation && whyExplanation && (
+              <span className="discover-section-why" title={whyExplanation}>
+                {whyExplanation}
+              </span>
+            )}
+            {onSeeAll && (
+              <button className="discover-section-more" onClick={onSeeAll}>
+                See all
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -127,8 +138,8 @@ export interface EmbeddingConfig {
 }
 
 /**
- * Hook for sections that fetch tracks via embedding (no fallback)
- * Uses embedding-based playlist generation only
+ * Hook for sections that fetch tracks via the unified plugin pipeline
+ * Uses the embeddingProvider through usePluginData for ML-powered generation
  */
 export function useSectionTracks(
   _query: string | undefined, // Kept for API compatibility but not used
@@ -142,98 +153,64 @@ export function useSectionTracks(
   tracks: UnifiedTrack[];
   isLoading: boolean;
   error: string | null;
-  source: 'embedding' | 'none';
+  source: 'embedding' | 'plugin' | 'none';
 } {
   const { limit = 12, embedding } = options;
 
-  // Get embedding playlist functions
-  const {
-    generateMoodPlaylist,
-    generateGenrePlaylist,
-    generatePersonalizedPlaylist,
-    generateDiscoveryPlaylist,
-    getTracksFromPlaylist,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
+  // Build structured query for the unified pipeline
+  const structuredQuery = useMemo((): StructuredSectionQuery => {
+    // Map embedding config to structured query format
+    let method: string = 'personalized';
+    let mood: string | undefined;
+    let genre: string | undefined;
 
-  // Use embedding-based generation only
-  const embeddingTracks = useMemo(() => {
-    if (!embedding) {
-      debugLog('[useSectionTracks]', 'No embedding config provided');
-      return [];
+    if (embedding) {
+      switch (embedding.type) {
+        case 'mood':
+          method = 'mood';
+          mood = embedding.id;
+          break;
+        case 'genre':
+          method = 'genre';
+          genre = embedding.id;
+          break;
+        case 'discovery':
+          method = 'discovery';
+          break;
+        case 'personalized':
+        default:
+          method = 'personalized';
+          break;
+      }
     }
 
-    if (!embeddingReady) {
-      debugLog('[useSectionTracks]', 'Embedding not ready yet');
-      return [];
-    }
+    return {
+      strategy: 'plugin',
+      sectionType: 'generic',
+      title: 'Section',
+      embedding: {
+        method,
+        mood,
+        genre,
+        exploration: embedding?.exploration ?? 0.2,
+      },
+      limit,
+    };
+  }, [embedding, limit]);
 
-    if (tracksIndexed < 1) {
-      debugLog('[useSectionTracks]', 'No tracks indexed yet');
-      return [];
-    }
-
-    let playlist = null;
-
-    switch (embedding.type) {
-      case 'mood':
-        if (embedding.id) {
-          playlist = generateMoodPlaylist(embedding.id, {
-            limit,
-            exploration: embedding.exploration,
-          });
-        }
-        break;
-      case 'genre':
-        if (embedding.id) {
-          playlist = generateGenrePlaylist(embedding.id, {
-            limit,
-            exploration: embedding.exploration,
-          });
-        }
-        break;
-      case 'personalized':
-        playlist = generatePersonalizedPlaylist({
-          limit,
-          exploration: embedding.exploration,
-        });
-        break;
-      case 'discovery':
-        playlist = generateDiscoveryPlaylist({
-          limit,
-          exploration: embedding.exploration,
-        });
-        break;
-    }
-
-    if (!playlist || playlist.tracks.length === 0) {
-      debugLog('[useSectionTracks]', `No tracks from embedding ${embedding.type}:${embedding.id || ''}`);
-      return [];
-    }
-
-    debugLog(
-      '[useSectionTracks]',
-      `Embedding ${embedding.type}${embedding.id ? `:${embedding.id}` : ''} returned ${playlist.tracks.length} tracks (indexed: ${tracksIndexed})`
-    );
-    return getTracksFromPlaylist(playlist);
-  }, [
-    embedding,
-    embeddingReady,
-    tracksIndexed,
+  // Use unified plugin pipeline - embeddingProvider handles generation
+  const { tracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: !!embedding,
+    applyMLRanking: true,
+    applyTransformers: true,
     limit,
-    generateMoodPlaylist,
-    generateGenrePlaylist,
-    generatePersonalizedPlaylist,
-    generateDiscoveryPlaylist,
-    getTracksFromPlaylist,
-  ]);
+  });
 
-  const source: 'embedding' | 'none' = embeddingTracks.length > 0 ? 'embedding' : 'none';
+  const source: 'embedding' | 'plugin' | 'none' = tracks.length > 0 ? 'embedding' : 'none';
 
   return {
-    tracks: embeddingTracks,
-    isLoading: !embeddingReady,
+    tracks,
+    isLoading,
     error: null,
     source
   };

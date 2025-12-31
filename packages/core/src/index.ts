@@ -31,6 +31,23 @@ export type {
   AudioFeaturesCacheEntry
 } from './types/audio-features';
 
+// Pipeline types (for plugin Discover integrations)
+export type {
+  QueryStrategy,
+  EmbeddingMethod,
+  EmbeddingContext,
+  SearchContext,
+  StructuredSectionQuery,
+  PipelineContext,
+  ResultTransformer,
+  DataProvider,
+  QueryEnhancer,
+  PipelineResult,
+  PipelineConfig,
+  PipelineRegistrationOptions,
+  PluginPipelineAPI
+} from './types/pipeline';
+
 export type {
   AddonRole,
   AddonManifest,
