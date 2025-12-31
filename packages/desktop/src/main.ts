@@ -2121,17 +2121,27 @@ function setupIPCHandlers(): void {
 
   // Install a plugin from any source (npm, git, local)
   ipcMain.handle('install-plugin-from-source', async (_event, source: string) => {
-    const result = await pluginInstaller.install(source, (progress) => {
-      // Forward progress to renderer
-      mainWindow?.webContents.send('plugin-install-progress', progress);
-    });
-    if (result.success) {
-      // Reload plugins after install
-      await pluginLoader?.reloadPlugins();
-      // Notify renderer that plugins changed
-      mainWindow?.webContents.send('plugins-changed');
+    console.log(`[Plugins] Install requested for source: ${source}`);
+    try {
+      const result = await pluginInstaller.install(source, (progress) => {
+        console.log(`[Plugins] Install progress:`, progress);
+        // Forward progress to renderer
+        mainWindow?.webContents.send('plugin-install-progress', progress);
+      });
+      console.log(`[Plugins] Install result:`, result);
+      if (result.success) {
+        // Reload plugins after install
+        console.log('[Plugins] Reloading plugins after install...');
+        const reloadResults = await pluginLoader?.reloadPlugins();
+        console.log('[Plugins] Reload results:', reloadResults);
+        // Notify renderer that plugins changed
+        mainWindow?.webContents.send('plugins-changed');
+      }
+      return result;
+    } catch (error) {
+      console.error('[Plugins] Install error:', error);
+      return { success: false, error: String(error) };
     }
-    return result;
   });
 
   // Uninstall a plugin

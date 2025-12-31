@@ -1,12 +1,16 @@
 /**
  * Plugin Installer Service
  * Handles installing plugins from npm, git, or local sources
+ * Works in both development (with git/npm) and production (HTTP fallback)
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, type ChildProcess, execSync } from 'child_process';
+import * as https from 'https';
+import * as http from 'http';
+import { createWriteStream } from 'fs';
 
 export interface InstallResult {
   success: boolean;
@@ -26,6 +30,7 @@ export type ProgressCallback = (progress: InstallProgress) => void;
 class PluginInstallerService {
   private pluginsDir: string;
   private tempDir: string;
+  private gitAvailable: boolean | null = null;
 
   constructor() {
     this.pluginsDir = path.join(app.getPath('userData'), 'plugins');
@@ -35,6 +40,144 @@ class PluginInstallerService {
     if (!fs.existsSync(this.pluginsDir)) {
       fs.mkdirSync(this.pluginsDir, { recursive: true });
     }
+  }
+
+  /**
+   * Check if git is available on the system
+   */
+  private isGitAvailable(): boolean {
+    if (this.gitAvailable !== null) {
+      return this.gitAvailable;
+    }
+
+    try {
+      execSync('git --version', { stdio: 'ignore' });
+      this.gitAvailable = true;
+      console.log('[PluginInstaller] Git is available');
+    } catch {
+      this.gitAvailable = false;
+      console.log('[PluginInstaller] Git is not available, will use HTTP download');
+    }
+
+    return this.gitAvailable;
+  }
+
+  /**
+   * Check if npm is available on the system
+   */
+  private isNpmAvailable(): boolean {
+    try {
+      execSync('npm --version', { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Download a file via HTTP/HTTPS
+   */
+  private async downloadFile(url: string, destPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const protocol = url.startsWith('https') ? https : http;
+
+      const makeRequest = (requestUrl: string, redirectCount = 0) => {
+        if (redirectCount > 5) {
+          reject(new Error('Too many redirects'));
+          return;
+        }
+
+        protocol.get(requestUrl, (response) => {
+          // Handle redirects
+          if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 307) {
+            const redirectUrl = response.headers.location;
+            if (redirectUrl) {
+              makeRequest(redirectUrl, redirectCount + 1);
+              return;
+            }
+          }
+
+          if (response.statusCode !== 200) {
+            reject(new Error(`Download failed with status ${response.statusCode}`));
+            return;
+          }
+
+          const file = createWriteStream(destPath);
+          response.pipe(file);
+          file.on('finish', () => {
+            file.close();
+            resolve();
+          });
+          file.on('error', (err) => {
+            fs.unlink(destPath, () => {}); // Delete incomplete file
+            reject(err);
+          });
+        }).on('error', reject);
+      };
+
+      makeRequest(url);
+    });
+  }
+
+  /**
+   * Extract a zip file (using built-in decompress or AdmZip)
+   */
+  private async extractZip(zipPath: string, destDir: string): Promise<void> {
+    // Use Node.js built-in zlib for basic extraction
+    // For production, we'll use a simple approach with the yauzl or extract-zip package
+    // But since we may not have those, let's try using PowerShell on Windows
+
+    try {
+      if (process.platform === 'win32') {
+        // Use PowerShell to extract on Windows
+        await this.runCommand('powershell', [
+          '-Command',
+          `Expand-Archive -Path "${zipPath}" -DestinationPath "${destDir}" -Force`
+        ], {});
+      } else {
+        // Use unzip on macOS/Linux
+        await this.runCommand('unzip', ['-o', zipPath, '-d', destDir], {});
+      }
+    } catch (error) {
+      throw new Error(`Failed to extract zip: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Parse GitHub URL to get owner, repo, and optional subdirectory
+   */
+  private parseGitHubUrl(url: string): { owner: string; repo: string; subdirectory: string | null; branch: string } | null {
+    // Remove .git suffix if present
+    let cleanUrl = url.replace(/\.git$/, '');
+
+    // Parse subdirectory from hash
+    let subdirectory: string | null = null;
+    const hashIndex = cleanUrl.indexOf('#');
+    if (hashIndex !== -1) {
+      subdirectory = cleanUrl.substring(hashIndex + 1);
+      cleanUrl = cleanUrl.substring(0, hashIndex);
+    }
+
+    // Match GitHub URL patterns
+    const patterns = [
+      /github\.com\/([^\/]+)\/([^\/]+)$/,
+      /github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)$/,
+      /github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)\/(.+)$/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = cleanUrl.match(pattern);
+      if (match && match[1] && match[2]) {
+        return {
+          owner: match[1],
+          repo: match[2],
+          subdirectory: match[4] ?? subdirectory,
+          branch: match[3] ?? 'main',
+        };
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -64,8 +207,22 @@ class PluginInstallerService {
 
   /**
    * Install from npm registry
+   * Note: npm packages in production should be pre-installed or use git URL
    */
   async installFromNpm(packageName: string, onProgress?: ProgressCallback): Promise<InstallResult> {
+    // Check if npm is available
+    if (!this.isNpmAvailable()) {
+      onProgress?.({
+        phase: 'error',
+        progress: 0,
+        message: 'npm is not available. Please use a GitHub URL instead.',
+      });
+      return {
+        success: false,
+        error: 'npm is not available on this system. Please install the plugin from a GitHub URL instead.'
+      };
+    }
+
     onProgress?.({
       phase: 'downloading',
       progress: 10,
@@ -73,10 +230,20 @@ class PluginInstallerService {
     });
 
     try {
+      // Install to the plugins directory instead of app path (which is asar in production)
+      const installDir = path.join(this.pluginsDir, '_npm_installs');
+      if (!fs.existsSync(installDir)) {
+        fs.mkdirSync(installDir, { recursive: true });
+        // Create a minimal package.json
+        fs.writeFileSync(path.join(installDir, 'package.json'), JSON.stringify({
+          name: 'audiio-npm-plugins',
+          private: true
+        }));
+      }
+
       // Use npm to install the package
-      // Use --legacy-peer-deps since SDK/core are local workspace packages not on npm
-      await this.runCommand('npm', ['install', packageName, '--save-optional', '--legacy-peer-deps'], {
-        cwd: app.getAppPath(),
+      await this.runCommand('npm', ['install', packageName, '--legacy-peer-deps'], {
+        cwd: installDir,
         onProgress: (output) => {
           onProgress?.({
             phase: 'installing',
@@ -113,6 +280,7 @@ class PluginInstallerService {
   /**
    * Install from git repository
    * Supports subdirectory syntax: https://github.com/user/repo.git#subdirectory/path
+   * Falls back to HTTP download if git is not available
    */
   async installFromGit(gitUrl: string, onProgress?: ProgressCallback): Promise<InstallResult> {
     // Parse subdirectory from URL fragment if present
@@ -136,19 +304,84 @@ class PluginInstallerService {
       onProgress?.({
         phase: 'downloading',
         progress: 10,
-        message: `Cloning repository...`,
+        message: `Downloading plugin...`,
       });
 
-      // Clone the repository (shallow clone, then extract subdirectory if needed)
-      await this.runCommand('git', ['clone', '--depth', '1', repoUrl, this.tempDir], {
-        onProgress: (output) => {
-          onProgress?.({
-            phase: 'downloading',
-            progress: 30,
-            message: output,
-          });
-        },
-      });
+      // Try git clone first if available, otherwise use HTTP download
+      if (this.isGitAvailable()) {
+        console.log('[PluginInstaller] Using git clone');
+        await this.runCommand('git', ['clone', '--depth', '1', repoUrl, this.tempDir], {
+          onProgress: (output) => {
+            onProgress?.({
+              phase: 'downloading',
+              progress: 30,
+              message: output,
+            });
+          },
+        });
+      } else {
+        // Fall back to HTTP download for GitHub repos
+        const ghInfo = this.parseGitHubUrl(repoUrl);
+        if (!ghInfo) {
+          throw new Error('Git is not available and URL is not a supported GitHub URL. Please install git or use a GitHub repository URL.');
+        }
+
+        console.log(`[PluginInstaller] Using HTTP download for ${ghInfo.owner}/${ghInfo.repo}`);
+
+        // Download the zip archive
+        const zipUrl = `https://github.com/${ghInfo.owner}/${ghInfo.repo}/archive/refs/heads/${ghInfo.branch}.zip`;
+        const zipPath = path.join(this.tempDir, 'repo.zip');
+
+        onProgress?.({
+          phase: 'downloading',
+          progress: 20,
+          message: `Downloading from GitHub...`,
+        });
+
+        await this.downloadFile(zipUrl, zipPath);
+
+        onProgress?.({
+          phase: 'extracting',
+          progress: 40,
+          message: `Extracting archive...`,
+        });
+
+        // Extract the zip
+        const extractDir = path.join(this.tempDir, 'extracted');
+        fs.mkdirSync(extractDir, { recursive: true });
+        await this.extractZip(zipPath, extractDir);
+
+        // GitHub zips extract to a folder named repo-branch
+        const extractedFolder = `${ghInfo.repo}-${ghInfo.branch}`;
+        const extractedPath = path.join(extractDir, extractedFolder);
+
+        if (!fs.existsSync(extractedPath)) {
+          // Try to find the extracted folder
+          const entries = fs.readdirSync(extractDir);
+          const firstEntry = entries[0];
+          if (entries.length === 1 && firstEntry) {
+            const actualPath = path.join(extractDir, firstEntry);
+            if (fs.statSync(actualPath).isDirectory()) {
+              // Move contents to temp dir
+              await this.copyDirectory(actualPath, this.tempDir);
+            }
+          } else {
+            throw new Error('Could not find extracted plugin folder');
+          }
+        } else {
+          // Move contents to temp dir
+          await this.copyDirectory(extractedPath, this.tempDir);
+        }
+
+        // Clean up
+        fs.rmSync(zipPath, { force: true });
+        fs.rmSync(extractDir, { recursive: true, force: true });
+
+        // Update subdirectory if specified in GitHub info
+        if (ghInfo.subdirectory && !subdirectory) {
+          subdirectory = ghInfo.subdirectory;
+        }
+      }
 
       // Determine the plugin source directory
       let pluginSourceDir = subdirectory
@@ -188,41 +421,50 @@ class PluginInstallerService {
       if (!isPrebuilt && fs.existsSync(pkgJsonPath)) {
         const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
 
-        // Install dependencies for building
-        onProgress?.({
-          phase: 'installing',
-          progress: 50,
-          message: 'Installing dependencies...',
-        });
-        await this.runCommand('npm', ['install', '--legacy-peer-deps'], {
-          cwd: pluginSourceDir,
-          onProgress: (output) => {
-            onProgress?.({
-              phase: 'installing',
-              progress: 60,
-              message: output,
-            });
-          },
-        });
-
-        // Build if has build script
-        if (pkgJson.scripts?.build) {
+        // Check if npm is available
+        if (!this.isNpmAvailable()) {
+          // Check if there's a build script that would require npm
+          if (pkgJson.scripts?.build) {
+            throw new Error('This plugin requires building but npm is not available. Please install a pre-built version or install Node.js.');
+          }
+          console.log('[PluginInstaller] npm not available, skipping dependency installation');
+        } else {
+          // Install dependencies for building
           onProgress?.({
-            phase: 'building',
-            progress: 70,
-            message: 'Building plugin...',
+            phase: 'installing',
+            progress: 50,
+            message: 'Installing dependencies...',
           });
-
-          await this.runCommand('npm', ['run', 'build'], {
+          await this.runCommand('npm', ['install', '--legacy-peer-deps'], {
             cwd: pluginSourceDir,
             onProgress: (output) => {
               onProgress?.({
-                phase: 'building',
-                progress: 80,
+                phase: 'installing',
+                progress: 60,
                 message: output,
               });
             },
           });
+
+          // Build if has build script
+          if (pkgJson.scripts?.build) {
+            onProgress?.({
+              phase: 'building',
+              progress: 70,
+              message: 'Building plugin...',
+            });
+
+            await this.runCommand('npm', ['run', 'build'], {
+              cwd: pluginSourceDir,
+              onProgress: (output) => {
+                onProgress?.({
+                  phase: 'building',
+                  progress: 80,
+                  message: output,
+                });
+              },
+            });
+          }
         }
       } else if (isPrebuilt) {
         console.log(`[PluginInstaller] Plugin is pre-built, skipping build step`);
@@ -251,11 +493,14 @@ class PluginInstallerService {
       }
 
       // Install dependencies in final location (copyDirectory skips node_modules)
-      // Only if package.json has dependencies
+      // Only if package.json has dependencies and npm is available
       const finalPkgJsonPath = path.join(destDir, 'package.json');
-      if (fs.existsSync(finalPkgJsonPath)) {
+      if (fs.existsSync(finalPkgJsonPath) && this.isNpmAvailable()) {
         const finalPkgJson = JSON.parse(fs.readFileSync(finalPkgJsonPath, 'utf-8'));
-        if (finalPkgJson.dependencies && Object.keys(finalPkgJson.dependencies).length > 0) {
+        // Only install if there are non-audiio dependencies (audiio deps are provided by the app)
+        const deps = finalPkgJson.dependencies || {};
+        const nonAudioDeps = Object.keys(deps).filter(d => !d.startsWith('@audiio/'));
+        if (nonAudioDeps.length > 0) {
           onProgress?.({
             phase: 'installing',
             progress: 95,

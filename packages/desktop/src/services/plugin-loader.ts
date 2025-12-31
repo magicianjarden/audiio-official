@@ -15,19 +15,37 @@ const originalResolveFilename = (Module as any)._resolveFilename;
 (Module as any)._resolveFilename = function(request: string, parent: any, isMain: boolean, options: any) {
   // Redirect @audiio/sdk and @audiio/core to the app's bundled versions
   if (request === '@audiio/sdk' || request === '@audiio/core') {
-    // Find the package in the app's node_modules or workspace packages
+    // Get the app path - works in both dev and production
+    const appPath = app.isPackaged
+      ? path.dirname(app.getAppPath()) // In production, go up from app.asar
+      : app.getAppPath();
+
+    // Find the package in various locations
     const possiblePaths = [
+      // Production: inside app.asar
+      path.join(app.getAppPath(), 'node_modules', request),
+      // Production: alongside app.asar in resources folder
+      path.join(appPath, 'node_modules', request),
+      // Development: workspace node_modules
       path.join(process.cwd(), 'node_modules', request),
+      // Development: workspace packages
       path.join(process.cwd(), 'packages', request.replace('@audiio/', '')),
+      // Fallback: relative to this file
+      path.join(__dirname, '..', '..', 'node_modules', request),
       path.join(__dirname, '..', '..', '..', '..', 'node_modules', request),
       path.join(__dirname, '..', '..', '..', '..', 'packages', request.replace('@audiio/', '')),
     ];
 
+    console.log(`[PluginLoader] Resolving ${request}, checking paths:`, possiblePaths.map(p => `${p} (exists: ${fs.existsSync(p)})`));
+
     for (const pkgPath of possiblePaths) {
       if (fs.existsSync(pkgPath)) {
+        console.log(`[PluginLoader] Found ${request} at: ${pkgPath}`);
         return originalResolveFilename.call(this, pkgPath, parent, isMain, options);
       }
     }
+
+    console.log(`[PluginLoader] Could not find ${request} in any location`);
   }
 
   return originalResolveFilename.call(this, request, parent, isMain, options);
@@ -410,16 +428,32 @@ export class PluginLoader {
   private async loadUserPlugins(): Promise<PluginLoadResult[]> {
     const results: PluginLoadResult[] = [];
 
+    console.log(`[PluginLoader] Loading user plugins from: ${this.userPluginsDir}`);
+
     try {
+      if (!fs.existsSync(this.userPluginsDir)) {
+        console.log('[PluginLoader] User plugins directory does not exist');
+        return results;
+      }
+
       const entries = await fs.promises.readdir(this.userPluginsDir);
+      console.log(`[PluginLoader] Found ${entries.length} entries in plugins directory:`, entries);
 
       for (const entry of entries) {
+        // Skip internal directories
+        if (entry.startsWith('_')) {
+          console.log(`[PluginLoader] Skipping internal directory: ${entry}`);
+          continue;
+        }
+
         const entryPath = path.join(this.userPluginsDir, entry);
+        console.log(`[PluginLoader] Attempting to load: ${entryPath}`);
         const result = await this.loadLocalPlugin(entryPath);
+        console.log(`[PluginLoader] Load result for ${entry}:`, result);
         results.push(result);
       }
-    } catch {
-      // No user plugins to load
+    } catch (error) {
+      console.error('[PluginLoader] Error loading user plugins:', error);
     }
 
     return results;
