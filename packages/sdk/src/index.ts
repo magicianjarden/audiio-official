@@ -54,6 +54,16 @@ export type {
   ToolType,
   PluginUIRegistry,
 
+  // Artist enrichment types
+  MusicVideo,
+  TimelineEntry,
+  Concert,
+  Setlist,
+  ArtistImages,
+  ArtistEnrichmentType,
+  ArtistEnrichmentData,
+  ArtistEnrichmentProvider,
+
   // Media processing types
   HLSConversionOptions,
   ConversionResult,
@@ -85,6 +95,7 @@ export { BaseStreamProvider } from './base/BaseStreamProvider';
 export { BaseLyricsProvider } from './base/BaseLyricsProvider';
 export { BaseAudioProcessor } from './base/BaseAudioProcessor';
 export { BaseTool } from './base/BaseTool';
+export { BaseArtistEnrichmentProvider } from './base/BaseArtistEnrichmentProvider';
 
 // Registration
 export { defineAddon, type AddonDefinition } from './registration';
@@ -100,7 +111,7 @@ export interface PluginManifest {
   /** Plugin description */
   description?: string;
   /** Plugin roles/capabilities */
-  roles: ('metadata-provider' | 'stream-provider' | 'lyrics-provider' | 'audio-processor' | 'scrobbler' | 'tool')[];
+  roles: ('metadata-provider' | 'stream-provider' | 'lyrics-provider' | 'audio-processor' | 'scrobbler' | 'tool' | 'artist-enrichment')[];
   /** Entry point file (relative to package root) */
   main?: string;
   /** Author name or object */

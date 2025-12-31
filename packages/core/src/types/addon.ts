@@ -104,7 +104,96 @@ export type AddonRole =
   | 'lyrics-provider'
   | 'scrobbler'
   | 'audio-processor'
-  | 'tool';
+  | 'tool'
+  | 'artist-enrichment';
+
+// ============================================
+// Artist Enrichment Types
+// ============================================
+
+/** Music video from external sources */
+export interface MusicVideo {
+  id: string;
+  title: string;
+  thumbnail: string;
+  publishedAt: string;
+  viewCount?: number;
+  duration?: string;
+  url: string;
+  source: string;
+}
+
+/** Timeline entry for artist discography history */
+export interface TimelineEntry {
+  year: number;
+  type: 'album' | 'single' | 'ep' | 'compilation' | 'live';
+  title: string;
+  artwork?: string;
+  label?: string;
+  id?: string;
+  source?: string;
+}
+
+/** Concert/event information */
+export interface Concert {
+  id: string;
+  datetime: string;
+  venue: {
+    name: string;
+    city: string;
+    region?: string;
+    country: string;
+  };
+  lineup: string[];
+  ticketUrl?: string;
+  onSaleDate?: string;
+  offers?: Array<{ type: string; url: string; status: string }>;
+  source: string;
+}
+
+/** Past concert setlist */
+export interface Setlist {
+  id: string;
+  eventDate: string;
+  venue: {
+    name: string;
+    city: string;
+    country: string;
+  };
+  tour?: string;
+  songs: Array<{ name: string; info?: string; cover?: boolean }>;
+  url?: string;
+  source: string;
+}
+
+/** Artist gallery images */
+export interface ArtistImages {
+  backgrounds: Array<{ url: string; likes?: number }>;
+  thumbs: Array<{ url: string; likes?: number }>;
+  logos: Array<{ url: string; likes?: number }>;
+  hdLogos: Array<{ url: string; likes?: number }>;
+  banners: Array<{ url: string; likes?: number }>;
+}
+
+/** Enrichment type discriminator */
+export type ArtistEnrichmentType =
+  | 'videos'
+  | 'timeline'
+  | 'setlists'
+  | 'concerts'
+  | 'gallery'
+  | 'merchandise';
+
+/** Aggregated enrichment data */
+export interface ArtistEnrichmentData {
+  musicVideos?: MusicVideo[];
+  timeline?: TimelineEntry[];
+  recentSetlists?: Setlist[];
+  upcomingShows?: Concert[];
+  gallery?: ArtistImages;
+  merchandiseUrl?: string;
+  mbid?: string;
+}
 
 export interface AddonManifest {
   /** Unique identifier (e.g., "deezer", "youtube-music") */
@@ -480,4 +569,45 @@ export interface Tool extends BaseAddon {
 
   /** Check if tool is available/ready */
   isAvailable?(): Promise<boolean>;
+}
+
+// ============================================
+// Artist Enrichment Provider Contract
+// ============================================
+
+/**
+ * Artist Enrichment Provider
+ * Provides supplementary artist data like videos, concerts, setlists, etc.
+ * Each provider specializes in one enrichment type.
+ */
+export interface ArtistEnrichmentProvider extends BaseAddon {
+  /** Unique provider identifier */
+  readonly id: string;
+
+  /** Human-readable name */
+  readonly name: string;
+
+  /** Type of enrichment this provider offers */
+  readonly enrichmentType: ArtistEnrichmentType;
+
+  /** Get music videos for an artist */
+  getArtistVideos?(artistName: string, limit?: number): Promise<MusicVideo[]>;
+
+  /** Get artist timeline/discography history */
+  getArtistTimeline?(artistName: string): Promise<TimelineEntry[]>;
+
+  /** Get past concert setlists */
+  getArtistSetlists?(artistName: string, mbid?: string, limit?: number): Promise<Setlist[]>;
+
+  /** Get upcoming concerts/events */
+  getUpcomingConcerts?(artistName: string): Promise<Concert[]>;
+
+  /** Get artist gallery images (requires MusicBrainz ID) */
+  getArtistGallery?(mbid: string): Promise<ArtistImages>;
+
+  /** Get merchandise URL for artist */
+  getMerchandiseUrl?(artistName: string): Promise<string | null>;
+
+  /** Search for artist (returns provider-specific ID) */
+  searchArtist?(artistName: string): Promise<{ id: string; name: string } | null>;
 }
