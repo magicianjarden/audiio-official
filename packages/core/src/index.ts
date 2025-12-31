@@ -82,7 +82,16 @@ export type {
   // Tool types
   ToolType,
   PluginUIRegistry,
-  Tool
+  Tool,
+  // Artist enrichment types
+  MusicVideo,
+  TimelineEntry,
+  Concert,
+  Setlist,
+  ArtistImages,
+  ArtistEnrichmentType,
+  ArtistEnrichmentData,
+  ArtistEnrichmentProvider
 } from './types/addon';
 
 // Registry
