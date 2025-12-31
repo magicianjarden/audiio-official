@@ -15,7 +15,8 @@
   "dependencies": {
     "@audiio/core": "*",
     "@audiio/sdk": "*",
-    "@audiio/mobile": "*"
+    "@audiio/mobile": "*",
+    "socket.io-client": "^4.7.0"
   },
   "optionalDependencies": {
     "@audiio/ml-core": "*",

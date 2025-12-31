@@ -1,6 +1,7 @@
 /**
  * DiscoverWeeklySection - Mix of familiar and new music
  * Balanced exploration playlist updated weekly
+ * Uses the UNIFIED plugin pipeline for data (embedding provider handles discovery)
  */
 
 import React, { useMemo } from 'react';
@@ -8,11 +9,11 @@ import type { UnifiedTrack } from '@audiio/core';
 import { TrackCard } from '../TrackCard';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import { BaseSectionWrapper } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
+import type { StructuredSectionQuery } from '../types';
 import { PlayIcon, ShuffleIcon } from '@audiio/icons';
-import { debugLog } from '../../../utils/debug';
 
 export interface DiscoverWeeklySectionProps extends BaseSectionProps {
   maxItems?: number;
@@ -29,29 +30,27 @@ export const DiscoverWeeklySection: React.FC<DiscoverWeeklySectionProps> = ({
   const { play, setQueue } = usePlayerStore();
   const { showContextMenu } = useTrackContextMenu();
 
-  const {
-    generateDiscoveryPlaylist,
-    getTracksFromPlaylist,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
-
-  const tracks = useMemo(() => {
-    if (!embeddingReady || tracksIndexed < 1) {
-      return [];
-    }
-
-    // Balanced exploration for discover weekly
-    const playlist = generateDiscoveryPlaylist({
-      limit: maxItems,
+  // Build structured query for the unified pipeline
+  // embeddingProvider will handle this with discovery generation
+  const structuredQuery = useMemo((): StructuredSectionQuery => ({
+    strategy: 'plugin',
+    sectionType: 'discover-weekly',
+    title,
+    subtitle,
+    embedding: {
+      method: 'discovery',
       exploration: 0.5, // 50% familiar, 50% new
-    });
+    },
+    limit: maxItems,
+  }), [title, subtitle, maxItems]);
 
-    if (!playlist) return [];
-
-    debugLog('[DiscoverWeekly]', `Generated playlist: ${playlist.tracks.length} tracks`);
-    return getTracksFromPlaylist(playlist);
-  }, [embeddingReady, tracksIndexed, maxItems, generateDiscoveryPlaylist, getTracksFromPlaylist]);
+  // Use unified plugin pipeline - embeddingProvider handles discovery
+  const { tracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: true,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: maxItems,
+  });
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     setQueue(tracks, index);
@@ -75,7 +74,7 @@ export const DiscoverWeeklySection: React.FC<DiscoverWeeklySectionProps> = ({
     }
   };
 
-  if (!embeddingReady || tracks.length === 0) {
+  if (!isLoading && tracks.length === 0) {
     return null;
   }
 

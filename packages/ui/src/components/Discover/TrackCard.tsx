@@ -19,7 +19,7 @@ interface TrackCardProps {
   showLike?: boolean;
 }
 
-export const TrackCard: React.FC<TrackCardProps> = ({ track, onClick, onContextMenu, style, showLike = false }) => {
+export const TrackCard: React.FC<TrackCardProps> = ({ track, onClick, onContextMenu, style }) => {
   const { currentTrack, isPlaying } = usePlayerStore();
   const { isLiked, toggleLike } = useLibraryStore();
 
@@ -69,15 +69,13 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onClick, onContextM
         <div className="track-card-title">{track.title}</div>
         <div className="track-card-artist">{artistNames}</div>
       </div>
-      {showLike && (
-        <button
-          className={`track-card-like ${trackIsLiked ? 'liked' : ''}`}
-          onClick={handleLikeClick}
-          title={trackIsLiked ? 'Remove from Liked Songs' : 'Add to Liked Songs'}
-        >
-          {trackIsLiked ? <HeartIcon size={16} /> : <HeartOutlineIcon size={16} />}
-        </button>
-      )}
+      <button
+        className={`track-card-like ${trackIsLiked ? 'liked' : ''}`}
+        onClick={handleLikeClick}
+        title={trackIsLiked ? 'Remove from Liked Songs' : 'Add to Liked Songs'}
+      >
+        {trackIsLiked ? <HeartIcon size={16} /> : <HeartOutlineIcon size={16} />}
+      </button>
     </div>
   );
 };

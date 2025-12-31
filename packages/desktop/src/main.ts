@@ -7,7 +7,6 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
 import * as http from 'http';
-import { spawn, type ChildProcess } from 'child_process';
 import {
   AddonRegistry,
   SearchOrchestrator,
@@ -24,12 +23,10 @@ import { mlService } from './services/ml-service';
 import { pluginRepositoryService } from './services/plugin-repository';
 import { pluginInstaller } from './services/plugin-installer';
 import { karaokeService } from './services/karaoke-service';
+import { componentService } from './services/component-service';
 
 // Tools with registered handlers (for cleanup on quit)
 const registeredToolHandlers: Set<string> = new Set();
-
-// Demucs server process
-let demucsProcess: ChildProcess | null = null;
 
 // Plugin loader
 let pluginLoader: PluginLoader;
@@ -69,6 +66,19 @@ const audioAnalyzer = getAudioAnalyzer();
 // Audio features cache (persisted across sessions)
 const audioFeaturesCache = new Map<string, AudioFeatures>();
 
+// Lyrics cache - LRU with TTL (reduces network calls)
+interface LyricsCacheEntry {
+  data: { syncedLyrics?: string; plainLyrics?: string; duration?: number } | null;
+  timestamp: number;
+}
+const lyricsCache = new Map<string, LyricsCacheEntry>();
+const LYRICS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+const LYRICS_CACHE_MAX_SIZE = 500;
+
+function getLyricsCacheKey(artist: string, title: string): string {
+  return `${artist.toLowerCase().trim()}:${title.toLowerCase().trim()}`;
+}
+
 // Plugin folder watcher
 let pluginFolderWatcher: fs.FSWatcher | null = null;
 let currentPluginFolder: string | null = null;
@@ -98,66 +108,48 @@ async function initializeAddons(): Promise<void> {
 
   // Initialize built-in karaoke service and set up event forwarding
   karaokeService.initialize();
+
+  // Forward full track ready events to renderer
   karaokeService.onFullTrackReady((trackId: string, result: any) => {
     console.log(`[Karaoke] Forwarding full track ready event to renderer: ${trackId}`);
     mainWindow?.webContents.send('karaoke-full-track-ready', { trackId, result });
   });
 
-  console.log('[Plugins] Initialized:', registry.getAllAddonIds());
-}
+  // Forward FIRST CHUNK ready events (for instant playback!)
+  karaokeService.onFirstChunkReady((trackId: string, url: string) => {
+    console.log(`[Karaoke] First chunk ready, enabling instant playback: ${trackId}, url: ${url}`);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      console.log(`[Karaoke] Sending IPC to renderer...`);
+      mainWindow.webContents.send('karaoke-first-chunk-ready', { trackId, url });
+    } else {
+      console.error(`[Karaoke] ERROR: mainWindow not available for IPC!`);
+    }
+  });
 
-/**
- * Start the Demucs Python server for karaoke processing
- */
-function startDemucsServer(): void {
-  const serverPath = path.join(__dirname, '../../../demucs-server');
+  // Forward CHUNK UPDATED events (progressive streaming - audio file has grown)
+  karaokeService.onChunkUpdated((trackId: string, url: string, chunkNumber: number) => {
+    console.log(`[Karaoke] Chunk ${chunkNumber} ready for: ${trackId}`);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('karaoke-chunk-updated', { trackId, url, chunkNumber });
+    }
+  });
 
-  // Check if server directory exists
-  if (!fs.existsSync(serverPath)) {
-    console.log('[Demucs] Server directory not found:', serverPath);
-    return;
+  // Forward progress events to renderer (real-time via WebSocket, with ETA)
+  karaokeService.onProgress((trackId: string, progress: number, stage: string, eta?: number) => {
+    mainWindow?.webContents.send('karaoke-progress', { trackId, progress, stage, eta });
+  });
+
+  // Initialize component service (manages optional components like Demucs)
+  componentService.initialize();
+
+  // If Demucs is installed and enabled, start the server
+  const demucsStatus = await componentService.getStatus();
+  if (demucsStatus.installed && demucsStatus.enabled) {
+    console.log('[ComponentService] Demucs is installed and enabled, starting server...');
+    await componentService.startServer();
   }
 
-  console.log('[Demucs] Starting server from:', serverPath);
-
-  // Try python3 first, fall back to python
-  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-
-  demucsProcess = spawn(pythonCmd, ['server.py'], {
-    cwd: serverPath,
-    env: { ...process.env, PORT: '8765' },
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
-
-  demucsProcess.stdout?.on('data', (data: Buffer) => {
-    console.log('[Demucs]', data.toString().trim());
-  });
-
-  demucsProcess.stderr?.on('data', (data: Buffer) => {
-    console.error('[Demucs]', data.toString().trim());
-  });
-
-  demucsProcess.on('error', (err) => {
-    console.error('[Demucs] Failed to start server:', err.message);
-  });
-
-  demucsProcess.on('exit', (code) => {
-    console.log('[Demucs] Server exited with code:', code);
-    demucsProcess = null;
-    // Notify renderer
-    mainWindow?.webContents.send('karaoke-availability-change', { available: false });
-  });
-
-  // Check server health after a short delay
-  setTimeout(async () => {
-    try {
-      const available = await karaokeService.isAvailable();
-      console.log('[Demucs] Server available:', available);
-      mainWindow?.webContents.send('karaoke-availability-change', { available });
-    } catch {
-      // Server not available yet
-    }
-  }, 3000);
+  console.log('[Plugins] Initialized:', registry.getAllAddonIds());
 }
 
 /**
@@ -307,8 +299,14 @@ function createWindow(): void {
       sandbox: false,
       preload: path.join(__dirname, 'preload.js')
     },
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    frame: true,
+    // Frameless window with custom title bar (Spotify-style)
+    frame: false,
+    titleBarStyle: 'hidden',
+    // On macOS, show traffic lights but allow custom positioning
+    ...(process.platform === 'darwin' && {
+      titleBarStyle: 'hiddenInset',
+      trafficLightPosition: { x: 16, y: 16 }
+    }),
     backgroundColor: '#121212'
   });
 
@@ -357,6 +355,35 @@ function createWindow(): void {
  * Set up IPC handlers for renderer communication
  */
 function setupIPCHandlers(): void {
+  // =============================================
+  // Window Control Handlers (for frameless window)
+  // =============================================
+
+  ipcMain.handle('window-minimize', () => {
+    mainWindow?.minimize();
+  });
+
+  ipcMain.handle('window-maximize', () => {
+    if (mainWindow?.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow?.maximize();
+    }
+  });
+
+  ipcMain.handle('window-close', () => {
+    mainWindow?.close();
+  });
+
+  ipcMain.handle('window-is-maximized', () => {
+    return mainWindow?.isMaximized() ?? false;
+  });
+
+  // Get platform info for title bar styling
+  ipcMain.handle('get-platform', () => {
+    return process.platform;
+  });
+
   // Search
   ipcMain.handle('search', async (_event, query: { query: string; type?: string }) => {
     try {
@@ -368,18 +395,18 @@ function setupIPCHandlers(): void {
       switch (query.type) {
         case 'artist':
           // Return artists from the search result
-          return result.artists || [];
+          return result?.artists || [];
         case 'album':
           // Return albums from the search result
-          return result.albums || [];
+          return result?.albums || [];
         case 'track':
         default:
           // Return tracks for track type or default
-          return result.tracks;
+          return result?.tracks || [];
       }
     } catch (error) {
       console.error('Search error:', error);
-      throw error;
+      return []; // Return empty array instead of throwing
     }
   });
 
@@ -586,12 +613,27 @@ function setupIPCHandlers(): void {
   // Trending content - uses metadata orchestrator for charts
   ipcMain.handle('get-trending', async () => {
     try {
+      console.log('[Trending] Calling metadataOrchestrator.getCharts...');
       const charts = await metadataOrchestrator.getCharts(20);
-      console.log(`[Trending] Fetched ${charts.tracks.length} tracks, ${charts.artists.length} artists, ${charts.albums.length} albums`);
-      return charts;
+      const tracksCount = charts?.tracks?.length || 0;
+      const artistsCount = charts?.artists?.length || 0;
+      const albumsCount = charts?.albums?.length || 0;
+      console.log(`[Trending] Fetched ${tracksCount} tracks, ${artistsCount} artists, ${albumsCount} albums`);
+
+      // Ensure proper serialization for IPC
+      if (tracksCount > 0) {
+        console.log(`[Trending] First track: ${charts.tracks[0]?.title} by ${charts.tracks[0]?.artists?.[0]?.name}`);
+      }
+
+      // Return with explicit array checks
+      return {
+        tracks: Array.isArray(charts?.tracks) ? charts.tracks : [],
+        artists: Array.isArray(charts?.artists) ? charts.artists : [],
+        albums: Array.isArray(charts?.albums) ? charts.albums : [],
+      };
     } catch (error) {
-      console.error('Get trending error:', error);
-      return { tracks: [], artists: [], albums: [] };
+      console.error('[Trending] Get trending error:', error);
+      return { tracks: [], artists: [], albums: [], error: String(error) };
     }
   });
 
@@ -699,6 +741,14 @@ function setupIPCHandlers(): void {
   // Get lyrics for a track
   ipcMain.handle('get-lyrics', async (_event, { title, artist, album, duration }: { title: string; artist: string; album?: string; duration?: number }) => {
     try {
+      // Check cache first (fast path)
+      const cacheKey = getLyricsCacheKey(artist, title);
+      const cached = lyricsCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < LYRICS_CACHE_TTL) {
+        console.log(`[Lyrics] Cache hit for: ${artist} - ${title}`);
+        return cached.data;
+      }
+
       // Get any lyrics provider from registry (capability-based)
       const providers = registry.getLyricsProviders();
       if (providers.length === 0) {
@@ -712,7 +762,7 @@ function setupIPCHandlers(): void {
         return null;
       }
 
-      console.log(`[Lyrics] Using provider: ${firstProvider.id}`);
+      console.log(`[Lyrics] Fetching from provider: ${firstProvider.id}`);
       const result = await firstProvider.getLyrics({ title, artist, album, duration });
 
       if (!result) {
@@ -762,6 +812,14 @@ function setupIPCHandlers(): void {
       if (duration) {
         transformed.duration = duration;
       }
+
+      // Cache the result with LRU eviction
+      if (lyricsCache.size >= LYRICS_CACHE_MAX_SIZE) {
+        // Evict oldest entry
+        const oldestKey = lyricsCache.keys().next().value;
+        if (oldestKey) lyricsCache.delete(oldestKey);
+      }
+      lyricsCache.set(cacheKey, { data: transformed, timestamp: Date.now() });
 
       return transformed;
     } catch (error) {
@@ -1901,6 +1959,99 @@ function setupIPCHandlers(): void {
     }
   });
 
+  // Get server capabilities (model instances, chunked processing, etc.)
+  ipcMain.handle('karaoke-get-capabilities', async () => {
+    try {
+      const capabilities = await karaokeService.getCapabilities();
+      return { success: true, capabilities };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Predictive prefetch - queue upcoming tracks for background processing
+  ipcMain.handle('karaoke-predictive-prefetch', async (_event, tracks: Array<{ id: string; url: string }>) => {
+    try {
+      await karaokeService.predictivePrefetch(tracks);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // =============================================
+  // Component Handlers (Optional Components like Demucs)
+  // =============================================
+
+  // Get Demucs component status
+  ipcMain.handle('component-demucs-status', async () => {
+    try {
+      const status = await componentService.getStatus();
+      return { success: true, status };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Install Demucs component
+  ipcMain.handle('component-demucs-install', async () => {
+    try {
+      await componentService.install((progress) => {
+        // Forward progress to renderer
+        mainWindow?.webContents.send('component-install-progress', progress);
+      });
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Cancel Demucs installation
+  ipcMain.handle('component-demucs-cancel-install', () => {
+    componentService.cancelInstall();
+    return { success: true };
+  });
+
+  // Uninstall Demucs component
+  ipcMain.handle('component-demucs-uninstall', async () => {
+    try {
+      await componentService.uninstall();
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Set Demucs enabled state
+  ipcMain.handle('component-demucs-set-enabled', async (_event, enabled: boolean) => {
+    try {
+      await componentService.setEnabled(enabled);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Start Demucs server
+  ipcMain.handle('component-demucs-start-server', async () => {
+    try {
+      const started = await componentService.startServer();
+      return { success: started };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Stop Demucs server
+  ipcMain.handle('component-demucs-stop-server', async () => {
+    try {
+      await componentService.stopServer();
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
   // =============================================
   // Plugin Repository Handlers
   // =============================================
@@ -2548,12 +2699,18 @@ app.whenReady().then(async () => {
     // Initialize ML service (after library bridge)
     await initializeMLService();
 
-    // Start Demucs server for karaoke
-    startDemucsServer();
-
     setupIPCHandlers();
     setupMLIPCHandlers();
     createWindow();
+
+    // Set up window state change events (for title bar maximize button)
+    mainWindow?.on('maximize', () => {
+      mainWindow?.webContents.send('window-maximized-change', true);
+    });
+    mainWindow?.on('unmaximize', () => {
+      mainWindow?.webContents.send('window-maximized-change', false);
+    });
+
     setupPlaybackEvents();
 
     // Initialize tool plugin handlers (after window creation)
@@ -2581,15 +2738,12 @@ app.on('activate', () => {
 
 // Cleanup on quit
 app.on('before-quit', async () => {
-  // Stop Demucs server if running
-  if (demucsProcess) {
-    try {
-      demucsProcess.kill();
-      demucsProcess = null;
-      console.log('[Demucs] Server stopped on quit');
-    } catch (error) {
-      console.error('[Demucs] Error stopping server:', error);
-    }
+  // Stop component services (Demucs, etc.)
+  try {
+    await componentService.dispose();
+    console.log('[ComponentService] Disposed on quit');
+  } catch (error) {
+    console.error('[ComponentService] Error disposing:', error);
   }
 
   // Stop mobile server if running

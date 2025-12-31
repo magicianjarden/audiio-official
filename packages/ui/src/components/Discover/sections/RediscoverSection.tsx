@@ -1,6 +1,7 @@
 /**
  * RediscoverSection - Old favorites you haven't played in a while
  * Resurface tracks from your taste profile that got buried
+ * Uses the UNIFIED plugin pipeline for data (embedding provider handles personalization)
  */
 
 import React, { useMemo } from 'react';
@@ -8,10 +9,10 @@ import type { UnifiedTrack } from '@audiio/core';
 import { TrackCard } from '../TrackCard';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import { BaseSectionWrapper } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
-import { debugLog } from '../../../utils/debug';
+import type { StructuredSectionQuery } from '../types';
 
 export interface RediscoverSectionProps extends BaseSectionProps {
   maxItems?: number;
@@ -28,47 +29,35 @@ export const RediscoverSection: React.FC<RediscoverSectionProps> = ({
   const { play, setQueue } = usePlayerStore();
   const { showContextMenu } = useTrackContextMenu();
 
-  const {
-    generatePersonalizedPlaylist,
-    getTracksFromPlaylist,
-    getTasteStats,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
+  // Build structured query for the unified pipeline
+  // embeddingProvider will handle this with personalized generation
+  const structuredQuery = useMemo((): StructuredSectionQuery => ({
+    strategy: 'plugin',
+    sectionType: 'rediscover',
+    title,
+    subtitle,
+    embedding: {
+      method: 'personalized',
+      exploration: 0.1, // Low exploration for familiar tracks
+    },
+    limit: maxItems,
+  }), [title, subtitle, maxItems]);
 
-  const tasteStats = getTasteStats();
-
-  const tracks = useMemo(() => {
-    if (!embeddingReady || tracksIndexed < 1) {
-      return [];
-    }
-
-    // Low exploration to get familiar tracks, then we could filter for older ones
-    // For now, we just get personalized tracks (in a real impl, we'd filter by last played)
-    const playlist = generatePersonalizedPlaylist({
-      limit: maxItems * 2, // Get extra to allow filtering
-      exploration: 0.1,
-    });
-
-    if (!playlist) return [];
-
-    const allTracks = getTracksFromPlaylist(playlist);
-
-    // In a real implementation, we would filter by "last played" timestamp
-    // For now, just return a shuffled subset to simulate variety
-    const shuffled = [...allTracks].sort(() => Math.random() - 0.5);
-
-    debugLog('[Rediscover]', `Generated playlist: ${shuffled.length} tracks`);
-    return shuffled.slice(0, maxItems);
-  }, [embeddingReady, tracksIndexed, maxItems, generatePersonalizedPlaylist, getTracksFromPlaylist]);
+  // Use unified plugin pipeline - embeddingProvider handles personalization
+  const { tracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: true,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: maxItems,
+  });
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     setQueue(tracks, index);
     play(track);
   };
 
-  // Only show for users with history
-  if (!embeddingReady || tracks.length === 0 || !tasteStats.isValid) {
+  // Only show if we have tracks
+  if (!isLoading && tracks.length === 0) {
     return null;
   }
 

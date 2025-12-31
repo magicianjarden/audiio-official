@@ -4,6 +4,7 @@
 
 import { create } from 'zustand';
 import type { SearchArtist, SearchAlbum } from './search-store';
+import type { StructuredSectionQuery } from '../components/Discover/types';
 
 export type View =
   | 'home'
@@ -24,8 +25,11 @@ export type View =
 export interface SectionDetailData {
   title: string;
   subtitle?: string;
-  query: string;
   type: string;
+  /** @deprecated Use structuredQuery instead for ML-aware "See All" */
+  query?: string;
+  /** Structured query for ML-aware "See All" navigation */
+  structuredQuery?: StructuredSectionQuery;
 }
 
 interface NavigationState {

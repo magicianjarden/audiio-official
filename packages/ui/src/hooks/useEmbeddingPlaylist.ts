@@ -18,7 +18,6 @@ import {
   type PlaylistTrack,
 } from '@audiio/ml-core';
 import type { UnifiedTrack } from '@audiio/core';
-import { useRecommendationStore } from '../stores/recommendation-store';
 
 // ============================================================================
 // Types
@@ -135,8 +134,6 @@ function unifiedTrackToTrackData(track: UnifiedTrack): TrackData {
 export function useEmbeddingPlaylist() {
   const [isReady, setIsReady] = useState(false);
   const [tracksIndexed, setTracksIndexed] = useState(getSharedTracksIndexed);
-
-  const recStore = useRecommendationStore();
 
   // Initialize on mount
   useEffect(() => {
@@ -599,4 +596,146 @@ export function useSimilarTracks(
     .filter((t) => t.track !== undefined);
 
   return { similar: tracksWithData };
+}
+
+// ============================================================================
+// Standalone Functions for Providers (non-React)
+// These can be used by DataProviders in the plugin pipeline
+// ============================================================================
+
+/**
+ * Get the embedding system instances (initializes if needed)
+ */
+export function getEmbeddingInstances() {
+  return getInstances();
+}
+
+/**
+ * Get current indexed track count
+ */
+export function getIndexedTrackCount(): number {
+  return sharedTracksIndexed;
+}
+
+/**
+ * Check if embedding system is ready
+ */
+export function isEmbeddingReady(): boolean {
+  return isInitialized && sharedTracksIndexed > 0;
+}
+
+/**
+ * Index tracks into the embedding system (standalone version)
+ */
+export function indexTracksStandalone(tracks: UnifiedTrack[]): number {
+  const { playlistGenerator } = getInstances();
+  let newlyIndexed = 0;
+
+  for (const track of tracks) {
+    if (!sharedIndexedTracks.has(track.id)) {
+      const trackData = unifiedTrackToTrackData(track);
+      playlistGenerator.registerTrack(trackData);
+      sharedIndexedTracks.add(track.id);
+      sharedTrackCache.set(track.id, track);
+      newlyIndexed++;
+    }
+  }
+
+  if (newlyIndexed > 0) {
+    setSharedTracksIndexed(sharedIndexedTracks.size);
+  }
+
+  return newlyIndexed;
+}
+
+/**
+ * Generate playlist from embedding system (standalone version)
+ * Returns tracks ready for playback
+ */
+export function generateEmbeddingPlaylist(
+  method: 'personalized' | 'mood' | 'genre' | 'artist-radio' | 'discovery' | 'similar',
+  options: {
+    mood?: string;
+    genre?: string;
+    artistId?: string;
+    seedTrackIds?: string[];
+    limit?: number;
+    exploration?: number;
+    excludeTrackIds?: string[];
+  } = {}
+): UnifiedTrack[] {
+  if (!isInitialized || sharedTracksIndexed < 1) {
+    return [];
+  }
+
+  const { playlistGenerator } = getInstances();
+  const now = new Date();
+  const baseOptions = {
+    limit: options.limit || 20,
+    explorationFactor: options.exploration || 0.2,
+    includeCollaborative: true,
+    excludeTrackIds: options.excludeTrackIds,
+    contextHour: now.getHours(),
+    contextDayOfWeek: now.getDay(),
+  };
+
+  let playlist: GeneratedPlaylist | null = null;
+
+  switch (method) {
+    case 'personalized':
+      playlist = playlistGenerator.generatePersonalizedPlaylist(baseOptions);
+      break;
+    case 'mood':
+      if (options.mood) {
+        playlist = playlistGenerator.generateMoodPlaylist(options.mood, baseOptions);
+      }
+      break;
+    case 'genre':
+      if (options.genre) {
+        playlist = playlistGenerator.generateGenrePlaylist(options.genre, baseOptions);
+      }
+      break;
+    case 'artist-radio':
+      if (options.artistId) {
+        playlist = playlistGenerator.generateArtistRadio(options.artistId, baseOptions);
+      }
+      break;
+    case 'discovery':
+      playlist = playlistGenerator.generateDiscoveryPlaylist({
+        ...baseOptions,
+        explorationFactor: options.exploration || 0.7,
+      });
+      break;
+    case 'similar':
+      if (options.seedTrackIds?.length) {
+        playlist = playlistGenerator.generateSeedPlaylist(options.seedTrackIds, baseOptions);
+      }
+      break;
+  }
+
+  if (!playlist) return [];
+
+  // Convert to UnifiedTrack array, clearing stale stream info
+  return playlist.tracks
+    .map((pt) => {
+      const cached = sharedTrackCache.get(pt.trackId);
+      if (!cached) return undefined;
+      return {
+        ...cached,
+        streamInfo: undefined,
+        streamSources: [],
+      };
+    })
+    .filter((t): t is UnifiedTrack => t !== undefined);
+}
+
+/**
+ * Get all indexed tracks
+ */
+export function getAllIndexedTracks(): UnifiedTrack[] {
+  return Array.from(sharedTrackCache.values()).map(track => ({
+    ...track,
+    streamInfo: undefined,
+    streamSources: [],
+  }));
 }

@@ -1,13 +1,18 @@
 /**
  * AudioSettings - Audio playback configuration
- *
- * Note: Karaoke/vocal removal settings have been removed.
- * Karaoke is now a simple plugin with no user-facing settings.
  */
 
 import React from 'react';
 import { useSettingsStore } from '../../stores/settings-store';
+import { useKaraokeStore, KaraokeQualityMode } from '../../stores/karaoke-store';
 import { SettingsIcon } from '@audiio/icons';
+
+const QUALITY_MODES: { value: KaraokeQualityMode; label: string; description: string }[] = [
+  { value: 'auto', label: 'Auto', description: 'Best settings for your hardware' },
+  { value: 'quality', label: 'Quality', description: 'Best quality, requires GPU' },
+  { value: 'balanced', label: 'Balanced', description: 'Good quality with reasonable speed' },
+  { value: 'fast', label: 'Fast', description: 'Faster processing, optimized for CPU' },
+];
 
 export const AudioSettings: React.FC = () => {
   const {
@@ -18,6 +23,8 @@ export const AudioSettings: React.FC = () => {
     normalizeVolume,
     setNormalizeVolume,
   } = useSettingsStore();
+
+  const { isAvailable, qualityMode, setQualityMode } = useKaraokeStore();
 
   return (
     <div className="audio-settings">
@@ -84,6 +91,38 @@ export const AudioSettings: React.FC = () => {
           </label>
         </div>
       </div>
+
+      {/* Karaoke/Vocal Removal Section */}
+      {isAvailable && (
+        <div className="settings-group">
+          <div className="settings-group-header">
+            <MicIcon size={20} />
+            <h3>Vocal Removal</h3>
+          </div>
+
+          <div className="settings-option">
+            <div className="settings-option-info">
+              <h4>Processing Quality</h4>
+              <p>Balance between quality and speed</p>
+            </div>
+            <select
+              className="settings-select"
+              value={qualityMode}
+              onChange={(e) => setQualityMode(e.target.value as KaraokeQualityMode)}
+            >
+              {QUALITY_MODES.map((mode) => (
+                <option key={mode.value} value={mode.value}>
+                  {mode.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="settings-description">
+            {QUALITY_MODES.find(m => m.value === qualityMode)?.description}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -98,6 +137,12 @@ const CrossfadeIcon: React.FC<{ size: number }> = ({ size }) => (
 const VolumeIcon: React.FC<{ size: number }> = ({ size }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
     <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+  </svg>
+);
+
+const MicIcon: React.FC<{ size: number }> = ({ size }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
   </svg>
 );
 

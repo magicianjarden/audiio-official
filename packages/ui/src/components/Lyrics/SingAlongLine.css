@@ -1,229 +1,643 @@
 /**
- * SingAlongLine styles - Apple Music style word highlighting
- * Uses subtle WHITE glow effects (not pink - pink is for karaoke mode only)
+ * Modern Sing-Along Lyrics Styles
+ *
+ * Design principles:
+ * - GPU-accelerated animations (transform, opacity, clip-path)
+ * - Clean, modern aesthetic inspired by Apple Music
+ * - Smooth 60fps animations with CSS keyframes
+ * - Minimal repaints - no text-shadow spam
+ * - Theme-aware colors (light/dark mode support)
+ *
+ * Key improvements:
+ * - Gradient fill animation for smooth highlighting
+ * - Held note pulsing for sustained words
+ * - Spring physics easing for natural motion
+ * - Line-level entrance animations
  */
 
-/* Individual line container */
-.sing-along-line {
-  display: inline;
-  line-height: 1.8;
+/* ============================================
+   Theme Variables
+   ============================================ */
+
+:root {
+  /* Default: white text for dark backgrounds (fullscreen always uses this) */
+  --sal-text-dim: rgba(255, 255, 255, 0.35);
+  --sal-text-mid: rgba(255, 255, 255, 0.5);
+  --sal-text-lit: #fff;
+  --sal-text-sung: #fff;
+  --sal-glow-color: rgba(255, 255, 255, 0.3);
+  --sal-glow-strong: rgba(255, 255, 255, 0.5);
+
+  /* Gradient colors for fill animation */
+  --sal-gradient-start: rgba(255, 255, 255, 1);
+  --sal-gradient-mid: rgba(255, 255, 255, 0.95);
+  --sal-gradient-glow: rgba(200, 220, 255, 0.3);
+
+  /* Spring physics timing function - more natural bounce */
+  --sal-spring-ease: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --sal-spring-soft: cubic-bezier(0.16, 1, 0.3, 1);
+  --sal-spring-snap: cubic-bezier(0.68, -0.6, 0.32, 1.6);
 }
 
-.sing-along-line.active {
-  font-weight: 600;
-}
+/* ============================================
+   Container & Scrolling
+   ============================================ */
 
-/* Word styling - smooth transitions */
-.sing-along-word {
-  display: inline-block;
-  position: relative;
-  /* Smooth transitions for color and glow */
-  transition:
-    color 0.15s ease-out,
-    text-shadow 0.2s ease-out,
-    filter 0.2s ease-out;
-  /* Default: dimmed, waiting to be sung */
-  color: rgba(255, 255, 255, 0.4);
-  text-shadow: none;
-}
-
-/* Past words - already sung - subtle white glow */
-.sing-along-word.past {
-  color: rgba(255, 255, 255, 0.85);
-  text-shadow:
-    0 0 10px rgba(255, 255, 255, 0.3),
-    0 0 20px rgba(255, 255, 255, 0.15);
-}
-
-/* Currently highlighted word - bright white glow (no scale to avoid jumpiness) */
-.sing-along-word.highlighted {
-  color: #fff;
-  text-shadow:
-    0 0 8px rgba(255, 255, 255, 0.7),
-    0 0 16px rgba(255, 255, 255, 0.45),
-    0 0 28px rgba(255, 255, 255, 0.25);
-}
-
-/* Next word to be sung - slight anticipation glow */
-.sing-along-word.next-word {
-  color: rgba(255, 255, 255, 0.55);
-  text-shadow: 0 0 4px rgba(255, 255, 255, 0.1);
-}
-
-/* Progressive glow effect for current word - sweep from white dim to white bright */
-.sing-along-word.transitioning {
-  color: #fff;
-  text-shadow:
-    0 0 calc(8px * var(--word-progress, 0)) rgba(255, 255, 255, 0.8),
-    0 0 calc(16px * var(--word-progress, 0)) rgba(255, 255, 255, 0.5),
-    0 0 calc(32px * var(--word-progress, 0)) rgba(255, 255, 255, 0.3);
-  /* Progressive reveal via background gradient */
-  background: linear-gradient(
-    to right,
-    #fff 0%,
-    #fff var(--word-progress, 0%),
-    rgba(255, 255, 255, 0.4) var(--word-progress, 0%),
-    rgba(255, 255, 255, 0.4) 100%
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-/* Space between words */
-.sing-along-space {
-  display: inline;
-}
-
-/* Full lyrics container - scrollable with fade mask */
-.sing-along-lyrics {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  padding: 30vh 1.5rem;
-  text-align: center;
+.sal-container {
   height: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
   scroll-behavior: smooth;
-  /* Fade mask at top and bottom */
+  overscroll-behavior: contain;
+
+  /* Hide scrollbar */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  /* Fade edges */
   mask-image: linear-gradient(
     to bottom,
     transparent 0%,
-    black 12%,
-    black 88%,
+    black 15%,
+    black 85%,
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0%,
-    black 12%,
-    black 88%,
+    black 15%,
+    black 85%,
     transparent 100%
   );
 }
 
-/* Hide scrollbar but keep functionality */
-.sing-along-lyrics::-webkit-scrollbar {
+.sal-container::-webkit-scrollbar {
   display: none;
 }
 
-.sing-along-lyrics {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+.sal-lyrics {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 40vh 2rem;
+  min-height: 100%;
 }
 
-/* Line styling */
-.sing-along-lyrics-line {
-  font-size: 1.25rem;
-  padding: 0.75rem 1.5rem;
+/* ============================================
+   Line Styles - With entrance animations
+   ============================================ */
+
+.sal-lyrics__line {
+  width: 100%;
+  max-width: 800px;
+  text-align: center;
+  padding: 0.75rem 1rem;
   border-radius: 12px;
   cursor: pointer;
-  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  transform: scale(0.95);
-  opacity: 0.4;
-  color: rgba(255, 255, 255, 0.5);
+  user-select: none;
+
+  /* GPU layer for smooth transitions */
+  will-change: transform, opacity;
+  transform: scale(0.92) translateY(0) translateZ(0);
+  opacity: 0.35;
+
+  /* Spring physics transitions */
+  transition:
+    transform 0.5s var(--sal-spring-soft),
+    opacity 0.4s var(--sal-spring-soft);
 }
 
-.sing-along-lyrics-line:hover {
-  background: rgba(255, 255, 255, 0.06);
-  opacity: 0.6;
-}
-
-/* Active line - white glow */
-.sing-along-lyrics-line.active {
-  font-size: 1.6rem;
-  background: transparent;
-  transform: scale(1);
-  opacity: 1;
-  color: #fff;
-  text-shadow:
-    0 0 20px rgba(255, 255, 255, 0.4),
-    0 0 40px rgba(255, 255, 255, 0.2);
-}
-
-.sing-along-lyrics-line.past {
+.sal-lyrics__line:hover {
   opacity: 0.5;
-  transform: scale(0.92);
-  color: rgba(255, 255, 255, 0.7);
-  text-shadow: 0 0 8px rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.03);
 }
 
-.sing-along-lyrics-line.future {
+/* Past lines - sung, slide up slightly */
+.sal-lyrics__line--past {
+  transform: scale(0.88) translateY(-2px) translateZ(0);
   opacity: 0.4;
-  color: rgba(255, 255, 255, 0.5);
 }
 
-/* Lines near active get slightly more visible */
-.sing-along-lyrics-line.active + .sing-along-lyrics-line {
-  opacity: 0.6;
-  transform: scale(0.96);
-  text-shadow: 0 0 4px rgba(255, 255, 255, 0.1);
-}
-
-.sing-along-empty-line {
-  color: var(--text-tertiary);
-  font-style: italic;
-}
-
-/* Original lyrics container */
-.sing-along-lyrics-original {
-  display: block;
-}
-
-/* Translation line styling */
-.sing-along-lyrics-translation {
-  display: block;
-  font-size: 0.85em;
-  color: rgba(255, 255, 255, 0.5);
-  margin-top: 6px;
-  font-style: italic;
-  opacity: 0.8;
-  transition: all 0.3s ease;
-}
-
-/* Active line shows translation more prominently */
-.sing-along-lyrics-line.active .sing-along-lyrics-translation {
-  color: rgba(255, 255, 255, 0.7);
+/* Active line - currently singing, spring in */
+.sal-lyrics__line--active {
+  transform: scale(1) translateY(0) translateZ(0);
   opacity: 1;
+  animation: line-activate 0.4s var(--sal-spring-ease);
 }
 
-/* Past line translation is dimmer */
-.sing-along-lyrics-line.past .sing-along-lyrics-translation {
-  opacity: 0.5;
-}
-
-/* Smooth fade-in animation for active line - no bouncy scale */
-@keyframes line-become-active {
+@keyframes line-activate {
   0% {
-    transform: scale(0.98);
+    transform: scale(0.94) translateY(8px) translateZ(0);
     opacity: 0.6;
   }
+  50% {
+    transform: scale(1.02) translateY(-2px) translateZ(0);
+  }
   100% {
-    transform: scale(1);
+    transform: scale(1) translateY(0) translateZ(0);
     opacity: 1;
   }
 }
 
-.sing-along-lyrics-line.active {
-  animation: line-become-active 0.3s ease-out;
+/* Upcoming lines - fade in from below */
+.sal-lyrics__line--upcoming {
+  opacity: 0.3;
+  transform: scale(0.92) translateY(4px) translateZ(0);
 }
 
-/* Compact mode for player integration */
-.sing-along-line.compact {
-  font-size: 1rem;
+/* Line immediately after active gets boost and entrance */
+.sal-lyrics__line--active + .sal-lyrics__line--upcoming {
+  opacity: 0.45;
+  transform: scale(0.94) translateY(2px) translateZ(0);
+  animation: next-line-ready 0.5s var(--sal-spring-soft);
 }
 
-.sing-along-line.compact .sing-along-word {
+@keyframes next-line-ready {
+  0% {
+    opacity: 0.3;
+    transform: scale(0.90) translateY(10px) translateZ(0);
+  }
+  100% {
+    opacity: 0.45;
+    transform: scale(0.94) translateY(2px) translateZ(0);
+  }
+}
+
+/* Instrumental marker */
+.sal-lyrics__instrumental {
+  display: inline-block;
+  font-size: 1.5rem;
+  opacity: 0.4;
+  animation: instrumental-pulse 2s ease-in-out infinite;
+}
+
+@keyframes instrumental-pulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+    filter: drop-shadow(0 0 4px var(--sal-glow-color));
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 12px var(--sal-glow-strong));
+  }
+}
+
+/* Translation line */
+.sal-lyrics__translation {
+  margin-top: 0.5rem;
+  font-size: 0.85em;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition:
+    opacity 0.4s var(--sal-spring-soft),
+    transform 0.4s var(--sal-spring-soft);
+}
+
+.sal-lyrics__line--active .sal-lyrics__translation {
+  opacity: 0.7;
+  transform: translateY(0);
+}
+
+/* ============================================
+   Line Content
+   ============================================ */
+
+.sal-line {
+  display: inline;
+  /* Inherit font properties from parent container */
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+}
+
+/* Only apply custom sizing when used standalone (in sal-container) */
+.sal-container .sal-line {
+  font-size: 1.4rem;
   font-weight: 500;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
 }
 
-.sing-along-line.compact .sing-along-word.highlighted {
+.sal-container .sal-line--active {
+  font-size: 1.75rem;
   font-weight: 600;
 }
 
-/* Dark theme adjustments */
-@media (prefers-color-scheme: dark) {
-  .sing-along-word.transitioning {
-    filter: brightness(1.1);
+/* ============================================
+   Word Styles - The Magic
+   ============================================ */
+
+.sal-word {
+  position: relative;
+  display: inline-block;
+  white-space: pre;
+
+  /* Spring physics for state transitions */
+  transition:
+    filter 0.3s var(--sal-spring-soft),
+    transform 0.3s var(--sal-spring-soft);
+}
+
+/* Base text layer */
+.sal-word__text {
+  position: relative;
+  z-index: 1;
+  color: var(--sal-text-dim, rgba(255, 255, 255, 0.4));
+
+  /* Smooth color transition with spring */
+  transition: color 0.35s var(--sal-spring-soft);
+}
+
+/* Fill layer - gradient overlay with clip animation */
+.sal-word__fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  pointer-events: none;
+
+  /* Gradient fill for richer highlight effect */
+  background: linear-gradient(
+    90deg,
+    var(--sal-gradient-start) 0%,
+    var(--sal-gradient-mid) 70%,
+    var(--sal-gradient-start) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+
+  /* Default: fully visible (for sung words) */
+  clip-path: inset(0 0% 0 0);
+  opacity: 1;
+}
+
+/* Active word: animate the fill from left to right with gradient */
+.sal-word--active .sal-word__fill {
+  clip-path: inset(0 100% 0 0);
+  will-change: clip-path;
+  animation:
+    word-fill-gradient var(--word-duration, 500ms) var(--sal-spring-soft) forwards,
+    word-glow-in 0.2s var(--sal-spring-ease) forwards;
+}
+
+/* Sung word: fill stays complete, no animation */
+.sal-word--sung .sal-word__fill {
+  clip-path: inset(0 0% 0 0);
+  animation: none;
+}
+
+/* Word fill animation with slight overshoot for spring feel */
+@keyframes word-fill-gradient {
+  0% {
+    clip-path: inset(0 100% 0 0);
+  }
+  85% {
+    clip-path: inset(0 -2% 0 0);
+  }
+  100% {
+    clip-path: inset(0 0% 0 0);
+  }
+}
+
+/* Glow effect on word activation */
+@keyframes word-glow-in {
+  0% {
+    opacity: 0.5;
+    filter: blur(2px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* ============================================
+   Word States
+   ============================================ */
+
+/* Upcoming words - dimmed, ready to be sung */
+.sal-word--upcoming .sal-word__text {
+  color: var(--sal-text-dim);
+}
+
+/* Next word anticipation - subtle brightening before it starts */
+.sal-word--next .sal-word__text {
+  color: var(--sal-text-mid);
+  transition: color 0.2s var(--sal-spring-soft);
+}
+
+.sal-word--next {
+  /* Subtle pre-glow and micro scale */
+  filter: drop-shadow(0 0 6px var(--sal-glow-color));
+  transform: scale(1.02);
+}
+
+/* Active word - being sung */
+.sal-word--active {
+  /* Soft glow while singing */
+  filter: drop-shadow(0 0 14px var(--sal-glow-color));
+  transform: scale(1.04);
+  animation: active-word-pulse 0.3s var(--sal-spring-snap);
+}
+
+@keyframes active-word-pulse {
+  0% {
+    filter: drop-shadow(0 0 0px transparent);
+    transform: scale(0.98);
+  }
+  40% {
+    filter: drop-shadow(0 0 20px var(--sal-glow-strong));
+    transform: scale(1.06);
+  }
+  100% {
+    filter: drop-shadow(0 0 14px var(--sal-glow-color));
+    transform: scale(1.04);
+  }
+}
+
+.sal-word--active .sal-word__text {
+  color: var(--sal-text-mid);
+}
+
+/* Sung words - completed, stays lit */
+.sal-word--sung .sal-word__text {
+  color: var(--sal-text-sung);
+}
+
+/* Smooth exit - word just finished singing */
+.sal-word--sung {
+  /* Gentle glow fadeout with spring */
+  filter: drop-shadow(0 0 8px var(--sal-glow-color));
+  transform: scale(1);
+  animation: word-sung-exit 0.4s var(--sal-spring-soft);
+}
+
+@keyframes word-sung-exit {
+  0% {
+    filter: drop-shadow(0 0 14px var(--sal-glow-color));
+    transform: scale(1.04);
+  }
+  100% {
+    filter: drop-shadow(0 0 8px var(--sal-glow-color));
+    transform: scale(1);
+  }
+}
+
+/* ============================================
+   Held Note Animation
+   Words that are sustained get a breathing effect
+   ============================================ */
+
+.sal-word--held.sal-word--active {
+  animation:
+    active-word-pulse 0.3s var(--sal-spring-snap),
+    held-note-breathe 1.2s ease-in-out 0.3s infinite;
+}
+
+@keyframes held-note-breathe {
+  0%, 100% {
+    filter: drop-shadow(0 0 12px var(--sal-glow-color));
+    transform: scale(1.03);
+  }
+  50% {
+    filter: drop-shadow(0 0 20px var(--sal-glow-strong));
+    transform: scale(1.06);
+  }
+}
+
+/* Long held notes get more dramatic pulsing */
+.sal-word--held-long.sal-word--active {
+  animation:
+    active-word-pulse 0.3s var(--sal-spring-snap),
+    held-note-undulate 1.5s ease-in-out 0.3s infinite;
+}
+
+@keyframes held-note-undulate {
+  0%, 100% {
+    filter:
+      drop-shadow(0 0 10px var(--sal-glow-color))
+      drop-shadow(0 0 20px var(--sal-gradient-glow));
+    transform: scale(1.03) translateY(0);
+  }
+  25% {
+    filter:
+      drop-shadow(0 0 18px var(--sal-glow-strong))
+      drop-shadow(0 0 30px var(--sal-gradient-glow));
+    transform: scale(1.07) translateY(-1px);
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 14px var(--sal-glow-color))
+      drop-shadow(0 0 25px var(--sal-gradient-glow));
+    transform: scale(1.05) translateY(0);
+  }
+  75% {
+    filter:
+      drop-shadow(0 0 20px var(--sal-glow-strong))
+      drop-shadow(0 0 32px var(--sal-gradient-glow));
+    transform: scale(1.08) translateY(-1px);
+  }
+}
+
+/* ============================================
+   Context: Embedded in lyrics-panel (sidebar)
+   Sidebar background changes with theme, so use theme-aware colors
+   ============================================ */
+
+/* Override with theme-aware colors for sidebar */
+.lyrics-panel-line .sal-word__text {
+  color: var(--text-muted);
+}
+
+.lyrics-panel-line .sal-word__fill {
+  /* Use solid color in sidebar for clarity */
+  background: var(--text-primary);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.lyrics-panel-line .sal-word--upcoming .sal-word__text {
+  color: var(--text-muted);
+}
+
+.lyrics-panel-line .sal-word--next .sal-word__text {
+  color: var(--text-secondary);
+}
+
+.lyrics-panel-line .sal-word--active .sal-word__text {
+  color: var(--text-secondary);
+}
+
+.lyrics-panel-line .sal-word--sung .sal-word__text {
+  color: var(--text-primary);
+}
+
+/* Subtle glow effects for sidebar */
+.lyrics-panel-line .sal-word--active {
+  filter: drop-shadow(0 0 6px rgba(128, 128, 128, 0.2));
+  transform: scale(1.02);
+}
+
+.lyrics-panel-line .sal-word--sung {
+  filter: drop-shadow(0 0 3px rgba(128, 128, 128, 0.1));
+  transform: scale(1);
+}
+
+.lyrics-panel-line .sal-word--next {
+  filter: none;
+  transform: scale(1.01);
+}
+
+/* Reduce held note animation in sidebar */
+.lyrics-panel-line .sal-word--held.sal-word--active {
+  animation:
+    active-word-pulse 0.3s var(--sal-spring-snap),
+    sidebar-held-breathe 1.5s ease-in-out 0.3s infinite;
+}
+
+@keyframes sidebar-held-breathe {
+  0%, 100% {
+    filter: drop-shadow(0 0 4px rgba(128, 128, 128, 0.15));
+    transform: scale(1.02);
+  }
+  50% {
+    filter: drop-shadow(0 0 8px rgba(128, 128, 128, 0.25));
+    transform: scale(1.04);
+  }
+}
+
+/* Active line in sidebar */
+.lyrics-panel-line.active .sal-word--active {
+  filter: drop-shadow(0 0 8px rgba(128, 128, 128, 0.25));
+}
+
+.lyrics-panel-line.active .sal-word--sung {
+  filter: drop-shadow(0 0 4px rgba(128, 128, 128, 0.15));
+}
+
+/* ============================================
+   Active Line Enhanced Styling
+   ============================================ */
+
+.sal-lyrics__line--active .sal-word--upcoming .sal-word__text {
+  color: var(--sal-text-mid);
+}
+
+.sal-lyrics__line--active .sal-word--sung .sal-word__text {
+  color: var(--sal-text-sung);
+  text-shadow: 0 0 20px var(--sal-glow-color);
+}
+
+/* ============================================
+   Past Line Words - All Sung
+   ============================================ */
+
+.sal-lyrics__line--past .sal-word__text {
+  color: var(--sal-text-mid);
+}
+
+/* ============================================
+   Responsive Adjustments
+   ============================================ */
+
+@media (max-width: 640px) {
+  .sal-lyrics {
+    padding: 35vh 1rem;
+    gap: 0.75rem;
+  }
+
+  .sal-line {
+    font-size: 1.2rem;
+  }
+
+  .sal-line--active {
+    font-size: 1.4rem;
+  }
+
+  .sal-lyrics__line {
+    padding: 0.5rem 0.75rem;
+  }
+
+  /* Reduce animation intensity on mobile */
+  .sal-word--active {
+    transform: scale(1.02);
+  }
+
+  .sal-word--next {
+    transform: scale(1.01);
+  }
+}
+
+/* ============================================
+   Reduced Motion - Accessibility
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --sal-spring-ease: ease;
+    --sal-spring-soft: ease;
+    --sal-spring-snap: ease;
+  }
+
+  .sal-lyrics__line {
+    transition: opacity 0.2s ease;
+    transform: none !important;
+    animation: none !important;
+  }
+
+  .sal-word {
+    transform: none !important;
+    animation: none !important;
+  }
+
+  .sal-word__fill {
+    animation: none !important;
+    clip-path: inset(0 0 0 0);
+  }
+
+  .sal-lyrics__instrumental {
+    animation: none !important;
+  }
+
+  .sal-word--held,
+  .sal-word--held-long {
+    animation: none !important;
+  }
+}
+
+/* ============================================
+   High Contrast Mode
+   ============================================ */
+
+@media (prefers-contrast: high) {
+  .sal-word--upcoming .sal-word__text {
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  .sal-word--sung .sal-word__text {
+    color: #fff;
+  }
+
+  .sal-lyrics__line--past {
+    opacity: 0.6;
+  }
+
+  .sal-lyrics__line--upcoming {
+    opacity: 0.5;
+  }
+
+  /* Remove gradient in high contrast */
+  .sal-word__fill {
+    background: #fff;
+    -webkit-background-clip: text;
+    background-clip: text;
   }
 }

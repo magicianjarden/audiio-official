@@ -72,6 +72,7 @@ export {
   VolumeOffIcon,
   MicIcon,
   KaraokeIcon,
+  SingAlongIcon,
   TranslateIcon,
 } from './icons/media';
 

@@ -1,208 +1,240 @@
 /**
- * SingAlongLine - Renders a lyric line with word-by-word highlighting
+ * SingAlongLine - Modern karaoke-style word highlighting
  *
- * Words are highlighted progressively as the song plays, creating
- * a karaoke-style sing-along experience.
+ * Performance optimizations:
+ * - CSS-driven animations (not JS frame updates)
+ * - GPU-accelerated properties (transform, opacity, clip-path)
+ * - Re-renders only on word/line changes, not every position tick
+ * - Uses CSS custom properties for dynamic durations
+ *
+ * Visual enhancements:
+ * - Gradient fill animation for smooth highlighting
+ * - Held note pulsing for sustained words
+ * - Spring physics easing for natural motion
+ * - Line-level entrance animations
  */
 
-import React, { useMemo } from 'react';
+import React, { memo, useCallback } from 'react';
 import type { WordTiming } from '../../stores/lyrics-store';
 import './SingAlongLine.css';
+
+// Thresholds for held note detection (in ms)
+const HELD_NOTE_THRESHOLD = 800; // Words longer than this get held animation
+const HELD_LONG_THRESHOLD = 1500; // Words longer than this get long held animation
 
 interface SingAlongLineProps {
   words: WordTiming[];
   currentWordIndex: number;
   isActive: boolean;
-  positionMs: number;
-  offset: number;
 }
 
 interface WordProps {
   word: string;
-  isHighlighted: boolean;
-  isPast: boolean;
-  isNext: boolean; // Next word to be sung
-  progress: number; // 0-1, for partial word highlighting
-  isTransitionStart: boolean; // First frame of transition
+  state: 'upcoming' | 'active' | 'sung';
+  isNext?: boolean; // Next word to be sung (for anticipation glow)
+  duration?: number; // ms, for active word animation
+  isLastInLine?: boolean; // Last word often held longer
 }
 
-const Word: React.FC<WordProps> = ({ word, isHighlighted, isPast, isNext, progress, isTransitionStart }) => {
-  const isTransitioning = isHighlighted && progress > 0 && progress < 1;
+/**
+ * Detect if a word should have held note animation
+ * Based on duration and position in line
+ */
+function getHeldState(duration: number | undefined, isLastInLine: boolean): 'none' | 'held' | 'held-long' {
+  if (!duration) return 'none';
+
+  // Last words in line are more likely to be held
+  const threshold = isLastInLine ? HELD_NOTE_THRESHOLD * 0.7 : HELD_NOTE_THRESHOLD;
+  const longThreshold = isLastInLine ? HELD_LONG_THRESHOLD * 0.8 : HELD_LONG_THRESHOLD;
+
+  if (duration >= longThreshold) return 'held-long';
+  if (duration >= threshold) return 'held';
+  return 'none';
+}
+
+/**
+ * Individual word with CSS-driven animation
+ * The fill animation is handled entirely by CSS @keyframes
+ *
+ * Key: We render the fill overlay on BOTH active and sung words
+ * to prevent flicker when transitioning between words.
+ */
+const Word = memo<WordProps>(({ word, state, isNext, duration, isLastInLine = false }) => {
+  const style = state === 'active' && duration
+    ? { '--word-duration': `${duration}ms` } as React.CSSProperties
+    : undefined;
+
+  // Determine held state for active words
+  const heldState = state === 'active' ? getHeldState(duration, isLastInLine) : 'none';
 
   const className = [
-    'sing-along-word',
-    isHighlighted && !isTransitioning && 'highlighted',
-    isPast && 'past',
-    isNext && 'next-word',
-    isTransitioning && 'transitioning',
-    isTransitionStart && 'transitioning-start'
+    'sal-word',
+    `sal-word--${state}`,
+    isNext && 'sal-word--next',
+    heldState === 'held' && 'sal-word--held',
+    heldState === 'held-long' && 'sal-word--held-long'
   ].filter(Boolean).join(' ');
 
-  // For smoother effect, use CSS gradient to fill word progressively
-  const style = isTransitioning
-    ? {
-        '--word-progress': `${Math.round(progress * 100)}%`
-      } as React.CSSProperties
-    : undefined;
+  // Render fill on active AND sung words to prevent flicker
+  const showFill = state === 'active' || state === 'sung';
 
   return (
     <span className={className} style={style}>
-      {word}
+      <span className="sal-word__text">{word}</span>
+      {showFill && <span className="sal-word__fill">{word}</span>}
     </span>
   );
-};
+});
 
-export const SingAlongLine: React.FC<SingAlongLineProps> = ({
-  words,
-  currentWordIndex,
-  isActive,
-  positionMs,
-  offset
-}) => {
-  const adjustedPosition = positionMs + offset;
-  const prevWordIndexRef = React.useRef<number>(-1);
-
-  // Track if we just started a new word (for entrance animation)
-  const isNewWord = prevWordIndexRef.current !== currentWordIndex;
-  React.useEffect(() => {
-    prevWordIndexRef.current = currentWordIndex;
-  }, [currentWordIndex]);
-
-  // Calculate word states with improved timing
-  const wordStates = useMemo(() => {
-    return words.map((wordTiming, index) => {
-      const isPast = index < currentWordIndex;
-      const isHighlighted = index === currentWordIndex;
-      const isNext = index === currentWordIndex + 1;
-
-      // Calculate progress within the current word (0-1)
-      let progress = 0;
-      if (isHighlighted && wordTiming.startTime < wordTiming.endTime) {
-        const elapsed = adjustedPosition - wordTiming.startTime;
-        const duration = wordTiming.endTime - wordTiming.startTime;
-
-        // Use eased progress for smoother visual timing
-        // Apply slight ease-out for more natural feel
-        const rawProgress = Math.max(0, Math.min(1, elapsed / duration));
-        progress = easeOutQuad(rawProgress);
-      } else if (isPast) {
-        progress = 1;
-      }
-
-      return {
-        word: wordTiming.word,
-        isHighlighted,
-        isPast,
-        isNext,
-        progress,
-        isTransitionStart: isHighlighted && isNewWord && progress < 0.1
-      };
-    });
-  }, [words, currentWordIndex, adjustedPosition, isNewWord]);
-
-  // Easing function for smoother progress
-  function easeOutQuad(t: number): number {
-    return t * (2 - t);
-  }
-
-  if (words.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className={`sing-along-line ${isActive ? 'active' : ''}`}>
-      {wordStates.map((state, index) => (
-        <React.Fragment key={index}>
-          <Word {...state} />
-          {index < wordStates.length - 1 && <span className="sing-along-space"> </span>}
-        </React.Fragment>
-      ))}
-    </div>
-  );
-};
+Word.displayName = 'Word';
 
 /**
- * SingAlongLyrics - Full lyrics display with sing-along highlighting and autoscroll
+ * Single line of lyrics with word-by-word highlighting
+ */
+export const SingAlongLine = memo<SingAlongLineProps>(({
+  words,
+  currentWordIndex,
+  isActive
+}) => {
+  if (words.length === 0) return null;
+
+  return (
+    <div className={`sal-line ${isActive ? 'sal-line--active' : ''}`}>
+      {words.map((wordTiming, index) => {
+        let state: 'upcoming' | 'active' | 'sung';
+        if (index < currentWordIndex) {
+          state = 'sung';
+        } else if (index === currentWordIndex) {
+          state = 'active';
+        } else {
+          state = 'upcoming';
+        }
+
+        // Next word gets anticipation styling
+        const isNext = index === currentWordIndex + 1;
+
+        // Last word in line - often held longer in singing
+        const isLastInLine = index === words.length - 1;
+
+        const duration = state === 'active'
+          ? wordTiming.endTime - wordTiming.startTime
+          : undefined;
+
+        return (
+          <React.Fragment key={index}>
+            <Word
+              word={wordTiming.word}
+              state={state}
+              isNext={isNext}
+              duration={duration}
+              isLastInLine={isLastInLine}
+            />
+            {index < words.length - 1 && ' '}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+});
+
+SingAlongLine.displayName = 'SingAlongLine';
+
+/**
+ * Full lyrics container with auto-scrolling
  */
 interface SingAlongLyricsProps {
-  linesWithWords: Array<{ time: number; text: string; words: WordTiming[]; translation?: string }>;
+  linesWithWords: Array<{
+    time: number;
+    text: string;
+    words: WordTiming[];
+    translation?: string;
+  }>;
   currentLineIndex: number;
   currentWordIndex: number;
-  positionMs: number;
-  offset: number;
   onLineClick?: (index: number) => void;
   showTranslations?: boolean;
 }
 
-export const SingAlongLyrics: React.FC<SingAlongLyricsProps> = ({
+export const SingAlongLyrics = memo<SingAlongLyricsProps>(({
   linesWithWords,
   currentLineIndex,
   currentWordIndex,
-  positionMs,
-  offset,
   onLineClick,
   showTranslations = false
 }) => {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const activeLineRef = React.useRef<HTMLDivElement>(null);
 
-  // Autoscroll to active line with smooth animation
+  // Smooth scroll to active line
   React.useEffect(() => {
     if (!activeLineRef.current || !containerRef.current) return;
 
     const container = containerRef.current;
     const activeLine = activeLineRef.current;
-
-    // Calculate scroll position to center the active line
     const containerHeight = container.clientHeight;
     const lineTop = activeLine.offsetTop;
     const lineHeight = activeLine.clientHeight;
+
+    // Center the active line
     const scrollTarget = lineTop - (containerHeight / 2) + (lineHeight / 2);
 
-    // Smooth scroll with easing
     container.scrollTo({
       top: Math.max(0, scrollTarget),
       behavior: 'smooth'
     });
   }, [currentLineIndex]);
 
-  return (
-    <div className="sing-along-lyrics" ref={containerRef}>
-      {linesWithWords.map((line, index) => {
-        const isActive = index === currentLineIndex;
-        const isPast = index < currentLineIndex;
-        const isFuture = index > currentLineIndex;
+  const handleLineClick = useCallback((index: number) => {
+    onLineClick?.(index);
+  }, [onLineClick]);
 
-        return (
-          <div
-            key={index}
-            ref={isActive ? activeLineRef : null}
-            className={`sing-along-lyrics-line ${isActive ? 'active' : ''} ${isPast ? 'past' : ''} ${isFuture ? 'future' : ''}`}
-            onClick={() => onLineClick?.(index)}
-          >
-            <div className="sing-along-lyrics-original">
+  return (
+    <div className="sal-container" ref={containerRef}>
+      <div className="sal-lyrics">
+        {linesWithWords.map((line, index) => {
+          const isActive = index === currentLineIndex;
+          const isPast = index < currentLineIndex;
+
+          // Determine line state
+          let lineState: 'past' | 'active' | 'upcoming';
+          if (isPast) lineState = 'past';
+          else if (isActive) lineState = 'active';
+          else lineState = 'upcoming';
+
+          // For past lines, all words are sung
+          // For active line, use currentWordIndex
+          // For upcoming lines, no words are sung
+          const wordIndex = isPast ? line.words.length : (isActive ? currentWordIndex : -1);
+
+          return (
+            <div
+              key={index}
+              ref={isActive ? activeLineRef : null}
+              className={`sal-lyrics__line sal-lyrics__line--${lineState}`}
+              onClick={() => handleLineClick(index)}
+            >
               {line.words.length > 0 ? (
                 <SingAlongLine
                   words={line.words}
-                  currentWordIndex={isActive ? currentWordIndex : isPast ? line.words.length : -1}
+                  currentWordIndex={wordIndex}
                   isActive={isActive}
-                  positionMs={positionMs}
-                  offset={offset}
                 />
               ) : (
-                <span className="sing-along-empty-line">{line.text || '♪'}</span>
+                <span className="sal-lyrics__instrumental">♪</span>
+              )}
+              {showTranslations && line.translation && (
+                <div className="sal-lyrics__translation">
+                  {line.translation}
+                </div>
               )}
             </div>
-            {showTranslations && line.translation && (
-              <div className="sing-along-lyrics-translation">
-                {line.translation}
-              </div>
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
-};
+});
+
+SingAlongLyrics.displayName = 'SingAlongLyrics';
 
 export default SingAlongLine;

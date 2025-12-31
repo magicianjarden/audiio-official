@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { TitleBar } from './components/TitleBar';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { Discover } from './components/Discover/Discover';
 import { FloatingSearch } from './components/Search/FloatingSearch';
@@ -26,11 +27,16 @@ import { RecommendationExplanationProvider } from './components/RecommendationEx
 import { useNavigationStore } from './stores/navigation-store';
 import { useSearchStore } from './stores/search-store';
 import { useLibraryStore } from './stores/library-store';
+import { usePlayerStore } from './stores/player-store';
+import { useLyricsStore } from './stores/lyrics-store';
 import { useAutoQueue, usePluginAudioFeatures, useDownloadProgress, useLibraryBridge, GlobalShortcutManager, SkipTrackingManager } from './hooks';
 import { EmbeddingManager } from './components/EmbeddingManager';
 import { usePluginUIRegistry, initializePluginUIs } from './registry';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { pluginPipelineRegistry } from './components/Discover/plugin-pipeline-registry';
+import { registerBuiltinTransformers } from './components/Discover/builtin-transformers';
+import { registerCoreProviders } from './components/Discover/core-providers';
 import type { UnifiedTrack } from '@audiio/core';
 
 /**
@@ -44,7 +50,8 @@ const AutoQueueManager: React.FC = () => {
   // Combine liked tracks with playlist tracks for the available pool
   // The smart-queue-store will also fetch from APIs, search cache, etc.
   const availableTracks = React.useMemo(() => {
-    const tracks = [...likedTracks];
+    // NOTE: likedTracks is LibraryTrack[] (wrapper objects), extract the actual UnifiedTrack
+    const tracks = likedTracks.map(lt => lt.track);
     for (const playlist of playlists) {
       tracks.push(...playlist.tracks);
     }
@@ -93,6 +100,49 @@ const DownloadManager: React.FC = () => {
 const LibraryBridgeManager: React.FC = () => {
   // Mount the library bridge hook
   useLibraryBridge();
+  return null; // This component doesn't render anything
+};
+
+/**
+ * Component that prefetches lyrics when a track starts playing
+ * Ensures instant lyrics display when the panel is opened
+ */
+const LyricsPrefetchManager: React.FC = () => {
+  const currentTrack = usePlayerStore(state => state.currentTrack);
+  const prefetchLyrics = useLyricsStore(state => state.prefetchLyrics);
+
+  useEffect(() => {
+    if (currentTrack) {
+      const artistName = currentTrack.artists[0]?.name || '';
+      // Prefetch lyrics in background (non-blocking)
+      prefetchLyrics(artistName, currentTrack.title, currentTrack.id);
+    }
+  }, [currentTrack?.id, prefetchLyrics]);
+
+  return null; // This component doesn't render anything
+};
+
+/**
+ * Component that initializes the plugin pipeline with built-in transformers
+ * and core data providers. Registers default transformers for artist diversity,
+ * duplicates, etc., and providers for trending, search, artist-radio, etc.
+ */
+const PipelineManager: React.FC = () => {
+  useEffect(() => {
+    // Register core data providers (trending, search, artist-radio, etc.)
+    registerCoreProviders();
+
+    // Register built-in transformers on mount
+    registerBuiltinTransformers(pluginPipelineRegistry);
+
+    // Log pipeline stats
+    const stats = pluginPipelineRegistry.getStats();
+    console.log(
+      `[PipelineManager] Initialized with ${stats.transformers} transformers, ` +
+      `${stats.providers} providers, ${stats.enhancers} enhancers`
+    );
+  }, []);
+
   return null; // This component doesn't render anything
 };
 
@@ -189,11 +239,14 @@ export const App: React.FC = () => {
         onDislike={setDislikeTrack}
       >
         <RecommendationExplanationProvider>
+        <TitleBar />
         <div className="app">
           <AutoQueueManager />
           <PluginAudioManager />
           <DownloadManager />
           <LibraryBridgeManager />
+          <LyricsPrefetchManager />
+          <PipelineManager />
           <GlobalShortcutManager />
           <SkipTrackingManager />
           <EmbeddingManager />

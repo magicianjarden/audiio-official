@@ -1,15 +1,16 @@
 /**
  * FreshFindsSection - ML-powered discovery of new music
- * Uses high exploration factor to surface tracks outside user's comfort zone
+ * Uses the plugin pipeline for data fetching and high exploration for variety
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import { TrackCard } from '../TrackCard';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import type { BaseSectionProps } from '../section-registry';
+import type { StructuredSectionQuery } from '../types';
 
 export interface FreshFindsSectionProps extends BaseSectionProps {
   maxItems?: number;
@@ -27,41 +28,35 @@ export const FreshFindsSection: React.FC<FreshFindsSectionProps> = ({
   const { play, setQueue } = usePlayerStore();
   const { showContextMenu } = useTrackContextMenu();
 
-  const {
-    generateDiscoveryPlaylist,
-    getTracksFromPlaylist,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
-
-  // Generate discovery tracks with high exploration
-  const tracks = useMemo(() => {
-    if (!embeddingReady || tracksIndexed < 1) {
-      return [];
-    }
-
-    const playlist = generateDiscoveryPlaylist({
-      limit: maxItems,
+  // Build structured query for plugin pipeline
+  const structuredQuery: StructuredSectionQuery = {
+    strategy: 'plugin',
+    sectionType: 'fresh-finds',
+    title,
+    subtitle,
+    embedding: {
+      method: 'discovery',
       exploration: explorationLevel,
-    });
+      includeCollaborative: true,
+    },
+    limit: maxItems,
+  };
 
-    if (!playlist || playlist.tracks.length === 0) {
-      return [];
-    }
-
-    return getTracksFromPlaylist(playlist);
-  }, [embeddingReady, tracksIndexed, maxItems, explorationLevel, generateDiscoveryPlaylist, getTracksFromPlaylist]);
+  // Use plugin pipeline for data fetching
+  const { tracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: true,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: maxItems,
+  });
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     setQueue(tracks, index);
     play(track);
   };
 
-  const isLoading = !embeddingReady;
-
-  if (!isLoading && tracks.length === 0) {
-    return null;
-  }
+  // Show empty state instead of hiding completely
+  const showEmptyState = !isLoading && tracks.length === 0;
 
   return (
     <section id={id} className="discover-horizontal-section discover-fresh-finds-section">
@@ -82,6 +77,10 @@ export const FreshFindsSection: React.FC<FreshFindsSectionProps> = ({
           {[1, 2, 3, 4, 5, 6].map(i => (
             <div key={i} className="discover-card-skeleton" />
           ))}
+        </div>
+      ) : showEmptyState ? (
+        <div className="discover-empty-state">
+          <p>Discovering fresh music...</p>
         </div>
       ) : (
         <div className="discover-horizontal-scroll">

@@ -8,6 +8,7 @@ import { ThemeEditorModal } from './ThemeEditorModal';
 import { MobileAccessSettings } from './MobileAccessSettings';
 import { StorageSettings } from './StorageSettings';
 import { AudioSettings } from './AudioSettings';
+import { ComponentsSettings } from './ComponentsSettings';
 import { fetchThemeFromGitHub } from '../../utils/theme-utils';
 import {
   SettingsIcon,
@@ -185,7 +186,7 @@ const ModeToggle: React.FC<ModeToggleProps> = ({ currentMode, onChange }) => {
 // Settings Tabs
 // ========================================
 
-type SettingsTab = 'appearance' | 'audio' | 'storage' | 'mobile';
+type SettingsTab = 'appearance' | 'audio' | 'components' | 'storage' | 'mobile';
 
 // ========================================
 // Settings View
@@ -316,6 +317,13 @@ export const SettingsView: React.FC = () => {
         >
           <MusicNoteIcon size={18} />
           <span>Audio</span>
+        </button>
+        <button
+          className={`settings-tab ${activeTab === 'components' ? 'active' : ''}`}
+          onClick={() => setActiveTab('components')}
+        >
+          <ComponentsIcon size={18} />
+          <span>Components</span>
         </button>
         <button
           className={`settings-tab ${activeTab === 'storage' ? 'active' : ''}`}
@@ -463,6 +471,17 @@ export const SettingsView: React.FC = () => {
               Configure audio processing, vocal removal, crossfade, and other playback settings.
             </p>
             <AudioSettings />
+          </section>
+        )}
+
+        {/* Components Tab */}
+        {activeTab === 'components' && (
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <ComponentsIcon size={20} />
+              <h2>Optional Components</h2>
+            </div>
+            <ComponentsSettings />
           </section>
         )}
 
@@ -632,5 +651,12 @@ export const SettingsView: React.FC = () => {
 const MobileAccessIcon: React.FC<{ size: number }> = ({ size }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
     <path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/>
+  </svg>
+);
+
+// Components Icon (package/box)
+const ComponentsIcon: React.FC<{ size: number }> = ({ size }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M20 2H4c-1 0-2 .9-2 2v3.01c0 .72.43 1.34 1 1.69V20c0 1.1 1.1 2 2 2h14c.9 0 2-.9 2-2V8.7c.57-.35 1-.97 1-1.69V4c0-1.1-1-2-2-2zm-5 12H9v-2h6v2zm5-7H4V4h16v3z"/>
   </svg>
 );

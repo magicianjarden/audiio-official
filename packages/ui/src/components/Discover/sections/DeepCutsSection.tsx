@@ -1,6 +1,7 @@
 /**
  * DeepCutsSection - ML-powered deep cuts and hidden gems
  * Uses seed-based similarity to find lesser-known tracks similar to favorites
+ * Uses the UNIFIED plugin pipeline for data (embedding provider handles similar)
  */
 
 import React, { useMemo } from 'react';
@@ -9,8 +10,9 @@ import { TrackCard } from '../TrackCard';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
 import { useLibraryStore } from '../../../stores/library-store';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import type { BaseSectionProps } from '../section-registry';
+import type { StructuredSectionQuery } from '../types';
 
 export interface DeepCutsSectionProps extends BaseSectionProps {
   maxItems?: number;
@@ -27,51 +29,44 @@ export const DeepCutsSection: React.FC<DeepCutsSectionProps> = ({
   const { showContextMenu } = useTrackContextMenu();
   const { likedTracks } = useLibraryStore();
 
-  const {
-    generateSeedPlaylist,
-    getTracksFromPlaylist,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
-
-  // Use liked tracks as seeds for finding similar deep cuts
-  const tracks = useMemo(() => {
-    if (!embeddingReady || tracksIndexed < 1) {
-      return [];
-    }
-
-    // Use up to 5 random liked tracks as seeds
-    const seedIds = likedTracks
+  // Get seed track IDs from liked tracks
+  // NOTE: likedTracks is LibraryTrack[], extract the actual track.id
+  const seedIds = useMemo(() => {
+    return likedTracks
       .sort(() => Math.random() - 0.5)
       .slice(0, 5)
-      .map(t => t.id);
+      .map(lt => lt.track.id);
+  }, [likedTracks]);
 
-    if (seedIds.length === 0) {
-      return [];
-    }
+  // Build structured query for the unified pipeline
+  // embeddingProvider will handle this with similar/seed-based generation
+  const structuredQuery = useMemo((): StructuredSectionQuery => ({
+    strategy: 'plugin',
+    sectionType: 'deep-cuts',
+    title,
+    subtitle,
+    embedding: {
+      method: 'similar',
+      seedTrackIds: seedIds,
+      exploration: 0.6, // Higher exploration for deep cuts
+    },
+    limit: maxItems,
+  }), [title, subtitle, seedIds, maxItems]);
 
-    const playlist = generateSeedPlaylist(seedIds, {
-      limit: maxItems,
-      exploration: 0.6, // Moderate exploration for deep cuts
-    });
-
-    if (!playlist || playlist.tracks.length === 0) {
-      return [];
-    }
-
-    // Filter out the seed tracks themselves
-    const seedSet = new Set(seedIds);
-    return getTracksFromPlaylist(playlist).filter(t => !seedSet.has(t.id));
-  }, [embeddingReady, tracksIndexed, maxItems, likedTracks, generateSeedPlaylist, getTracksFromPlaylist]);
+  // Use unified plugin pipeline - embeddingProvider handles similar
+  const { tracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: seedIds.length > 0,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: maxItems,
+  });
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     setQueue(tracks, index);
     play(track);
   };
 
-  const isLoading = !embeddingReady;
-
-  // Need liked tracks and embedding ready
+  // Need liked tracks and tracks to show
   if (likedTracks.length === 0 || (!isLoading && tracks.length === 0)) {
     return null;
   }

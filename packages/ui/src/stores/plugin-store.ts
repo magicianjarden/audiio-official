@@ -289,11 +289,16 @@ export const usePluginStore = create<PluginState>()(
       removePlugin: async (pluginId) => {
         try {
           // Call backend to uninstall the plugin
-          if (window.api?.uninstallAddon) {
-            await window.api.uninstallAddon(pluginId);
+          // The API is under repositories.uninstallPlugin
+          if (window.api?.repositories?.uninstallPlugin) {
+            const result = await window.api.repositories.uninstallPlugin(pluginId);
+            if (!result.success) {
+              throw new Error(result.error || 'Uninstall failed');
+            }
             console.log(`[PluginStore] Plugin ${pluginId} uninstalled`);
           } else {
-            console.warn('[PluginStore] uninstallAddon API not available');
+            console.warn('[PluginStore] No uninstall API available');
+            throw new Error('Uninstall API not available');
           }
 
           // Remove from local state

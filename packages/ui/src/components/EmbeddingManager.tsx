@@ -63,7 +63,8 @@ export const EmbeddingManager: React.FC = () => {
     }
 
     // Combine liked tracks with playlist tracks
-    const allTracks: UnifiedTrack[] = [...likedTracks];
+    // NOTE: likedTracks is LibraryTrack[] (wrapper objects), extract the actual UnifiedTrack
+    const allTracks: UnifiedTrack[] = likedTracks.map(lt => lt.track);
     for (const playlist of playlists) {
       if (playlist.tracks) {
         allTracks.push(...playlist.tracks);

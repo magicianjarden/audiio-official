@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLibraryStore } from '../../stores/library-store';
 import { useNavigationStore } from '../../stores/navigation-store';
+import { usePlayerStore } from '../../stores/player-store';
 import { useUIStore } from '../../stores/ui-store';
 import { PlaylistCover } from '../common/PlaylistCover';
 import { InputModal } from '../Modals/InputModal';
+import { LibraryActionBar, SortOption } from './LibraryActionBar';
 import {
   PlaylistIcon,
   PlayIcon,
@@ -11,15 +13,60 @@ import {
   CloseIcon,
 } from '@audiio/icons';
 
+const SORT_OPTIONS: SortOption[] = [
+  { value: 'recent', label: 'Recently Created' },
+  { value: 'name', label: 'Name A-Z' },
+  { value: 'name-desc', label: 'Name Z-A' },
+  { value: 'tracks', label: 'Most Songs' },
+  { value: 'tracks-asc', label: 'Fewest Songs' },
+];
+
 export const PlaylistsView: React.FC = () => {
   const { playlists, createPlaylist, deletePlaylist } = useLibraryStore();
   const { openPlaylist } = useNavigationStore();
+  const { play, setQueue } = usePlayerStore();
   const {
     isCreatePlaylistModalOpen,
     openCreatePlaylistModal,
     closeCreatePlaylistModal,
   } = useUIStore();
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('recent');
+
+  const filteredAndSortedPlaylists = useMemo(() => {
+    let filtered = [...playlists];
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(playlist =>
+        playlist.name.toLowerCase().includes(query)
+      );
+    }
+
+    // Sort playlists
+    switch (sortBy) {
+      case 'name':
+        filtered.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case 'name-desc':
+        filtered.sort((a, b) => b.name.localeCompare(a.name));
+        break;
+      case 'tracks':
+        filtered.sort((a, b) => b.tracks.length - a.tracks.length);
+        break;
+      case 'tracks-asc':
+        filtered.sort((a, b) => a.tracks.length - b.tracks.length);
+        break;
+      case 'recent':
+      default:
+        // Keep original order (most recent first)
+        break;
+    }
+
+    return filtered;
+  }, [playlists, searchQuery, sortBy]);
 
   const handleCreatePlaylist = (name: string) => {
     const playlist = createPlaylist(name);
@@ -38,6 +85,15 @@ export const PlaylistsView: React.FC = () => {
     }
   };
 
+  const handlePlayPlaylist = (e: React.MouseEvent, playlistId: string) => {
+    e.stopPropagation();
+    const playlist = playlists.find(p => p.id === playlistId);
+    if (playlist && playlist.tracks.length > 0) {
+      setQueue(playlist.tracks, 0);
+      play(playlist.tracks[0]!);
+    }
+  };
+
   return (
     <div className="library-view">
       <header className="library-header">
@@ -49,13 +105,20 @@ export const PlaylistsView: React.FC = () => {
         </div>
       </header>
 
-      <div className="library-actions">
-        <button className="library-create-button" onClick={openCreatePlaylistModal}>
-          <AddIcon size={18} /> Create Playlist
-        </button>
-      </div>
+      {playlists.length > 0 && (
+        <LibraryActionBar
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          searchPlaceholder="Search playlists..."
+          sortOptions={SORT_OPTIONS}
+          currentSort={sortBy}
+          onSortChange={setSortBy}
+          totalCount={playlists.length}
+          filteredCount={filteredAndSortedPlaylists.length}
+        />
+      )}
 
-      <div className="playlists-grid">
+      <div className="library-content playlists-grid">
         {playlists.length === 0 ? (
           <div className="library-empty library-empty-centered">
             <div className="library-empty-icon"><PlaylistIcon size={48} /></div>
@@ -65,8 +128,14 @@ export const PlaylistsView: React.FC = () => {
               <AddIcon size={18} /> Create Playlist
             </button>
           </div>
+        ) : filteredAndSortedPlaylists.length === 0 ? (
+          <div className="library-empty library-empty-centered">
+            <div className="library-empty-icon"><PlaylistIcon size={48} /></div>
+            <h3>No matching playlists</h3>
+            <p>Try a different search term</p>
+          </div>
         ) : (
-          playlists.map((playlist) => (
+          filteredAndSortedPlaylists.map((playlist) => (
             <div
               key={playlist.id}
               className="playlist-card"
@@ -79,7 +148,13 @@ export const PlaylistsView: React.FC = () => {
                   size="lg"
                 />
                 <div className="playlist-card-overlay">
-                  <button className="playlist-card-play"><PlayIcon size={24} /></button>
+                  <button
+                    className="playlist-card-play"
+                    onClick={(e) => handlePlayPlaylist(e, playlist.id)}
+                    disabled={playlist.tracks.length === 0}
+                  >
+                    <PlayIcon size={24} />
+                  </button>
                 </div>
               </div>
               <div className="playlist-card-info">

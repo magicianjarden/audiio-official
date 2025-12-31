@@ -85,11 +85,15 @@ export const PlaylistIcon: React.FC<IconProps> = ({ size = 24, className, ...pro
     className={className}
     {...props}
   >
-    <line x1="3" y1="6" x2="15" y2="6" />
-    <line x1="3" y1="12" x2="13" y2="12" />
-    <line x1="3" y1="18" x2="11" y2="18" />
-    <circle cx="18" cy="15" r="3" />
-    <path d="M21 12v6" />
+    {/* Stacked list items representing tracks in a playlist */}
+    <rect x="3" y="4" width="2" height="2" rx="0.5" fill="currentColor" stroke="none" />
+    <line x1="8" y1="5" x2="21" y2="5" />
+    <rect x="3" y="9" width="2" height="2" rx="0.5" fill="currentColor" stroke="none" />
+    <line x1="8" y1="10" x2="21" y2="10" />
+    <rect x="3" y="14" width="2" height="2" rx="0.5" fill="currentColor" stroke="none" />
+    <line x1="8" y1="15" x2="21" y2="15" />
+    <rect x="3" y="19" width="2" height="2" rx="0.5" fill="currentColor" stroke="none" />
+    <line x1="8" y1="20" x2="17" y2="20" />
   </svg>
 );
 
@@ -106,11 +110,16 @@ export const PlaylistAddIcon: React.FC<IconProps> = ({ size = 24, className, ...
     className={className}
     {...props}
   >
-    <line x1="3" y1="6" x2="15" y2="6" />
-    <line x1="3" y1="12" x2="13" y2="12" />
-    <line x1="3" y1="18" x2="10" y2="18" />
-    <line x1="17" y1="14" x2="17" y2="20" />
-    <line x1="14" y1="17" x2="20" y2="17" />
+    {/* List items with add button */}
+    <rect x="3" y="4" width="2" height="2" rx="0.5" fill="currentColor" stroke="none" />
+    <line x1="8" y1="5" x2="21" y2="5" />
+    <rect x="3" y="9" width="2" height="2" rx="0.5" fill="currentColor" stroke="none" />
+    <line x1="8" y1="10" x2="21" y2="10" />
+    <rect x="3" y="14" width="2" height="2" rx="0.5" fill="currentColor" stroke="none" />
+    <line x1="8" y1="15" x2="14" y2="15" />
+    {/* Plus sign */}
+    <line x1="18" y1="14" x2="18" y2="20" />
+    <line x1="15" y1="17" x2="21" y2="17" />
   </svg>
 );
 
@@ -316,12 +325,41 @@ export const KaraokeIcon: React.FC<IconProps> = ({ size = 24, className, ...prop
     className={className}
     {...props}
   >
+    {/* Microphone with vocal waves - represents vocal removal/karaoke mode */}
     <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
     <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
     <line x1="12" y1="19" x2="12" y2="23" />
     <path d="M16 22h-8" />
+    {/* Sound waves indicating vocal track */}
     <path d="M3 6l2 2 2-2" />
     <path d="M19 6l2 2 2-2" />
+  </svg>
+);
+
+// Sing-Along Icon - Text lines with bouncing highlight indicator
+// Represents word-by-word karaoke-style text highlighting
+export const SingAlongIcon: React.FC<IconProps> = ({ size = 24, className, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    {/* Text lines representing lyrics */}
+    <path d="M4 7h16" />
+    <path d="M4 12h12" />
+    <path d="M4 17h8" />
+    {/* Bouncing ball / highlight indicator */}
+    <circle cx="19" cy="12" r="3" fill="currentColor" stroke="none" />
+    {/* Motion trail indicating progression */}
+    <path d="M19 7v2" strokeWidth="2.5" strokeLinecap="round" />
+    <path d="M19 15v2" strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
   </svg>
 );
 

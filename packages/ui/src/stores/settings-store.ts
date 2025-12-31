@@ -46,6 +46,11 @@ interface SettingsState {
   // Demucs / Vocal Removal settings
   demucsConfig: DemucsResourceConfig;
 
+  // Demucs Component (optional install)
+  demucsInstalled: boolean;
+  demucsEnabled: boolean;
+  demucsVersion: string | null;
+
   // Actions
   setDownloadFolder: (path: string | null) => void;
   setPluginFolder: (path: string | null) => void;
@@ -58,6 +63,9 @@ interface SettingsState {
   setDownloadQuality: (quality: 'high' | 'medium' | 'low') => void;
   setAutoDownloadLikes: (enabled: boolean) => void;
   updateDemucsConfig: (updates: Partial<DemucsResourceConfig>) => void;
+  setDemucsInstalled: (installed: boolean) => void;
+  setDemucsEnabled: (enabled: boolean) => void;
+  setDemucsVersion: (version: string | null) => void;
 }
 
 // Generate unique ID for folders
@@ -95,6 +103,11 @@ export const useSettingsStore = create<SettingsState>()(
         preferredModel: 'htdemucs',
         autoEnableHQ: true,
       },
+
+      // Demucs Component state
+      demucsInstalled: false,
+      demucsEnabled: true, // Enabled by default when installed
+      demucsVersion: null,
 
       // Actions
       setDownloadFolder: (path) => {
@@ -162,6 +175,21 @@ export const useSettingsStore = create<SettingsState>()(
         }));
         syncWithMainProcess('demucsConfig', get().demucsConfig);
       },
+
+      setDemucsInstalled: (installed) => {
+        set({ demucsInstalled: installed });
+        syncWithMainProcess('demucsInstalled', installed);
+      },
+
+      setDemucsEnabled: (enabled) => {
+        set({ demucsEnabled: enabled });
+        syncWithMainProcess('demucsEnabled', enabled);
+      },
+
+      setDemucsVersion: (version) => {
+        set({ demucsVersion: version });
+        syncWithMainProcess('demucsVersion', version);
+      },
     }),
     {
       name: 'audiio-settings',
@@ -178,6 +206,9 @@ export const useSettingsStore = create<SettingsState>()(
         downloadQuality: state.downloadQuality,
         autoDownloadLikes: state.autoDownloadLikes,
         demucsConfig: state.demucsConfig,
+        demucsInstalled: state.demucsInstalled,
+        demucsEnabled: state.demucsEnabled,
+        demucsVersion: state.demucsVersion,
       }),
     }
   )

@@ -1,17 +1,16 @@
 /**
  * BecauseYouLikeSection - "Because you like [Artist]" personalized recommendations
- * Can have multiple instances, each based on a different top artist
- * Uses embedding-based artist radio with ML ranking fallback
+ * Uses the plugin pipeline for data fetching and ML ranking
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import { TrackCard } from '../TrackCard';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import type { BaseSectionProps } from '../section-registry';
-import { debugLog } from '../../../utils/debug';
+import type { StructuredSectionQuery } from '../types';
 
 export interface BecauseYouLikeSectionProps extends BaseSectionProps {
   artistIndex?: number; // Which top artist to use (0, 1, 2, etc.)
@@ -29,49 +28,40 @@ export const BecauseYouLikeSection: React.FC<BecauseYouLikeSectionProps> = ({
   const { play, setQueue } = usePlayerStore();
   const { showContextMenu } = useTrackContextMenu();
 
-  // Embedding-based playlist generation
-  const {
-    generateArtistRadio,
-    getTracksFromPlaylist,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
+  // Get target artist from context with rotation for variety
+  // Rotate through top artists based on current date + artistIndex offset
+  const artistCount = context?.topArtists?.length || 0;
+  const dayOfYear = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
+  const rotatedIndex = artistCount > 0 ? (dayOfYear + artistIndex) % artistCount : artistIndex;
 
-  // Get target artist from context
-  const targetArtist = context?.topArtists?.[artistIndex];
+  const targetArtist = context?.topArtists?.[rotatedIndex];
   const artistId = targetArtist?.toLowerCase().replace(/\s+/g, '-');
   const artistName = targetArtist || '';
 
-  // Use embedding-based generation only
-  const tracks = useMemo(() => {
-    if (!artistId) {
-      return [];
-    }
+  // Build structured query for plugin pipeline
+  const structuredQuery: StructuredSectionQuery | null = artistId
+    ? {
+        strategy: 'plugin',
+        sectionType: 'because-you-like',
+        title: title || `Because you like ${artistName}`,
+        embedding: {
+          method: 'artist-radio',
+          seedArtistId: artistId,
+          artistName: artistName,
+          exploration: 0.3,
+          includeCollaborative: true,
+        },
+        limit: maxItems,
+      }
+    : null;
 
-    if (!embeddingReady) {
-      debugLog('[BecauseYouLike]', 'Embedding not ready');
-      return [];
-    }
-
-    if (tracksIndexed < 1) {
-      debugLog('[BecauseYouLike]', 'No tracks indexed');
-      return [];
-    }
-
-    const playlist = generateArtistRadio(artistId, { limit: maxItems });
-    if (!playlist || playlist.tracks.length === 0) {
-      debugLog('[BecauseYouLike]', `No tracks for artist "${targetArtist}"`);
-      return [];
-    }
-
-    debugLog(
-      '[BecauseYouLike]',
-      `Generated "${targetArtist}" playlist: ${playlist.tracks.length} tracks (indexed: ${tracksIndexed})`
-    );
-    return getTracksFromPlaylist(playlist);
-  }, [artistId, embeddingReady, tracksIndexed, maxItems, generateArtistRadio, getTracksFromPlaylist, targetArtist]);
-
-  const isLoading = artistId && !embeddingReady;
+  // Use plugin pipeline for data fetching
+  const { tracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: !!artistId,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: maxItems,
+  });
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     setQueue(tracks, index);

@@ -1,6 +1,7 @@
 /**
  * TopMixSection - Pure taste profile-based recommendations
  * Your personal mix based entirely on your taste profile
+ * Uses the UNIFIED plugin pipeline for data (embedding provider handles personalization)
  */
 
 import React, { useMemo } from 'react';
@@ -8,10 +9,10 @@ import type { UnifiedTrack } from '@audiio/core';
 import { TrackCard } from '../TrackCard';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import { BaseSectionWrapper } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
-import { debugLog } from '../../../utils/debug';
+import type { StructuredSectionQuery } from '../types';
 
 export interface TopMixSectionProps extends BaseSectionProps {
   maxItems?: number;
@@ -28,45 +29,45 @@ export const TopMixSection: React.FC<TopMixSectionProps> = ({
   const { play, setQueue } = usePlayerStore();
   const { showContextMenu } = useTrackContextMenu();
 
-  const {
-    generatePersonalizedPlaylist,
-    getTracksFromPlaylist,
-    getTasteStats,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
-
-  const tasteStats = getTasteStats();
-
-  const tracks = useMemo(() => {
-    if (!embeddingReady || tracksIndexed < 1) {
-      return [];
+  // Build subtitle from context if available
+  const dynamicSubtitle = useMemo(() => {
+    if (context?.topGenres?.length) {
+      const genreText = context.topGenres.slice(0, 2).join(', ');
+      return genreText ? `${genreText} and more` : subtitle;
     }
+    return subtitle;
+  }, [context?.topGenres, subtitle]);
 
-    // Moderate exploration for balanced mix
-    const playlist = generatePersonalizedPlaylist({
-      limit: maxItems,
-      exploration: 0.2,
-    });
+  // Build structured query for the unified pipeline
+  // embeddingProvider will handle this with personalized ML generation
+  const structuredQuery = useMemo((): StructuredSectionQuery => ({
+    strategy: 'plugin',
+    sectionType: 'top-mix',
+    title,
+    subtitle: dynamicSubtitle,
+    embedding: {
+      method: 'personalized',
+      exploration: 0.2, // Moderate exploration for balanced mix
+    },
+    limit: maxItems,
+  }), [title, dynamicSubtitle, maxItems]);
 
-    if (!playlist) return [];
-
-    debugLog('[TopMix]', `Generated playlist: ${playlist.tracks.length} tracks`);
-    return getTracksFromPlaylist(playlist);
-  }, [embeddingReady, tracksIndexed, maxItems, generatePersonalizedPlaylist, getTracksFromPlaylist]);
+  // Use unified plugin pipeline - embeddingProvider handles personalization
+  const { tracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: true,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: maxItems,
+  });
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     setQueue(tracks, index);
     play(track);
   };
 
-  if (!embeddingReady || tracks.length === 0 || !tasteStats.isValid) {
+  if (!isLoading && tracks.length === 0) {
     return null;
   }
-
-  // Build subtitle with top genres
-  const genreText = tasteStats.topGenres.slice(0, 2).join(', ');
-  const dynamicSubtitle = genreText ? `${genreText} and more` : subtitle;
 
   return (
     <BaseSectionWrapper
@@ -79,16 +80,24 @@ export const TopMixSection: React.FC<TopMixSectionProps> = ({
       onSeeAll={onSeeAll}
       className="top-mix-section"
     >
-      <div className="discover-horizontal-scroll">
-        {tracks.map((track, index) => (
-          <TrackCard
-            key={track.id}
-            track={track}
-            onClick={() => handleTrackClick(track, index)}
-            onContextMenu={showContextMenu}
-          />
-        ))}
-      </div>
+      {isLoading ? (
+        <div className="discover-horizontal-scroll">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="discover-card-skeleton" />
+          ))}
+        </div>
+      ) : (
+        <div className="discover-horizontal-scroll">
+          {tracks.map((track, index) => (
+            <TrackCard
+              key={track.id}
+              track={track}
+              onClick={() => handleTrackClick(track, index)}
+              onContextMenu={showContextMenu}
+            />
+          ))}
+        </div>
+      )}
     </BaseSectionWrapper>
   );
 };

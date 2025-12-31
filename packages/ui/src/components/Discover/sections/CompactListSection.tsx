@@ -32,10 +32,11 @@ export const CompactListSection: React.FC<CompactListSectionProps> = ({
     play(track);
   };
 
-  const formatDuration = (ms: number) => {
-    const minutes = Math.floor(ms / 60000);
-    const seconds = Math.floor((ms % 60000) / 1000);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  const formatDuration = (seconds: number) => {
+    if (!seconds) return '--:--';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   if (!isLoading && (!tracks || tracks.length === 0)) {

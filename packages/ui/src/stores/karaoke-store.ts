@@ -8,12 +8,15 @@
 
 import { create } from 'zustand';
 
+export type KaraokeQualityMode = 'auto' | 'quality' | 'balanced' | 'fast';
+
 interface KaraokeState {
   // State
   isAvailable: boolean;      // Server is running and responsive
   isEnabled: boolean;        // User has enabled karaoke mode
   isProcessing: boolean;     // Currently processing a track
   vocalReduction: number;    // 0-1, how much to reduce vocals (1 = full karaoke)
+  qualityMode: KaraokeQualityMode; // Quality/speed tradeoff
   processedTracks: Set<string>; // Track IDs with cached instrumentals
   currentInstrumentalUrl: string | null; // Current track's instrumental URL
 
@@ -28,6 +31,7 @@ interface KaraokeState {
   disable: () => void;
   setProcessing: (processing: boolean) => void;
   setVocalReduction: (level: number) => void;
+  setQualityMode: (mode: KaraokeQualityMode) => void;
   addProcessedTrack: (trackId: string) => void;
   setCurrentInstrumentalUrl: (url: string | null) => void;
   reset: () => void;
@@ -39,6 +43,7 @@ export const useKaraokeStore = create<KaraokeState>()((set, get) => ({
   isEnabled: false,
   isProcessing: false,
   vocalReduction: 1, // Default to full karaoke when enabled
+  qualityMode: 'auto', // Auto-detect best settings
   processedTracks: new Set(),
   currentInstrumentalUrl: null,
 
@@ -88,6 +93,10 @@ export const useKaraokeStore = create<KaraokeState>()((set, get) => ({
     set({ vocalReduction: Math.max(0, Math.min(1, level)) });
   },
 
+  setQualityMode: (mode) => {
+    set({ qualityMode: mode });
+  },
+
   addProcessedTrack: (trackId) => {
     set((state) => ({
       processedTracks: new Set(state.processedTracks).add(trackId)
@@ -103,6 +112,7 @@ export const useKaraokeStore = create<KaraokeState>()((set, get) => ({
       isEnabled: false,
       isProcessing: false,
       vocalReduction: 1,
+      qualityMode: 'auto',
       currentInstrumentalUrl: null
     });
   }

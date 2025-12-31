@@ -58,7 +58,22 @@ export type {
   HLSConversionOptions,
   ConversionResult,
   FFmpegProgress,
-  ProgressCallback
+  ProgressCallback,
+
+  // Pipeline types (for Discover integrations)
+  QueryStrategy,
+  EmbeddingMethod,
+  EmbeddingContext,
+  SearchContext,
+  StructuredSectionQuery,
+  PipelineContext,
+  ResultTransformer,
+  DataProvider,
+  QueryEnhancer,
+  PipelineResult,
+  PipelineConfig,
+  PipelineRegistrationOptions,
+  PluginPipelineAPI
 } from '@audiio/core';
 
 // Media processing

@@ -83,11 +83,10 @@ export const ChartListSection: React.FC<ChartListSectionProps> = ({
     play(track);
   };
 
-  const formatDuration = (ms?: number): string => {
-    if (!ms) return '--:--';
-    const totalSeconds = Math.floor(ms / 1000);
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
+  const formatDuration = (seconds?: number): string => {
+    if (!seconds) return '--:--';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 

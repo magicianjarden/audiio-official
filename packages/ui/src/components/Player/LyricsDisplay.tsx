@@ -3,7 +3,7 @@ import { useLyricsStore } from '../../stores/lyrics-store';
 import { usePluginStore } from '../../stores/plugin-store';
 import { usePlayerStore } from '../../stores/player-store';
 import { useTranslatedLyrics } from '../../hooks/useTranslatedLyrics';
-import { ChevronUpIcon, ChevronDownIcon, BlockIcon, MicIcon } from '@audiio/icons';
+import { ChevronUpIcon, ChevronDownIcon, BlockIcon, SingAlongIcon } from '@audiio/icons';
 import { TranslationToggle } from './TranslationToggle';
 import { SingAlongLine } from '../Lyrics/SingAlongLine';
 
@@ -157,7 +157,7 @@ export const LyricsDisplay: React.FC<LyricsDisplayProps> = ({ onSeek, compact = 
               onClick={() => setSingAlongEnabled(!singAlongEnabled)}
               title={singAlongEnabled ? 'Disable Sing-Along' : 'Enable Sing-Along'}
             >
-              <MicIcon size={16} />
+              <SingAlongIcon size={16} />
             </button>
             <TranslationToggle />
           </div>
@@ -187,8 +187,6 @@ export const LyricsDisplay: React.FC<LyricsDisplayProps> = ({ onSeek, compact = 
                       words={wordTimings}
                       currentWordIndex={isActive ? currentWordIndex : isPast ? wordTimings.length : -1}
                       isActive={isActive}
-                      positionMs={position}
-                      offset={offset}
                     />
                   ) : (
                     <span className="lyrics-line-original">{line.text || '\u00A0'}</span>

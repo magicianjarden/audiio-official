@@ -71,10 +71,11 @@ export const MixView: React.FC = () => {
     play(track);
   };
 
-  const formatDuration = (ms: number) => {
-    const minutes = Math.floor(ms / 60000);
-    const seconds = Math.floor((ms % 60000) / 1000);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  const formatDuration = (seconds: number) => {
+    if (!seconds) return '--:--';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const gradient = selectedMixData.gradient || 'linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%)';

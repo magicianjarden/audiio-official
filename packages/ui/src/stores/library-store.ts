@@ -40,12 +40,18 @@ export interface Download {
   completedAt?: Date;
 }
 
-interface LibraryState {
-  // Liked tracks
-  likedTracks: UnifiedTrack[];
+// Library track with metadata (timestamp, etc.)
+export interface LibraryTrack {
+  track: UnifiedTrack;
+  addedAt: number; // Unix timestamp in milliseconds
+}
 
-  // Disliked tracks
-  dislikedTracks: UnifiedTrack[];
+interface LibraryState {
+  // Liked tracks (with timestamps)
+  likedTracks: LibraryTrack[];
+
+  // Disliked tracks (with timestamps)
+  dislikedTracks: LibraryTrack[];
 
   // Playlists
   playlists: Playlist[];
@@ -113,21 +119,25 @@ export const useLibraryStore = create<LibraryState>()(
       // Likes
       likeTrack: (track) => {
         set((state) => {
-          if (state.likedTracks.some(t => t.id === track.id)) {
+          if (state.likedTracks.some(t => t.track.id === track.id)) {
             return state;
           }
-          return { likedTracks: [track, ...state.likedTracks] };
+          const libraryTrack: LibraryTrack = {
+            track,
+            addedAt: Date.now()
+          };
+          return { likedTracks: [libraryTrack, ...state.likedTracks] };
         });
       },
 
       unlikeTrack: (trackId) => {
         set((state) => ({
-          likedTracks: state.likedTracks.filter(t => t.id !== trackId)
+          likedTracks: state.likedTracks.filter(t => t.track.id !== trackId)
         }));
       },
 
       isLiked: (trackId) => {
-        return get().likedTracks.some(t => t.id === trackId);
+        return get().likedTracks.some(t => t.track.id === trackId);
       },
 
       toggleLike: (track) => {
@@ -142,21 +152,25 @@ export const useLibraryStore = create<LibraryState>()(
       // Dislikes
       dislikeTrack: (track) => {
         set((state) => {
-          if (state.dislikedTracks.some(t => t.id === track.id)) {
+          if (state.dislikedTracks.some(t => t.track.id === track.id)) {
             return state;
           }
-          return { dislikedTracks: [track, ...state.dislikedTracks] };
+          const libraryTrack: LibraryTrack = {
+            track,
+            addedAt: Date.now()
+          };
+          return { dislikedTracks: [libraryTrack, ...state.dislikedTracks] };
         });
       },
 
       undislikeTrack: (trackId) => {
         set((state) => ({
-          dislikedTracks: state.dislikedTracks.filter(t => t.id !== trackId)
+          dislikedTracks: state.dislikedTracks.filter(t => t.track.id !== trackId)
         }));
       },
 
       isDisliked: (trackId) => {
-        return get().dislikedTracks.some(t => t.id === trackId);
+        return get().dislikedTracks.some(t => t.track.id === trackId);
       },
 
       toggleDislike: (track) => {
@@ -533,9 +547,10 @@ export const useLibraryStore = create<LibraryState>()(
     }),
     {
       name: 'audiio-library',
-      version: 2,
+      version: 3,
       migrate: (persistedState: unknown, version: number) => {
-        const state = persistedState as Record<string, unknown>;
+        let state = persistedState as Record<string, unknown>;
+
         if (version < 2) {
           // Migration from v1 to v2: Add folderId and order to playlists
           const playlists = (state.playlists as Array<Record<string, unknown>> || []).map((p, i) => ({
@@ -543,12 +558,37 @@ export const useLibraryStore = create<LibraryState>()(
             folderId: p.folderId ?? null,
             order: p.order ?? i
           }));
-          return {
+          state = {
             ...state,
             playlists,
             folders: []
           };
         }
+
+        if (version < 3) {
+          // Migration from v2 to v3: Wrap liked/disliked tracks with timestamps
+          const migrateToLibraryTrack = (tracks: unknown[]): LibraryTrack[] => {
+            if (!Array.isArray(tracks)) return [];
+            return tracks.map((item, index) => {
+              // Check if already migrated (has track property)
+              if (item && typeof item === 'object' && 'track' in item && 'addedAt' in item) {
+                return item as LibraryTrack;
+              }
+              // Old format - just a track, add timestamp (older items get earlier timestamps)
+              return {
+                track: item as UnifiedTrack,
+                addedAt: Date.now() - (tracks.length - index) * 1000 // Space them 1 second apart
+              };
+            });
+          };
+
+          state = {
+            ...state,
+            likedTracks: migrateToLibraryTrack(state.likedTracks as unknown[]),
+            dislikedTracks: migrateToLibraryTrack(state.dislikedTracks as unknown[])
+          };
+        }
+
         return state;
       },
       partialize: (state) => ({

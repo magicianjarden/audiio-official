@@ -1,6 +1,7 @@
 /**
  * LyricsHighlightSection - Shows tracks with notable lyrics
  * Dynamically uses any available lyrics-provider plugin
+ * Uses the UNIFIED plugin pipeline for data (embedding provider handles personalization)
  */
 
 import React, { useMemo } from 'react';
@@ -9,8 +10,9 @@ import { TrackCard } from '../TrackCard';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
 import { usePluginStore } from '../../../stores/plugin-store';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import type { BaseSectionProps } from '../section-registry';
+import type { StructuredSectionQuery } from '../types';
 
 export interface LyricsHighlightSectionProps extends BaseSectionProps {
   maxItems?: number;
@@ -31,26 +33,30 @@ export const LyricsHighlightSection: React.FC<LyricsHighlightSectionProps> = ({
   const hasLyricsProvider = hasCapability('lyrics-provider');
   const lyricsPlugins = getPluginsByRole('lyrics-provider');
 
-  const {
-    generatePersonalizedPlaylist,
-    getTracksFromPlaylist,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
+  const sectionTitle = title;
+  const sectionSubtitle = subtitle || `Powered by ${lyricsPlugins[0]?.name || 'lyrics provider'}`;
 
-  // Generate tracks - prioritize ones that work well with lyrics
-  const tracks = useMemo(() => {
-    if (!embeddingReady || tracksIndexed < 1) {
-      return [];
-    }
+  // Build structured query for the unified pipeline
+  // embeddingProvider will handle this with personalized generation
+  const structuredQuery = useMemo((): StructuredSectionQuery => ({
+    strategy: 'plugin',
+    sectionType: 'lyrics-highlight',
+    title: sectionTitle,
+    subtitle: sectionSubtitle,
+    embedding: {
+      method: 'personalized',
+      exploration: 0.25,
+    },
+    limit: maxItems,
+  }), [sectionTitle, sectionSubtitle, maxItems]);
 
-    const playlist = generatePersonalizedPlaylist({ limit: maxItems });
-    if (!playlist || playlist.tracks.length === 0) {
-      return [];
-    }
-
-    return getTracksFromPlaylist(playlist);
-  }, [embeddingReady, tracksIndexed, maxItems, generatePersonalizedPlaylist, getTracksFromPlaylist]);
+  // Use unified plugin pipeline - embeddingProvider handles personalization
+  const { tracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: hasLyricsProvider,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: maxItems,
+  });
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     setQueue(tracks, index);
@@ -58,12 +64,9 @@ export const LyricsHighlightSection: React.FC<LyricsHighlightSectionProps> = ({
   };
 
   // Hide if no lyrics capability or no tracks
-  if (!hasLyricsProvider || (!embeddingReady && tracksIndexed < 1) || tracks.length === 0) {
+  if (!hasLyricsProvider || (!isLoading && tracks.length === 0)) {
     return null;
   }
-
-  const sectionTitle = title;
-  const sectionSubtitle = subtitle || `Powered by ${lyricsPlugins[0]?.name || 'lyrics provider'}`;
 
   return (
     <section id={id} className="discover-horizontal-section discover-lyrics-section">

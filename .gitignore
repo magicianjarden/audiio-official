@@ -36,3 +36,9 @@ packages/desktop/release/
 # Database
 *.db
 *.sqlite
+database/
+audiiodb/
+audiio-musicbrainz/
+
+# Misc
+nul

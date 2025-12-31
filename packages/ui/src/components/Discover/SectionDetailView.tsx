@@ -1,6 +1,7 @@
 /**
  * SectionDetailView - Full page view for "See All" from Discover sections
- * Shows more tracks from a section in a grid layout
+ * Routes to EmbeddingSectionDetailView for structured queries or
+ * LegacySectionDetailView for text-based queries
  */
 
 import React, { useEffect, useState } from 'react';
@@ -11,10 +12,30 @@ import { usePlayerStore } from '../../stores/player-store';
 import { useTrackContextMenu } from '../../contexts/ContextMenuContext';
 import { BackIcon } from '@audiio/icons';
 import { TrackCard } from './TrackCard';
+import { EmbeddingSectionDetailView } from './EmbeddingSectionDetailView';
 
+/**
+ * Main router component - decides which detail view to render
+ */
 export const SectionDetailView: React.FC = () => {
+  const { selectedSectionData } = useNavigationStore();
+
+  // Route to EmbeddingSectionDetailView for structured queries
+  if (selectedSectionData?.structuredQuery) {
+    return <EmbeddingSectionDetailView />;
+  }
+
+  // Fall back to legacy view for text queries
+  return <LegacySectionDetailView />;
+};
+
+/**
+ * Legacy detail view - handles text-based queries
+ * @deprecated Use structured queries with EmbeddingSectionDetailView
+ */
+const LegacySectionDetailView: React.FC = () => {
   const { selectedSectionData, goBack } = useNavigationStore();
-  const { search, results, isLoading } = useSearchStore();
+  const { search, results, isSearching: isLoading } = useSearchStore();
   const { play, setQueue } = usePlayerStore();
   const { showContextMenu } = useTrackContextMenu();
   const [tracks, setTracks] = useState<UnifiedTrack[]>([]);

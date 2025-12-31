@@ -1,11 +1,12 @@
 /**
- * useKaraoke - Streaming karaoke hook
+ * useKaraoke v3 - Premium Streaming Karaoke Hook
  *
  * Features:
- * - Quick start: First 15 seconds available in ~3-5 seconds
- * - Full track processes in background
- * - Seamless swap to full track when ready (no interruption)
- * - Handles base64 to blob URL conversion in browser
+ * - INSTANT PLAYBACK: First chunk ready in ~3-4 seconds, playback starts immediately
+ * - SEAMLESS UPGRADE: Automatically swaps to full track when ready
+ * - PROGRESS WITH ETA: Real-time progress updates with time remaining
+ * - PREDICTIVE PREFETCH: Queue upcoming tracks for background processing
+ * - HTTP STREAMING: Direct URLs, no base64 overhead
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react';
@@ -16,56 +17,22 @@ interface UseKaraokeOptions {
   audioUrl: string | null;
   onInstrumentalReady?: (url: string) => void;
   onFullTrackReady?: (url: string) => void;
+  onProgress?: (progress: number, stage: string, eta?: number) => void;
+  // Queue of upcoming tracks for predictive processing
+  upcomingTracks?: Array<{ id: string; url: string }>;
 }
 
-// Cache of blob URLs created from base64 data
-const blobUrlCache = new Map<string, { url: string; isPartial: boolean }>();
+// Simple URL cache - HTTP URLs don't need blob conversion
+const urlCache = new Map<string, { url: string; isComplete: boolean }>();
 
-// Track which tracks have full versions ready
-const fullTrackReady = new Set<string>();
-
-/**
- * Convert base64 audio data to a blob URL
- */
-function base64ToBlobUrl(base64: string, mimeType: string): string {
-  const byteCharacters = atob(base64);
-  const byteNumbers = new Array(byteCharacters.length);
-  for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i);
-  }
-  const byteArray = new Uint8Array(byteNumbers);
-  const blob = new Blob([byteArray], { type: mimeType });
-  return URL.createObjectURL(blob);
-}
-
-/**
- * Get or create blob URL from base64 data
- */
-function getOrCreateBlobUrl(trackId: string, base64: string, mimeType: string, isPartial: boolean): string {
-  const cached = blobUrlCache.get(trackId);
-
-  // If we have a full track cached, always return it
-  if (cached && !cached.isPartial) {
-    return cached.url;
-  }
-
-  // If we're getting a full track (not partial), revoke old partial URL
-  if (cached && cached.isPartial && !isPartial) {
-    URL.revokeObjectURL(cached.url);
-  }
-
-  // Create new blob URL
-  const blobUrl = base64ToBlobUrl(base64, mimeType);
-  blobUrlCache.set(trackId, { url: blobUrl, isPartial });
-
-  if (!isPartial) {
-    fullTrackReady.add(trackId);
-  }
-
-  return blobUrl;
-}
-
-export function useKaraoke({ trackId, audioUrl, onInstrumentalReady, onFullTrackReady }: UseKaraokeOptions) {
+export function useKaraoke({
+  trackId,
+  audioUrl,
+  onInstrumentalReady,
+  onFullTrackReady,
+  onProgress,
+  upcomingTracks
+}: UseKaraokeOptions) {
   const {
     isAvailable,
     isEnabled,
@@ -80,23 +47,21 @@ export function useKaraoke({ trackId, audioUrl, onInstrumentalReady, onFullTrack
 
   const lastTrackIdRef = useRef<string | null>(null);
   const processingPromiseRef = useRef<Promise<void> | null>(null);
-  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isPartial, setIsPartial] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [stage, setStage] = useState('');
+  const [eta, setEta] = useState<number | undefined>(undefined);
+  const failedTracksRef = useRef<Map<string, number>>(new Map());
 
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
-    };
-  }, []);
-
-  // Store callbacks in refs so they don't cause effect re-runs
+  // Store callbacks in refs
   const onFullTrackReadyRef = useRef(onFullTrackReady);
   onFullTrackReadyRef.current = onFullTrackReady;
+  const onProgressRef = useRef(onProgress);
+  onProgressRef.current = onProgress;
+  const onInstrumentalReadyRef = useRef(onInstrumentalReady);
+  onInstrumentalReadyRef.current = onInstrumentalReady;
 
-  // Check initial availability on mount and subscribe to events
+  // Check availability and subscribe to events
   useEffect(() => {
     const checkAvailability = async () => {
       try {
@@ -113,139 +78,133 @@ export function useKaraoke({ trackId, audioUrl, onInstrumentalReady, onFullTrack
       setAvailable(available);
     });
 
-    // Subscribe to full track ready push notifications
-    // This replaces polling - when the addon finishes processing, we get notified immediately
-    let unsubscribeFullTrack: (() => void) | undefined;
-
-    if (typeof window.api?.karaoke?.onFullTrackReady === 'function') {
-      console.log('[Karaoke] Subscribing to full track ready events');
-      unsubscribeFullTrack = window.api.karaoke.onFullTrackReady(({ trackId: readyTrackId, result }) => {
-        console.log('[Karaoke] Received full track ready event:', readyTrackId, 'current:', lastTrackIdRef.current);
-
-        // Only update if this is the current track
-        if (readyTrackId === lastTrackIdRef.current && result?.audioBase64) {
-          console.log('[Karaoke] Applying full track from push notification');
-          const blobUrl = getOrCreateBlobUrl(
-            readyTrackId,
-            result.audioBase64,
-            result.mimeType || 'audio/mpeg',
-            false
-          );
-
-          setIsPartial(false);
-          setCurrentInstrumentalUrl(blobUrl);
-          onFullTrackReadyRef.current?.(blobUrl);
-
-          // Clear polling since we got the result via push
-          if (pollingIntervalRef.current) {
-            clearInterval(pollingIntervalRef.current);
-            pollingIntervalRef.current = null;
-          }
+    // Subscribe to FIRST CHUNK ready (instant playback!)
+    let unsubscribeFirstChunk: (() => void) | undefined;
+    if (typeof window.api?.karaoke?.onFirstChunkReady === 'function') {
+      unsubscribeFirstChunk = window.api.karaoke.onFirstChunkReady(({ trackId: readyTrackId, url }) => {
+        if (readyTrackId === lastTrackIdRef.current && url) {
+          // Verify the URL is accessible before setting it
+          fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(3000) })
+            .then(response => {
+              if (response.ok) {
+                urlCache.set(readyTrackId, { url, isComplete: false });
+                setIsPartial(true);
+                setCurrentInstrumentalUrl(url);
+                onInstrumentalReadyRef.current?.(url);
+              }
+            })
+            .catch(() => {
+              // Still try to set it - the audio element may succeed where HEAD failed
+              urlCache.set(readyTrackId, { url, isComplete: false });
+              setIsPartial(true);
+              setCurrentInstrumentalUrl(url);
+              onInstrumentalReadyRef.current?.(url);
+            });
         }
       });
-    } else {
-      console.warn('[Karaoke] onFullTrackReady API not available - falling back to polling only');
+    }
+
+    // Subscribe to full track ready
+    let unsubscribeFullTrack: (() => void) | undefined;
+    if (typeof window.api?.karaoke?.onFullTrackReady === 'function') {
+      unsubscribeFullTrack = window.api.karaoke.onFullTrackReady(({ trackId: readyTrackId, result }) => {
+        if (readyTrackId === lastTrackIdRef.current && result?.instrumentalUrl) {
+          urlCache.set(readyTrackId, { url: result.instrumentalUrl, isComplete: true });
+          setIsPartial(false);
+          setProgress(100);
+          setStage('Complete');
+          setEta(undefined);
+          setCurrentInstrumentalUrl(result.instrumentalUrl);
+          onFullTrackReadyRef.current?.(result.instrumentalUrl);
+        }
+      });
+    }
+
+    // Subscribe to progress updates with ETA
+    let unsubscribeProgress: (() => void) | undefined;
+    if (typeof window.api?.karaoke?.onProgress === 'function') {
+      unsubscribeProgress = window.api.karaoke.onProgress(({ trackId: progressTrackId, progress: p, stage: s, eta: e }) => {
+        if (progressTrackId === lastTrackIdRef.current) {
+          setProgress(p);
+          setStage(s);
+          setEta(e);
+          onProgressRef.current?.(p, s, e);
+        }
+      });
+    }
+
+    // Subscribe to CHUNK UPDATED (progressive streaming - audio grew longer)
+    let unsubscribeChunkUpdated: (() => void) | undefined;
+    if (typeof window.api?.karaoke?.onChunkUpdated === 'function') {
+      unsubscribeChunkUpdated = window.api.karaoke.onChunkUpdated(({ trackId: chunkTrackId, url, chunkNumber }) => {
+        if (chunkTrackId === lastTrackIdRef.current && url) {
+          // Add cache-buster to force reload of longer audio file
+          const cacheBustedUrl = `${url}?chunk=${chunkNumber}&t=${Date.now()}`;
+          urlCache.set(chunkTrackId, { url: cacheBustedUrl, isComplete: false });
+          setCurrentInstrumentalUrl(cacheBustedUrl);
+          onInstrumentalReadyRef.current?.(cacheBustedUrl);
+        }
+      });
     }
 
     return () => {
       unsubscribeAvailability();
+      unsubscribeFirstChunk?.();
       unsubscribeFullTrack?.();
+      unsubscribeProgress?.();
+      unsubscribeChunkUpdated?.();
     };
   }, [setAvailable, setCurrentInstrumentalUrl]);
 
-  // Poll for full track completion - now a BACKUP mechanism
-  // Primary notification comes via IPC push event (onFullTrackReady)
-  // This polling is just a safety net in case the IPC event is missed
-  const startPollingForFullTrack = useCallback((currentTrackId: string) => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-    }
-
-    let attempts = 0;
-    const maxAttempts = 60; // 2 minutes at 2-second intervals (reduced from 120 at 1-second)
-
-    pollingIntervalRef.current = setInterval(async () => {
-      attempts++;
-
-      if (attempts > maxAttempts || currentTrackId !== lastTrackIdRef.current) {
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current);
-          pollingIntervalRef.current = null;
-        }
-        return;
-      }
-
-      try {
-        const result = await window.api.karaoke.getCached(currentTrackId);
-        if (result.success && result.result?.audioBase64 && !result.result.isPartial) {
-          console.log('[Karaoke] Full track ready (via backup polling):', currentTrackId);
-
-          const blobUrl = getOrCreateBlobUrl(
-            currentTrackId,
-            result.result.audioBase64,
-            result.result.mimeType || 'audio/mpeg',
-            false
-          );
-
-          setIsPartial(false);
-          setCurrentInstrumentalUrl(blobUrl);
-          onFullTrackReady?.(blobUrl);
-
-          if (pollingIntervalRef.current) {
-            clearInterval(pollingIntervalRef.current);
-            pollingIntervalRef.current = null;
-          }
-        }
-      } catch (error) {
-        console.error('[Karaoke] Backup polling error:', error);
-      }
-    }, 2000); // Reduced frequency - every 2 seconds instead of 1
-  }, [setCurrentInstrumentalUrl, onFullTrackReady]);
-
-  // Process track when karaoke is enabled
+  // Process track
   const processTrack = useCallback(async () => {
     if (!trackId || !audioUrl || !isEnabled || !isAvailable) {
       return;
     }
 
-    // Check if we already have the full track cached
-    const cached = blobUrlCache.get(trackId);
-    if (cached && !cached.isPartial) {
+    // Check failure cooldown
+    const lastFailure = failedTracksRef.current.get(trackId);
+    if (lastFailure && Date.now() - lastFailure < 30000) {
+      return;
+    }
+
+    // Check cache - if complete, use immediately
+    const cached = urlCache.get(trackId);
+    if (cached?.isComplete) {
       setCurrentInstrumentalUrl(cached.url);
       setIsPartial(false);
+      setProgress(100);
+      setStage('Complete');
+      setEta(undefined);
       onInstrumentalReady?.(cached.url);
       return;
     }
 
-    // Check if in main process cache
+    // Check main process cache
     if (processedTracks.has(trackId)) {
       try {
         const result = await window.api.karaoke.getCached(trackId);
-        if (result.success && result.result?.audioBase64) {
-          const blobUrl = getOrCreateBlobUrl(
-            trackId,
-            result.result.audioBase64,
-            result.result.mimeType || 'audio/mpeg',
-            result.result.isPartial ?? false
-          );
-          setCurrentInstrumentalUrl(blobUrl);
-          setIsPartial(result.result.isPartial ?? false);
-          onInstrumentalReady?.(blobUrl);
+        if (result.success && result.result?.instrumentalUrl) {
+          const isComplete = !result.result.isPartial;
+          const isFirstChunk = result.result.isFirstChunk;
 
-          // If partial, start polling for full track
-          if (result.result.isPartial) {
-            startPollingForFullTrack(trackId);
+          // If it's just the first chunk placeholder, don't load yet
+          if (isFirstChunk && !isComplete) {
+            return;
           }
-          return; // Successfully got cached, exit
-        } else {
-          // processedTracks said we have it but cache returned nothing
-          // This is stale state - clear and retry processing
-          console.log('[Karaoke] Stale processedTracks entry, reprocessing:', trackId);
-          // Don't return - fall through to reprocess
+
+          urlCache.set(trackId, { url: result.result.instrumentalUrl, isComplete });
+          setCurrentInstrumentalUrl(result.result.instrumentalUrl);
+          setIsPartial(!isComplete);
+          if (isComplete) {
+            setProgress(100);
+            setStage('Complete');
+          }
+          onInstrumentalReady?.(result.result.instrumentalUrl);
+          return;
         }
-      } catch (error) {
-        console.error('[Karaoke] Failed to get cached, will reprocess:', error);
-        // Don't return - fall through to reprocess
+      } catch {
+        // Ignore cache errors
       }
     }
 
@@ -257,39 +216,52 @@ export function useKaraoke({ trackId, audioUrl, onInstrumentalReady, onFullTrack
     setProcessing(true);
     setCurrentInstrumentalUrl(null);
     setIsPartial(false);
+    setProgress(0);
+    setStage('Starting...');
+    setEta(undefined);
 
     processingPromiseRef.current = (async () => {
       try {
-        console.log('[Karaoke] Processing track (streaming):', trackId);
         const result = await window.api.karaoke.processTrack(trackId, audioUrl);
 
-        if (result.success && result.result?.audioBase64) {
-          const isResultPartial = result.result.isPartial ?? false;
-
-          // Convert base64 to blob URL
-          const blobUrl = getOrCreateBlobUrl(
-            trackId,
-            result.result.audioBase64,
-            result.result.mimeType || 'audio/mpeg',
-            isResultPartial
-          );
-
+        if (result.success && result.result) {
           addProcessedTrack(trackId);
-          setCurrentInstrumentalUrl(blobUrl);
-          setIsPartial(isResultPartial);
-          onInstrumentalReady?.(blobUrl);
 
-          console.log('[Karaoke] First segment ready:', trackId, 'partial:', isResultPartial);
+          if (result.result.instrumentalUrl) {
+            const isComplete = !result.result.isPartial;
+            const isFirstChunk = result.result.isFirstChunk;
 
-          // If this is just the first segment, poll for full track
-          if (isResultPartial) {
-            startPollingForFullTrack(trackId);
+            if (isComplete) {
+              urlCache.set(trackId, { url: result.result.instrumentalUrl, isComplete: true });
+              setCurrentInstrumentalUrl(result.result.instrumentalUrl);
+              setIsPartial(false);
+              setProgress(100);
+              setStage('Complete');
+              onInstrumentalReady?.(result.result.instrumentalUrl);
+            } else if (isFirstChunk) {
+              setIsPartial(true);
+              setProgress(10);
+              setStage('Processing...');
+              if (result.result.eta) {
+                setEta(result.result.eta);
+              }
+            } else {
+              urlCache.set(trackId, { url: result.result.instrumentalUrl, isComplete: false });
+              setCurrentInstrumentalUrl(result.result.instrumentalUrl);
+              setIsPartial(true);
+              setProgress(10);
+              setStage('Processing...');
+              if (result.result.eta) {
+                setEta(result.result.eta);
+              }
+              onInstrumentalReady?.(result.result.instrumentalUrl);
+            }
           }
         } else {
-          console.error('[Karaoke] Processing failed:', result.error);
+          failedTracksRef.current.set(trackId, Date.now());
         }
-      } catch (error) {
-        console.error('[Karaoke] Processing error:', error);
+      } catch {
+        failedTracksRef.current.set(trackId, Date.now());
       } finally {
         setProcessing(false);
         processingPromiseRef.current = null;
@@ -297,23 +269,21 @@ export function useKaraoke({ trackId, audioUrl, onInstrumentalReady, onFullTrack
     })();
 
     await processingPromiseRef.current;
-  }, [trackId, audioUrl, isEnabled, isAvailable, processedTracks, setProcessing, addProcessedTrack, setCurrentInstrumentalUrl, onInstrumentalReady, startPollingForFullTrack]);
+  }, [trackId, audioUrl, isEnabled, isAvailable, processedTracks, setProcessing, addProcessedTrack, setCurrentInstrumentalUrl, onInstrumentalReady]);
 
-  // Trigger processing when track changes or karaoke is enabled
+  // Trigger processing on track change
   useEffect(() => {
     if (trackId !== lastTrackIdRef.current) {
+      if (lastTrackIdRef.current) {
+        failedTracksRef.current.delete(lastTrackIdRef.current);
+      }
+
       lastTrackIdRef.current = trackId;
       setCurrentInstrumentalUrl(null);
       setIsPartial(false);
-
-      // Clear polling for old track
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-
-      // IMPORTANT: Clear the processing promise ref to prevent stale state
-      // This allows a new processing attempt for the new track
+      setProgress(0);
+      setStage('');
+      setEta(undefined);
       processingPromiseRef.current = null;
 
       if (isEnabled && trackId && audioUrl) {
@@ -324,15 +294,29 @@ export function useKaraoke({ trackId, audioUrl, onInstrumentalReady, onFullTrack
     }
   }, [trackId, isEnabled, audioUrl, processTrack, currentInstrumentalUrl, isProcessing, setCurrentInstrumentalUrl]);
 
-  // Clear instrumental URL when karaoke is disabled
+  // Predictive prefetch for upcoming tracks
+  useEffect(() => {
+    if (!isEnabled || !isAvailable || !upcomingTracks?.length) {
+      return;
+    }
+
+    const tracksToPredict = upcomingTracks.filter(t =>
+      !urlCache.has(t.id) && !processedTracks.has(t.id)
+    ).slice(0, 3);
+
+    if (tracksToPredict.length > 0 && typeof window.api?.karaoke?.predictivePrefetch === 'function') {
+      window.api.karaoke.predictivePrefetch(tracksToPredict).catch(() => {});
+    }
+  }, [isEnabled, isAvailable, upcomingTracks, processedTracks]);
+
+  // Clear state when disabled
   useEffect(() => {
     if (!isEnabled) {
       setCurrentInstrumentalUrl(null);
       setIsPartial(false);
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
+      setProgress(0);
+      setStage('');
+      setEta(undefined);
     }
   }, [isEnabled, setCurrentInstrumentalUrl]);
 
@@ -340,7 +324,10 @@ export function useKaraoke({ trackId, audioUrl, onInstrumentalReady, onFullTrack
     isAvailable,
     isEnabled,
     isProcessing,
-    isPartial, // True if currently playing partial segment
+    isPartial,
+    progress,
+    stage,
+    eta,
     instrumentalUrl: currentInstrumentalUrl,
     toggle: useKaraokeStore.getState().toggle
   };

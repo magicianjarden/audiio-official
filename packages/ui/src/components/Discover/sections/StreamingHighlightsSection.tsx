@@ -1,6 +1,7 @@
 /**
  * StreamingHighlightsSection - Shows content from available streaming providers
  * Dynamically adapts to whatever stream-provider plugins are installed
+ * Uses the UNIFIED plugin pipeline for data (embedding provider handles personalization)
  */
 
 import React, { useMemo } from 'react';
@@ -9,8 +10,9 @@ import { TrackCard } from '../TrackCard';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
 import { usePluginStore } from '../../../stores/plugin-store';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import type { BaseSectionProps } from '../section-registry';
+import type { StructuredSectionQuery } from '../types';
 
 export interface StreamingHighlightsSectionProps extends BaseSectionProps {
   maxItems?: number;
@@ -32,47 +34,42 @@ export const StreamingHighlightsSection: React.FC<StreamingHighlightsSectionProp
   const streamPlugins = getPluginsByRole('stream-provider');
   const enabledStreamPlugins = streamPlugins.filter(p => p.enabled);
 
-  const {
-    generatePersonalizedPlaylist,
-    getTracksFromPlaylist,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
+  // Build dynamic title based on available providers
+  const providerNames = enabledStreamPlugins.map(p => p.name).join(', ');
+  const sectionTitle = title || 'Streaming Picks';
+  const sectionSubtitle = subtitle || (providerNames ? `From ${providerNames}` : 'From your streaming services');
 
-  // Generate personalized tracks
-  const tracks = useMemo(() => {
-    if (!embeddingReady || tracksIndexed < 1) {
-      return [];
-    }
-
-    const playlist = generatePersonalizedPlaylist({
-      limit: maxItems,
+  // Build structured query for the unified pipeline
+  // embeddingProvider will handle this with personalized generation
+  const structuredQuery = useMemo((): StructuredSectionQuery => ({
+    strategy: 'plugin',
+    sectionType: 'streaming-highlights',
+    title: sectionTitle,
+    subtitle: sectionSubtitle,
+    embedding: {
+      method: 'personalized',
       exploration: 0.4,
-    });
+    },
+    limit: maxItems,
+  }), [sectionTitle, sectionSubtitle, maxItems]);
 
-    if (!playlist || playlist.tracks.length === 0) {
-      return [];
-    }
-
-    return getTracksFromPlaylist(playlist);
-  }, [embeddingReady, tracksIndexed, maxItems, generatePersonalizedPlaylist, getTracksFromPlaylist]);
+  // Use unified plugin pipeline - embeddingProvider handles personalization
+  const { tracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: hasStreamProvider,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: maxItems,
+  });
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     setQueue(tracks, index);
     play(track);
   };
 
-  const isLoading = !embeddingReady;
-
   // Only show if we have streaming capability
   if (!hasStreamProvider || (!isLoading && tracks.length === 0)) {
     return null;
   }
-
-  // Build dynamic title based on available providers
-  const providerNames = enabledStreamPlugins.map(p => p.name).join(', ');
-  const sectionTitle = title || 'Streaming Picks';
-  const sectionSubtitle = subtitle || (providerNames ? `From ${providerNames}` : 'From your streaming services');
 
   return (
     <section id={id} className="discover-horizontal-section discover-streaming-section">

@@ -1,24 +1,22 @@
 /**
- * GenreExplorerSection - Visual genre tiles with nested sub-genres
- * Allows users to explore and discover music by genre
- * Uses embedding-based playlist generation for inline track results
+ * GenreExplorerSection - Clean genre pill selection with instant playback
+ * Uses the plugin pipeline for data fetching and ML ranking
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import { useRecommendationStore } from '../../../stores/recommendation-store';
 import { usePlayerStore } from '../../../stores/player-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
-import { useEmbeddingPlaylist } from '../../../hooks/useEmbeddingPlaylist';
+import { usePluginData } from '../../../hooks/usePluginData';
 import { BaseSectionWrapper } from './base/BaseSection';
 import type { BaseSectionProps } from '../section-registry';
+import type { StructuredSectionQuery } from '../types';
 import {
   getParentGenres,
-  getChildGenres,
   type GenreNode,
 } from '../../../constants/genre-taxonomy';
-import { ChevronRightIcon, ChevronDownIcon, PlayIcon, MusicNoteIcon } from '@audiio/icons';
-import { debugLog } from '../../../utils/debug';
+import { PlayIcon, MusicNoteIcon } from '@audiio/icons';
 
 export interface GenreExplorerSectionProps extends BaseSectionProps {
   highlightedGenres?: string[];
@@ -32,80 +30,62 @@ export const GenreExplorerSection: React.FC<GenreExplorerSectionProps> = ({
   isPersonalized,
   context,
   highlightedGenres,
-  maxGenres = 8,
+  maxGenres = 10,
   onSeeAll,
 }) => {
   const { getTopGenres } = useRecommendationStore();
   const { play, setQueue } = usePlayerStore();
   const { showContextMenu } = useTrackContextMenu();
 
-  const [expandedGenre, setExpandedGenre] = useState<string | null>(null);
-  const [inlineGenre, setInlineGenre] = useState<GenreNode | null>(null);
-
-  // Embedding-based playlist generation
-  const {
-    generateGenrePlaylist,
-    getTracksFromPlaylist,
-    isReady: embeddingReady,
-    tracksIndexed,
-  } = useEmbeddingPlaylist();
+  const [selectedGenre, setSelectedGenre] = useState<GenreNode | null>(null);
 
   // Get user's top genres for highlighting
   const userTopGenres = highlightedGenres ?? getTopGenres(3);
   const parentGenres = getParentGenres().slice(0, maxGenres);
 
-  // Generate inline tracks using embedding when a genre is selected
-  const inlineTracks = useMemo(() => {
-    if (!inlineGenre || !embeddingReady || tracksIndexed < 5) {
-      return [];
-    }
+  // Build structured query when a genre is selected
+  const structuredQuery: StructuredSectionQuery | null = selectedGenre
+    ? {
+        strategy: 'plugin',
+        sectionType: 'genre-explorer',
+        title: selectedGenre.name,
+        embedding: {
+          method: 'genre',
+          genre: selectedGenre.id,
+          exploration: 0.4,
+          includeCollaborative: true,
+        },
+        limit: 15,
+      }
+    : null;
 
-    const playlist = generateGenrePlaylist(inlineGenre.id, { limit: 12 });
-    if (!playlist || playlist.tracks.length === 0) {
-      return [];
-    }
-
-    debugLog(
-      '[GenreExplorer]',
-      `Using embedding for "${inlineGenre.name}" (${playlist.tracks.length} tracks)`
-    );
-    return getTracksFromPlaylist(playlist);
-  }, [inlineGenre, embeddingReady, tracksIndexed, generateGenrePlaylist, getTracksFromPlaylist]);
+  // Use plugin pipeline for data fetching
+  const { tracks: genreTracks, isLoading } = usePluginData(structuredQuery, {
+    enabled: !!selectedGenre,
+    applyMLRanking: true,
+    applyTransformers: true,
+    limit: 15,
+  });
 
   const handleGenreClick = useCallback((genre: GenreNode) => {
-    if (genre.children && genre.children.length > 0) {
-      // Toggle expansion for parent genres
-      setExpandedGenre(expandedGenre === genre.id ? null : genre.id);
-      setInlineGenre(null);
+    if (selectedGenre?.id === genre.id) {
+      setSelectedGenre(null);
     } else {
-      // For leaf genres, show inline results using embedding
-      setInlineGenre(inlineGenre?.id === genre.id ? null : genre);
-      setExpandedGenre(null);
+      setSelectedGenre(genre);
     }
-  }, [expandedGenre, inlineGenre]);
+  }, [selectedGenre]);
 
-  const handleSubgenreClick = useCallback((genre: GenreNode) => {
-    // For subgenres, show inline results using embedding
-    setInlineGenre(inlineGenre?.id === genre.id ? null : genre);
-    setExpandedGenre(null);
-  }, [inlineGenre]);
-
-  const handlePlayInline = useCallback(() => {
-    if (inlineTracks.length > 0 && inlineTracks[0]) {
-      setQueue(inlineTracks, 0);
-      play(inlineTracks[0]);
+  const handlePlayAll = useCallback(() => {
+    if (genreTracks.length > 0 && genreTracks[0]) {
+      setQueue(genreTracks, 0);
+      play(genreTracks[0]);
     }
-  }, [inlineTracks, setQueue, play]);
+  }, [genreTracks, setQueue, play]);
 
   const handleTrackClick = useCallback((track: UnifiedTrack, index: number) => {
-    setQueue(inlineTracks, index);
+    setQueue(genreTracks, index);
     play(track);
-  }, [inlineTracks, setQueue, play]);
-
-  const handleViewAll = useCallback(() => {
-    // Just close the inline panel for now (no search fallback)
-    setInlineGenre(null);
-  }, []);
+  }, [genreTracks, setQueue, play]);
 
   const isHighlighted = (genreId: string): boolean => {
     return userTopGenres.some((g) => g.toLowerCase().includes(genreId.toLowerCase()));
@@ -122,209 +102,95 @@ export const GenreExplorerSection: React.FC<GenreExplorerSectionProps> = ({
       onSeeAll={onSeeAll}
       className="genre-explorer-section"
     >
-      <div className="genre-grid">
-        {parentGenres.map((genre, index) => (
-          <GenreTile
-            key={genre.id}
-            genre={genre}
-            index={index}
-            isExpanded={expandedGenre === genre.id}
-            isHighlighted={isHighlighted(genre.id)}
-            onClick={() => handleGenreClick(genre)}
-            onSubgenreClick={handleSubgenreClick}
-          />
-        ))}
-      </div>
-
-      {/* Expanded subgenres panel */}
-      {expandedGenre && (
-        <ExpandedSubgenres
-          parentId={expandedGenre}
-          onSubgenreClick={handleSubgenreClick}
-          onClose={() => setExpandedGenre(null)}
-        />
-      )}
-
-      {/* Inline tracks panel (embedding-based) */}
-      {inlineGenre && inlineTracks.length > 0 && (
-        <div className="genre-inline-tracks" onClick={(e) => e.stopPropagation()}>
-          <div className="genre-inline-header">
-            <h4 className="genre-inline-title">
-              <span
-                className="genre-inline-dot"
-                style={{ backgroundColor: inlineGenre.color }}
-              />
-              {inlineGenre.name}
-            </h4>
-            <div className="genre-inline-actions">
-              <button
-                className="genre-inline-play"
-                onClick={handlePlayInline}
-                title="Play all"
-              >
-                <PlayIcon size={16} />
-                <span>Play</span>
-              </button>
-              <button
-                className="genre-inline-view-all"
-                onClick={handleViewAll}
-              >
-                View all
-              </button>
-              <button
-                className="genre-inline-close"
-                onClick={() => setInlineGenre(null)}
-              >
-                ×
-              </button>
-            </div>
-          </div>
-
-          <div className="genre-inline-scroll">
-            {inlineTracks.map((track, index) => (
-              <div
-                key={track.id}
-                className="genre-inline-track"
-                onClick={() => handleTrackClick(track, index)}
-                onContextMenu={(e) => showContextMenu(e, track)}
-              >
-                <div className="genre-inline-artwork">
-                  {track.artwork?.small ? (
-                    <img src={track.artwork.small} alt={track.title} loading="lazy" />
-                  ) : (
-                    <div className="genre-inline-placeholder">
-                      <MusicNoteIcon size={16} />
-                    </div>
-                  )}
-                  <div className="genre-inline-play-overlay">
-                    <PlayIcon size={14} />
-                  </div>
-                </div>
-                <div className="genre-inline-info">
-                  <span className="genre-inline-track-title">{track.title}</span>
-                  <span className="genre-inline-track-artist">
-                    {track.artists.map((a) => a.name).join(', ')}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </BaseSectionWrapper>
-  );
-};
-
-interface GenreTileProps {
-  genre: GenreNode;
-  index: number;
-  isExpanded: boolean;
-  isHighlighted: boolean;
-  onClick: () => void;
-  onSubgenreClick: (genre: GenreNode) => void;
-}
-
-const GenreTile: React.FC<GenreTileProps> = ({
-  genre,
-  index,
-  isExpanded,
-  isHighlighted,
-  onClick,
-}) => {
-  const hasChildren = genre.children && genre.children.length > 0;
-
-  return (
-    <div
-      className={`genre-tile ${isExpanded ? 'expanded' : ''} ${isHighlighted ? 'highlighted' : ''}`}
-      style={{
-        '--genre-color': genre.color,
-        animationDelay: `${index * 50}ms`,
-      } as React.CSSProperties}
-      onClick={onClick}
-    >
-      <div
-        className="genre-tile-bg"
-        style={{
-          background: `linear-gradient(135deg, ${genre.color}40 0%, ${genre.color}10 100%)`,
-        }}
-      />
-
-      <div className="genre-tile-content">
-        <span className="genre-tile-name">{genre.name}</span>
-
-        {hasChildren && (
-          <span className="genre-tile-expand">
-            {isExpanded ? (
-              <ChevronDownIcon size={16} />
-            ) : (
-              <ChevronRightIcon size={16} />
-            )}
-          </span>
-        )}
-      </div>
-
-      {isHighlighted && (
-        <span className="genre-tile-badge">Your Taste</span>
-      )}
-
-      {/* Decorative accent */}
-      <div
-        className="genre-tile-accent"
-        style={{ backgroundColor: genre.color }}
-      />
-    </div>
-  );
-};
-
-interface ExpandedSubgenresProps {
-  parentId: string;
-  onSubgenreClick: (genre: GenreNode) => void;
-  onClose: () => void;
-}
-
-const ExpandedSubgenres: React.FC<ExpandedSubgenresProps> = ({
-  parentId,
-  onSubgenreClick,
-  onClose,
-}) => {
-  const subgenres = getChildGenres(parentId);
-  const parent = getParentGenres().find((g) => g.id === parentId);
-
-  if (subgenres.length === 0 || !parent) {
-    return null;
-  }
-
-  return (
-    <div className="subgenres-panel" onClick={(e) => e.stopPropagation()}>
-      <div className="subgenres-header">
-        <h4 className="subgenres-title">
-          Explore <span style={{ color: parent.color }}>{parent.name}</span>
-        </h4>
-        <button className="subgenres-close" onClick={onClose}>
-          ×
-        </button>
-      </div>
-
-      <div className="subgenres-grid">
-        {subgenres.map((subgenre, index) => (
+      {/* Genre pills */}
+      <div className="genre-pills">
+        {parentGenres.map((genre) => (
           <button
-            key={subgenre.id}
-            className="subgenre-pill"
-            style={{
-              '--subgenre-color': subgenre.color,
-              animationDelay: `${index * 30}ms`,
-            } as React.CSSProperties}
-            onClick={() => onSubgenreClick(subgenre)}
+            key={genre.id}
+            className={`genre-pill ${selectedGenre?.id === genre.id ? 'active' : ''} ${isHighlighted(genre.id) ? 'highlighted' : ''}`}
+            onClick={() => handleGenreClick(genre)}
+            style={{ '--genre-color': genre.color } as React.CSSProperties}
           >
             <span
-              className="subgenre-dot"
-              style={{ backgroundColor: subgenre.color }}
+              className="genre-pill-dot"
+              style={{ backgroundColor: genre.color }}
             />
-            {subgenre.name}
+            <span className="genre-pill-name">{genre.name}</span>
+            {isHighlighted(genre.id) && (
+              <span className="genre-pill-badge">For You</span>
+            )}
           </button>
         ))}
       </div>
-    </div>
+
+      {/* Selected genre tracks */}
+      {selectedGenre && (
+        <div className="genre-tracks-panel">
+          <div className="genre-tracks-header">
+            <div className="genre-tracks-info">
+              <span
+                className="genre-tracks-dot"
+                style={{ backgroundColor: selectedGenre.color }}
+              />
+              <span className="genre-tracks-name">{selectedGenre.name}</span>
+              {!isLoading && (
+                <span className="genre-tracks-count">{genreTracks.length} tracks</span>
+              )}
+            </div>
+            <button
+              className="genre-play-btn"
+              onClick={handlePlayAll}
+              disabled={isLoading || genreTracks.length === 0}
+            >
+              <PlayIcon size={16} />
+              <span>Play</span>
+            </button>
+          </div>
+
+          {isLoading ? (
+            <div className="genre-tracks-scroll">
+              {[1, 2, 3, 4, 5].map(i => (
+                <div key={i} className="genre-track-item skeleton" />
+              ))}
+            </div>
+          ) : genreTracks.length > 0 ? (
+            <div className="genre-tracks-scroll">
+              {genreTracks.map((track, index) => (
+                <div
+                  key={track.id}
+                  className="genre-track-item"
+                  onClick={() => handleTrackClick(track, index)}
+                  onContextMenu={(e) => showContextMenu(e, track)}
+                >
+                  <div className="genre-track-artwork">
+                    {track.artwork?.small ? (
+                      <img src={track.artwork.small} alt={track.title} loading="lazy" />
+                    ) : (
+                      <div className="genre-track-placeholder">
+                        <MusicNoteIcon size={16} />
+                      </div>
+                    )}
+                    <div className="genre-track-play-overlay">
+                      <PlayIcon size={14} />
+                    </div>
+                  </div>
+                  <div className="genre-track-info">
+                    <span className="genre-track-title">{track.title}</span>
+                    <span className="genre-track-artist">
+                      {track.artists.map((a) => a.name).join(', ')}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="genre-tracks-empty">
+              <p>No tracks found for this genre</p>
+            </div>
+          )}
+        </div>
+      )}
+    </BaseSectionWrapper>
   );
 };
 
