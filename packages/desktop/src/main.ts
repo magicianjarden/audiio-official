@@ -13,7 +13,6 @@ import {
   TrackResolver,
   PlaybackOrchestrator,
   MetadataOrchestrator,
-  EnrichmentOrchestrator,
   getAudioAnalyzer,
   type AudioFeatures,
   type AnalysisOptions
@@ -59,7 +58,6 @@ let searchOrchestrator: SearchOrchestrator;
 let trackResolver: TrackResolver;
 let playbackOrchestrator: PlaybackOrchestrator;
 let metadataOrchestrator: MetadataOrchestrator;
-let enrichmentOrchestrator: EnrichmentOrchestrator;
 let libraryBridge: LibraryBridge;
 
 // Audio analyzer instance
@@ -107,7 +105,6 @@ async function initializeAddons(): Promise<void> {
   trackResolver = new TrackResolver(registry);
   playbackOrchestrator = new PlaybackOrchestrator(trackResolver);
   metadataOrchestrator = new MetadataOrchestrator(registry);
-  enrichmentOrchestrator = new EnrichmentOrchestrator(registry);
 
   // Initialize built-in karaoke service and set up event forwarding
   karaokeService.initialize();
@@ -613,100 +610,6 @@ function setupIPCHandlers(): void {
     }
   });
 
-  // ========================================
-  // Artist Enrichment IPC Handlers
-  // ========================================
-
-  // Get all enrichment data for an artist
-  ipcMain.handle('get-artist-enrichment', async (_event, { artistName, mbid }: { artistName: string; mbid?: string }) => {
-    try {
-      return await enrichmentOrchestrator.getArtistEnrichment(artistName, mbid);
-    } catch (error) {
-      console.error('[Enrichment] Get artist enrichment error:', error);
-      return {};
-    }
-  });
-
-  // Get artist music videos
-  ipcMain.handle('get-artist-videos', async (_event, { artistName, limit }: { artistName: string; limit?: number }) => {
-    try {
-      return await enrichmentOrchestrator.getArtistVideos(artistName, limit);
-    } catch (error) {
-      console.error('[Enrichment] Get artist videos error:', error);
-      return [];
-    }
-  });
-
-  // Get artist timeline/discography
-  ipcMain.handle('get-artist-timeline', async (_event, artistName: string) => {
-    try {
-      return await enrichmentOrchestrator.getArtistTimeline(artistName);
-    } catch (error) {
-      console.error('[Enrichment] Get artist timeline error:', error);
-      return [];
-    }
-  });
-
-  // Get artist setlists
-  ipcMain.handle('get-artist-setlists', async (_event, { artistName, mbid, limit }: { artistName: string; mbid?: string; limit?: number }) => {
-    try {
-      return await enrichmentOrchestrator.getArtistSetlists(artistName, mbid, limit);
-    } catch (error) {
-      console.error('[Enrichment] Get artist setlists error:', error);
-      return [];
-    }
-  });
-
-  // Get upcoming concerts
-  ipcMain.handle('get-upcoming-concerts', async (_event, artistName: string) => {
-    try {
-      return await enrichmentOrchestrator.getUpcomingConcerts(artistName);
-    } catch (error) {
-      console.error('[Enrichment] Get upcoming concerts error:', error);
-      return [];
-    }
-  });
-
-  // Get artist gallery/images
-  ipcMain.handle('get-artist-gallery', async (_event, mbid: string) => {
-    try {
-      return await enrichmentOrchestrator.getArtistGallery(mbid);
-    } catch (error) {
-      console.error('[Enrichment] Get artist gallery error:', error);
-      return null;
-    }
-  });
-
-  // Get merchandise URL
-  ipcMain.handle('get-merchandise-url', async (_event, artistName: string) => {
-    try {
-      return await enrichmentOrchestrator.getMerchandiseUrl(artistName);
-    } catch (error) {
-      console.error('[Enrichment] Get merchandise URL error:', error);
-      return null;
-    }
-  });
-
-  // Get available enrichment types
-  ipcMain.handle('get-enrichment-available-types', async () => {
-    try {
-      return enrichmentOrchestrator.getAvailableEnrichmentTypes();
-    } catch (error) {
-      console.error('[Enrichment] Get available types error:', error);
-      return [];
-    }
-  });
-
-  // Check if enrichment providers are available
-  ipcMain.handle('has-enrichment-providers', async () => {
-    try {
-      return enrichmentOrchestrator.hasProviders();
-    } catch (error) {
-      console.error('[Enrichment] Has providers check error:', error);
-      return false;
-    }
-  });
-
   // Trending content - uses metadata orchestrator for charts
   ipcMain.handle('get-trending', async () => {
     try {
@@ -1119,20 +1022,8 @@ function setupIPCHandlers(): void {
 
   // Get current mobile access status
   ipcMain.handle('get-mobile-status', () => {
-    // Get pairing info in new simplified format
-    const pairingCode = mobileServer?.getPairingCode?.();
-    const pairing = pairingCode ? {
-      code: pairingCode.code,
-      qrCode: pairingCode.qrCode,
-      localUrl: pairingCode.localUrl,
-      expiresAt: pairingCode.expiresAt,
-      relayActive: mobileServer?.isRelayActive?.() || false
-    } : null;
-
     return {
       isEnabled: mobileServer !== null,
-      pairing,
-      // Keep accessConfig for backwards compatibility
       accessConfig: mobileAccessConfig,
       sessions: mobileServer?.getSessions() || [],
       enableRemoteAccess: mobileAccessConfig?.tunnelUrl !== undefined
@@ -1140,8 +1031,8 @@ function setupIPCHandlers(): void {
   });
 
   // Enable mobile access
-  ipcMain.handle('enable-mobile-access', async (_event, options?: { customRelayUrl?: string }) => {
-    console.log('[Mobile] enable-mobile-access called', options?.customRelayUrl ? `with relay: ${options.customRelayUrl}` : '');
+  ipcMain.handle('enable-mobile-access', async () => {
+    console.log('[Mobile] enable-mobile-access called');
     try {
       // Lazy load the mobile server module using dynamic import
       if (!MobileServer) {
@@ -1185,7 +1076,6 @@ function setupIPCHandlers(): void {
           port: 8484,
           enableTunnel: false
         },
-        customRelayUrl: options?.customRelayUrl,
         orchestrators: {
           search: searchOrchestrator,
           trackResolver,
@@ -1231,17 +1121,7 @@ function setupIPCHandlers(): void {
       console.log('[Mobile] Relay code:', access.relayCode || 'N/A');
       console.log('[Mobile] QR Code available:', !!access.qrCode);
 
-      // Get pairing info for new simplified flow
-      const pairingCode = mobileServer?.getPairingCode?.();
-      const pairing = pairingCode ? {
-        code: pairingCode.code,
-        qrCode: pairingCode.qrCode,
-        localUrl: pairingCode.localUrl,
-        expiresAt: pairingCode.expiresAt,
-        relayActive: access.relayActive || false
-      } : null;
-
-      return { success: true, accessConfig: access, pairing };
+      return { success: true, accessConfig: access };
     } catch (error) {
       console.error('[Mobile] Failed to start server:', error);
       mobileServer = null;
@@ -1641,42 +1521,6 @@ function setupIPCHandlers(): void {
       console.log(`[Relay] Denied peer: ${peerId}`);
       return { success: true };
     } catch (error) {
-      return { success: false, error: String(error) };
-    }
-  });
-
-  // ========================================
-  // Simplified Mobile Access Handlers (Phase 2)
-  // ========================================
-
-  // Refresh pairing code
-  ipcMain.handle('refresh-mobile-pairing-code', async () => {
-    if (!mobileServer) {
-      return { success: false, error: 'Mobile server not running' };
-    }
-    try {
-      const pairing = await mobileServer.refreshPairingCode?.();
-      if (pairing) {
-        return { success: true, pairing };
-      }
-      return { success: false, error: 'Failed to refresh pairing code' };
-    } catch (error) {
-      console.error('[Mobile] Failed to refresh pairing code:', error);
-      return { success: false, error: String(error) };
-    }
-  });
-
-  // Set custom relay URL
-  ipcMain.handle('set-mobile-relay-url', async (_event, url: string | null) => {
-    if (!mobileServer) {
-      return { success: false, error: 'Mobile server not running' };
-    }
-    try {
-      mobileServer.setCustomRelayUrl?.(url);
-      console.log(`[Mobile] Custom relay URL set to: ${url || 'default'}`);
-      return { success: true };
-    } catch (error) {
-      console.error('[Mobile] Failed to set relay URL:', error);
       return { success: false, error: String(error) };
     }
   });

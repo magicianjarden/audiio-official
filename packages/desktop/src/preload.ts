@@ -150,57 +150,6 @@ const api = {
     return ipcRenderer.invoke('get-artist-latest-release', { artistId, source });
   },
 
-  // ========================================
-  // Artist Enrichment APIs
-  // ========================================
-
-  enrichment: {
-    // Get all enrichment data for an artist
-    getArtistEnrichment: (artistName: string, mbid?: string) => {
-      return ipcRenderer.invoke('get-artist-enrichment', { artistName, mbid });
-    },
-
-    // Get artist music videos
-    getArtistVideos: (artistName: string, limit?: number) => {
-      return ipcRenderer.invoke('get-artist-videos', { artistName, limit });
-    },
-
-    // Get artist timeline/discography
-    getArtistTimeline: (artistName: string) => {
-      return ipcRenderer.invoke('get-artist-timeline', artistName);
-    },
-
-    // Get artist setlists from past concerts
-    getArtistSetlists: (artistName: string, mbid?: string, limit?: number) => {
-      return ipcRenderer.invoke('get-artist-setlists', { artistName, mbid, limit });
-    },
-
-    // Get upcoming concerts
-    getUpcomingConcerts: (artistName: string) => {
-      return ipcRenderer.invoke('get-upcoming-concerts', artistName);
-    },
-
-    // Get artist gallery/images
-    getArtistGallery: (mbid: string) => {
-      return ipcRenderer.invoke('get-artist-gallery', mbid);
-    },
-
-    // Get merchandise URL
-    getMerchandiseUrl: (artistName: string) => {
-      return ipcRenderer.invoke('get-merchandise-url', artistName);
-    },
-
-    // Check what enrichment types are available
-    getAvailableTypes: () => {
-      return ipcRenderer.invoke('get-enrichment-available-types');
-    },
-
-    // Check if any enrichment providers are available
-    hasProviders: () => {
-      return ipcRenderer.invoke('has-enrichment-providers');
-    },
-  },
-
   // Lyrics API
   lyrics: {
     search: (artist: string, track: string, album?: string, duration?: number) => {
@@ -259,8 +208,8 @@ const api = {
     return ipcRenderer.invoke('get-mobile-status');
   },
 
-  enableMobileAccess: (options?: { customRelayUrl?: string }) => {
-    return ipcRenderer.invoke('enable-mobile-access', options);
+  enableMobileAccess: () => {
+    return ipcRenderer.invoke('enable-mobile-access');
   },
 
   disableMobileAccess: () => {
@@ -285,15 +234,6 @@ const api = {
     return () => {
       ipcRenderer.removeListener('mobile-status-change', listener);
     };
-  },
-
-  // Simplified mobile access APIs (Phase 2)
-  refreshMobilePairingCode: () => {
-    return ipcRenderer.invoke('refresh-mobile-pairing-code');
-  },
-
-  setMobileRelayUrl: (url: string | null) => {
-    return ipcRenderer.invoke('set-mobile-relay-url', url);
   },
 
   // Device approval events and actions
