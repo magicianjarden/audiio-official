@@ -82,17 +82,7 @@ export type {
   // Tool types
   ToolType,
   PluginUIRegistry,
-  Tool,
-  // Artist enrichment types
-  MusicVideo,
-  TimelineEntry,
-  Concert,
-  Setlist,
-  ArtistImages,
-  BandcampArtist,
-  UpcomingRelease,
-  ArtistEnrichmentData,
-  ArtistEnrichmentProvider
+  Tool
 } from './types/addon';
 
 // Registry
@@ -110,7 +100,6 @@ export {
   MetadataOrchestrator,
   type ChartsResult
 } from './orchestrators/metadata-orchestrator';
-export { EnrichmentOrchestrator } from './orchestrators/enrichment-orchestrator';
 
 // Services
 export { TrackMatcher } from './services/track-matcher';

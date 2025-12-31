@@ -1,10 +1,10 @@
 /**
  * ArtistDetailView - Apple + Spotify Hybrid Design
- * Features: Large hero section, collapsible sections, enrichment data
- * Layout: Hero -> Popular Tracks -> Discography -> Similar Artists -> Enrichment Sections
+ * Features: Large hero section, simplified layout, clean aesthetic
+ * Layout: Hero -> Popular Tracks -> Discography -> Similar Artists
  */
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigationStore } from '../../stores/navigation-store';
 import { usePlayerStore } from '../../stores/player-store';
 import { useArtistStore } from '../../stores/artist-store';
@@ -14,23 +14,32 @@ import { useTrackContextMenu, useAlbumContextMenu } from '../../contexts/Context
 import { showSuccessToast } from '../../stores/toast-store';
 import { MusicNoteIcon, PlayIcon, ShuffleIcon, ChevronLeftIcon, RadioIcon } from '@audiio/icons';
 import { getColorsForArtwork, getDefaultColors, type ExtractedColors } from '../../utils/color-extraction';
-import { CollapsibleSection } from './CollapsibleSection';
-import type { UnifiedTrack, MusicVideo, Concert, Setlist, ArtistImages, TimelineEntry } from '@audiio/core';
+import type { UnifiedTrack } from '@audiio/core';
 import type { SearchAlbum } from '../../stores/search-store';
 
 type DiscographyTab = 'albums' | 'singles' | 'eps';
 
-// Enrichment data state
-interface EnrichmentState {
-  musicVideos: MusicVideo[];
-  timeline: TimelineEntry[];
-  concerts: Concert[];
-  setlists: Setlist[];
-  gallery: ArtistImages | null;
-  merchandiseUrl: string | null;
-  loading: boolean;
-  availableTypes: string[];
-}
+// Verified badge component (minimal style)
+const VerifiedBadge: React.FC = () => (
+  <div className="artist-verified-badge-minimal">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+    </svg>
+    <span>Verified</span>
+  </div>
+);
+
+// Stat box component for bento grid
+const StatBox: React.FC<{
+  value: string | number;
+  label: string;
+  accent?: boolean;
+}> = ({ value, label, accent }) => (
+  <div className={`artist-stat-box ${accent ? 'accent' : ''}`}>
+    <span className="stat-value">{value}</span>
+    <span className="stat-label">{label}</span>
+  </div>
+);
 
 // Pill tab button for discography
 const PillTab: React.FC<{
@@ -110,142 +119,6 @@ const SimilarArtistCard: React.FC<{
   </div>
 );
 
-// Music Video Card
-const MusicVideoCard: React.FC<{
-  video: MusicVideo;
-  onClick: () => void;
-}> = ({ video, onClick }) => (
-  <div className="music-video-card" onClick={onClick} role="button" tabIndex={0}>
-    <div className="music-video-thumbnail">
-      <img src={video.thumbnail} alt={video.title} loading="lazy" />
-      <div className="music-video-play-overlay">
-        <PlayIcon size={32} />
-      </div>
-      {video.duration && (
-        <span className="music-video-duration">{video.duration}</span>
-      )}
-    </div>
-    <div className="music-video-info">
-      <span className="music-video-title">{video.title}</span>
-      {video.viewCount && (
-        <span className="music-video-views">
-          {video.viewCount >= 1000000
-            ? `${(video.viewCount / 1000000).toFixed(1)}M views`
-            : video.viewCount >= 1000
-            ? `${Math.floor(video.viewCount / 1000)}K views`
-            : `${video.viewCount} views`}
-        </span>
-      )}
-    </div>
-  </div>
-);
-
-// Concert Card
-const ConcertCard: React.FC<{
-  concert: Concert;
-}> = ({ concert }) => {
-  const date = new Date(concert.datetime);
-  const month = date.toLocaleDateString('en-US', { month: 'short' });
-  const day = date.getDate();
-
-  return (
-    <div className="concert-card">
-      <div className="concert-date">
-        <span className="concert-month">{month}</span>
-        <span className="concert-day">{day}</span>
-      </div>
-      <div className="concert-info">
-        <span className="concert-venue">{concert.venue.name}</span>
-        <span className="concert-location">
-          {concert.venue.city}, {concert.venue.country}
-        </span>
-      </div>
-      {concert.ticketUrl && (
-        <a
-          href={concert.ticketUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="concert-tickets-btn"
-          onClick={(e) => e.stopPropagation()}
-        >
-          Tickets
-        </a>
-      )}
-    </div>
-  );
-};
-
-// Setlist Card
-const SetlistCard: React.FC<{
-  setlist: Setlist;
-}> = ({ setlist }) => {
-  const songCount = setlist.songs.length;
-
-  return (
-    <div className="setlist-card">
-      <div className="setlist-header">
-        <span className="setlist-date">{setlist.eventDate}</span>
-        <span className="setlist-venue">{setlist.venue.name}</span>
-        <span className="setlist-location">
-          {setlist.venue.city}, {setlist.venue.country}
-        </span>
-      </div>
-      {setlist.tour && <span className="setlist-tour">{setlist.tour}</span>}
-      <div className="setlist-songs">
-        {setlist.songs.slice(0, 5).map((song, i) => (
-          <span key={i} className="setlist-song">
-            {song.name}
-            {song.info && <em className="setlist-song-info"> ({song.info})</em>}
-          </span>
-        ))}
-        {songCount > 5 && (
-          <span className="setlist-more">+{songCount - 5} more songs</span>
-        )}
-      </div>
-      {setlist.url && (
-        <a
-          href={setlist.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="setlist-link"
-        >
-          View Full Setlist
-        </a>
-      )}
-    </div>
-  );
-};
-
-// Timeline Entry Card
-const TimelineCard: React.FC<{
-  entry: TimelineEntry;
-  onClick?: () => void;
-}> = ({ entry, onClick }) => (
-  <div className="timeline-card" onClick={onClick} role="button" tabIndex={0}>
-    <span className="timeline-year">{entry.year}</span>
-    <div className="timeline-content">
-      {entry.artwork && (
-        <img src={entry.artwork} alt={entry.title} className="timeline-artwork" loading="lazy" />
-      )}
-      <div className="timeline-info">
-        <span className="timeline-title">{entry.title}</span>
-        <span className="timeline-type">{entry.type}</span>
-        {entry.label && <span className="timeline-label">{entry.label}</span>}
-      </div>
-    </div>
-  </div>
-);
-
-// Gallery Image Card
-const GalleryImage: React.FC<{
-  url: string;
-  onClick: () => void;
-}> = ({ url, onClick }) => (
-  <div className="gallery-image" onClick={onClick} role="button" tabIndex={0}>
-    <img src={url} alt="Artist photo" loading="lazy" />
-  </div>
-);
-
 export const ArtistDetailView: React.FC = () => {
   const { selectedArtistId, selectedArtistData, goBack, openAlbum, openArtist } = useNavigationStore();
   const { play, setQueue, currentTrack } = usePlayerStore();
@@ -257,17 +130,6 @@ export const ArtistDetailView: React.FC = () => {
 
   const [colors, setColors] = useState<ExtractedColors>(getDefaultColors());
   const [activeTab, setActiveTab] = useState<DiscographyTab>('albums');
-  const [enrichment, setEnrichment] = useState<EnrichmentState>({
-    musicVideos: [],
-    timeline: [],
-    concerts: [],
-    setlists: [],
-    gallery: null,
-    merchandiseUrl: null,
-    loading: false,
-    availableTypes: [],
-  });
-  const [galleryLightbox, setGalleryLightbox] = useState<string | null>(null);
   const discographyScrollRef = useRef<HTMLDivElement>(null);
   const similarArtistsScrollRef = useRef<HTMLDivElement>(null);
 
@@ -293,61 +155,6 @@ export const ArtistDetailView: React.FC = () => {
       });
     }
   }, [selectedArtistId, selectedArtistData?.name]);
-
-  // Fetch enrichment data
-  useEffect(() => {
-    const fetchEnrichment = async () => {
-      if (!artistDetail?.name) return;
-
-      // Check if enrichment API is available
-      if (!window.api?.enrichment) return;
-
-      setEnrichment(prev => ({ ...prev, loading: true }));
-
-      try {
-        // Check available types first
-        const availableTypes = await window.api.enrichment.getAvailableTypes();
-
-        // Fetch all enrichment data in parallel
-        const [videos, timeline, concerts, setlists, gallery, merchUrl] = await Promise.allSettled([
-          availableTypes.includes('videos')
-            ? window.api.enrichment.getArtistVideos(artistDetail.name, 10)
-            : Promise.resolve([]),
-          availableTypes.includes('timeline')
-            ? window.api.enrichment.getArtistTimeline(artistDetail.name)
-            : Promise.resolve([]),
-          availableTypes.includes('concerts')
-            ? window.api.enrichment.getUpcomingConcerts(artistDetail.name)
-            : Promise.resolve([]),
-          availableTypes.includes('setlists')
-            ? window.api.enrichment.getArtistSetlists(artistDetail.name, undefined, 5)
-            : Promise.resolve([]),
-          availableTypes.includes('gallery') && artistDetail.mbid
-            ? window.api.enrichment.getArtistGallery(artistDetail.mbid)
-            : Promise.resolve(null),
-          availableTypes.includes('merchandise')
-            ? window.api.enrichment.getMerchandiseUrl(artistDetail.name)
-            : Promise.resolve(null),
-        ]);
-
-        setEnrichment({
-          musicVideos: videos.status === 'fulfilled' ? videos.value : [],
-          timeline: timeline.status === 'fulfilled' ? timeline.value : [],
-          concerts: concerts.status === 'fulfilled' ? concerts.value : [],
-          setlists: setlists.status === 'fulfilled' ? setlists.value : [],
-          gallery: gallery.status === 'fulfilled' ? gallery.value : null,
-          merchandiseUrl: merchUrl.status === 'fulfilled' ? merchUrl.value : null,
-          loading: false,
-          availableTypes,
-        });
-      } catch (err) {
-        console.error('[ArtistDetailView] Enrichment fetch error:', err);
-        setEnrichment(prev => ({ ...prev, loading: false }));
-      }
-    };
-
-    fetchEnrichment();
-  }, [artistDetail?.name, artistDetail?.mbid]);
 
   // Reset tab when artist changes
   useEffect(() => {
@@ -417,10 +224,6 @@ export const ArtistDetailView: React.FC = () => {
     });
   };
 
-  const handleVideoClick = (video: MusicVideo) => {
-    window.open(video.url, '_blank');
-  };
-
   const formatDuration = (seconds?: number): string => {
     if (!seconds) return '--:--';
     const mins = Math.floor(seconds / 60);
@@ -456,14 +259,6 @@ export const ArtistDetailView: React.FC = () => {
   const singlesCount = artistDetail?.singles?.length || 0;
   const epsCount = artistDetail?.eps?.length || 0;
   const hasDiscography = albumsCount > 0 || singlesCount > 0 || epsCount > 0;
-
-  // Gallery images
-  const galleryImages = enrichment.gallery
-    ? [
-        ...(enrichment.gallery.backgrounds || []),
-        ...(enrichment.gallery.thumbs || []),
-      ].slice(0, 12)
-    : [];
 
   return (
     <div
@@ -606,9 +401,10 @@ export const ArtistDetailView: React.FC = () => {
 
       {/* ===== CONTENT SECTIONS ===== */}
       <div className="artist-content-spotify">
-        {/* ===== LATEST RELEASE SECTION ===== */}
+        {/* ===== LATEST RELEASE SECTION (within last year) ===== */}
         {artistDetail?.latestRelease && (
-          <CollapsibleSection id="latest-release" title="Latest Release" defaultExpanded={true}>
+          <section className="artist-section-latest-release">
+            <h2 className="section-title-spotify">Latest Release</h2>
             <div
               className="latest-release-card"
               onClick={() => handleAlbumClick(artistDetail.latestRelease!)}
@@ -638,27 +434,13 @@ export const ArtistDetailView: React.FC = () => {
                 </span>
               </div>
             </div>
-          </CollapsibleSection>
-        )}
-
-        {/* ===== UPCOMING CONCERTS SECTION ===== */}
-        {enrichment.concerts.length > 0 && (
-          <CollapsibleSection
-            id="upcoming-concerts"
-            title="Upcoming Shows"
-            subtitle={`${enrichment.concerts.length} events`}
-            defaultExpanded={true}
-          >
-            <div className="concerts-list">
-              {enrichment.concerts.slice(0, 5).map(concert => (
-                <ConcertCard key={concert.id} concert={concert} />
-              ))}
-            </div>
-          </CollapsibleSection>
+          </section>
         )}
 
         {/* ===== POPULAR TRACKS SECTION ===== */}
-        <CollapsibleSection id="popular-tracks" title="Popular" defaultExpanded={true}>
+        <section className="artist-section-popular">
+          <h2 className="section-title-spotify">Popular</h2>
+
           <div className="popular-tracks-list">
             {isLoading ? (
               <div className="popular-tracks-loading">
@@ -721,31 +503,13 @@ export const ArtistDetailView: React.FC = () => {
               <p className="section-placeholder">No tracks available</p>
             )}
           </div>
-        </CollapsibleSection>
-
-        {/* ===== MUSIC VIDEOS SECTION ===== */}
-        {enrichment.musicVideos.length > 0 && (
-          <CollapsibleSection
-            id="music-videos"
-            title="Music Videos"
-            subtitle={`${enrichment.musicVideos.length} videos`}
-            defaultExpanded={true}
-          >
-            <div className="music-videos-grid">
-              {enrichment.musicVideos.slice(0, 6).map(video => (
-                <MusicVideoCard
-                  key={video.id}
-                  video={video}
-                  onClick={() => handleVideoClick(video)}
-                />
-              ))}
-            </div>
-          </CollapsibleSection>
-        )}
+        </section>
 
         {/* ===== DISCOGRAPHY SECTION ===== */}
         {hasDiscography && (
-          <CollapsibleSection id="discography" title="Discography" defaultExpanded={true}>
+          <section className="artist-section-discography">
+            <h2 className="section-title-spotify">Discography</h2>
+
             {/* Pill-style Tabs */}
             <div className="discography-tabs-pills" role="tablist">
               {albumsCount > 0 && (
@@ -797,28 +561,13 @@ export const ArtistDetailView: React.FC = () => {
                 <p className="section-placeholder">No {activeTab} found</p>
               )}
             </div>
-          </CollapsibleSection>
-        )}
-
-        {/* ===== TIMELINE SECTION ===== */}
-        {enrichment.timeline.length > 0 && (
-          <CollapsibleSection
-            id="timeline"
-            title="Timeline"
-            subtitle="Career history"
-            defaultExpanded={false}
-          >
-            <div className="timeline-list">
-              {enrichment.timeline.map((entry, i) => (
-                <TimelineCard key={`${entry.year}-${i}`} entry={entry} />
-              ))}
-            </div>
-          </CollapsibleSection>
+          </section>
         )}
 
         {/* ===== APPEARS ON SECTION ===== */}
         {artistDetail?.appearsOn && artistDetail.appearsOn.length > 0 && (
-          <CollapsibleSection id="appears-on" title="Appears On" defaultExpanded={true}>
+          <section className="artist-section-appears-on">
+            <h2 className="section-title-spotify">Appears On</h2>
             <div className="discography-scroll-container">
               <div className="discography-scroll">
                 {artistDetail.appearsOn.map(album => (
@@ -831,48 +580,14 @@ export const ArtistDetailView: React.FC = () => {
                 ))}
               </div>
             </div>
-          </CollapsibleSection>
-        )}
-
-        {/* ===== GALLERY SECTION ===== */}
-        {galleryImages.length > 0 && (
-          <CollapsibleSection
-            id="gallery"
-            title="Gallery"
-            subtitle={`${galleryImages.length} photos`}
-            defaultExpanded={false}
-          >
-            <div className="gallery-grid">
-              {galleryImages.map((img, i) => (
-                <GalleryImage
-                  key={i}
-                  url={img.url}
-                  onClick={() => setGalleryLightbox(img.url)}
-                />
-              ))}
-            </div>
-          </CollapsibleSection>
-        )}
-
-        {/* ===== RECENT SETLISTS SECTION ===== */}
-        {enrichment.setlists.length > 0 && (
-          <CollapsibleSection
-            id="setlists"
-            title="Recent Setlists"
-            subtitle="Past concerts"
-            defaultExpanded={false}
-          >
-            <div className="setlists-list">
-              {enrichment.setlists.map(setlist => (
-                <SetlistCard key={setlist.id} setlist={setlist} />
-              ))}
-            </div>
-          </CollapsibleSection>
+          </section>
         )}
 
         {/* ===== SIMILAR ARTISTS SECTION ===== */}
         {artistDetail?.similarArtists && artistDetail.similarArtists.length > 0 && (
-          <CollapsibleSection id="similar-artists" title="Fans Also Like" defaultExpanded={true}>
+          <section className="artist-section-similar">
+            <h2 className="section-title-spotify">Fans Also Like</h2>
+
             <div className="similar-artists-scroll-container" ref={similarArtistsScrollRef}>
               <div className="similar-artists-scroll">
                 {artistDetail.similarArtists.map(similarArtist => (
@@ -884,12 +599,13 @@ export const ArtistDetailView: React.FC = () => {
                 ))}
               </div>
             </div>
-          </CollapsibleSection>
+          </section>
         )}
 
-        {/* ===== ABOUT SECTION ===== */}
+        {/* ===== ABOUT SECTION (Bio) ===== */}
         {artistDetail?.bio && (
-          <CollapsibleSection id="about" title="About" defaultExpanded={true}>
+          <section className="artist-section-about">
+            <h2 className="section-title-spotify">About</h2>
             <div className="artist-about-card">
               {artist?.image && (
                 <div className="artist-about-image">
@@ -946,55 +662,9 @@ export const ArtistDetailView: React.FC = () => {
                 )}
               </div>
             </div>
-          </CollapsibleSection>
-        )}
-
-        {/* ===== MERCHANDISE SECTION ===== */}
-        {enrichment.merchandiseUrl && (
-          <CollapsibleSection id="merchandise" title="Merchandise" defaultExpanded={true}>
-            <div className="merchandise-section">
-              <a
-                href={enrichment.merchandiseUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="merchandise-link-card"
-              >
-                <div className="merchandise-icon">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
-                    <line x1="3" y1="6" x2="21" y2="6" />
-                    <path d="M16 10a4 4 0 0 1-8 0" />
-                  </svg>
-                </div>
-                <div className="merchandise-info">
-                  <span className="merchandise-title">Official Merchandise</span>
-                  <span className="merchandise-subtitle">Shop t-shirts, vinyl, and more</span>
-                </div>
-                <span className="merchandise-arrow">→</span>
-              </a>
-            </div>
-          </CollapsibleSection>
+          </section>
         )}
       </div>
-
-      {/* Gallery Lightbox */}
-      {galleryLightbox && (
-        <div
-          className="gallery-lightbox"
-          onClick={() => setGalleryLightbox(null)}
-          role="dialog"
-          aria-modal="true"
-        >
-          <button
-            className="gallery-lightbox-close"
-            onClick={() => setGalleryLightbox(null)}
-            aria-label="Close lightbox"
-          >
-            ×
-          </button>
-          <img src={galleryLightbox} alt="Gallery image" />
-        </div>
-      )}
     </div>
   );
 };

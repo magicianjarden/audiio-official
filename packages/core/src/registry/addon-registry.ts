@@ -9,8 +9,7 @@ import type {
   StreamProvider,
   LyricsProvider,
   Scrobbler,
-  Tool,
-  ArtistEnrichmentProvider
+  Tool
 } from '../types/addon';
 
 interface RegisteredAddon {
@@ -229,26 +228,6 @@ export class AddonRegistry {
       return tool;
     }
     return null;
-  }
-
-  /**
-   * Get all artist enrichment providers
-   */
-  getArtistEnrichmentProviders(): ArtistEnrichmentProvider[] {
-    const ids = this.roleIndex.get('artist-enrichment') || new Set();
-    return Array.from(ids)
-      .map(id => this.addons.get(id))
-      .filter((r): r is RegisteredAddon => r !== undefined && r.enabled)
-      .map(r => r.addon as ArtistEnrichmentProvider);
-  }
-
-  /**
-   * Get artist enrichment providers by type
-   */
-  getArtistEnrichmentProvidersByType(
-    type: 'videos' | 'timeline' | 'setlists' | 'concerts' | 'gallery' | 'merchandise'
-  ): ArtistEnrichmentProvider[] {
-    return this.getArtistEnrichmentProviders().filter(p => p.enrichmentType === type);
   }
 
   /**
