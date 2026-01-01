@@ -64,3 +64,10 @@ export {
   type UsePluginDataOptions,
   type UsePluginDataResult,
 } from './usePluginData';
+
+export {
+  useArtistEnrichment,
+  type ArtistEnrichmentData,
+  type ArtistEnrichmentState,
+  type UseArtistEnrichmentOptions,
+} from './useArtistEnrichment';

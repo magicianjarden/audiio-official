@@ -208,8 +208,8 @@ const api = {
     return ipcRenderer.invoke('get-mobile-status');
   },
 
-  enableMobileAccess: () => {
-    return ipcRenderer.invoke('enable-mobile-access');
+  enableMobileAccess: (options?: { customRelayUrl?: string }) => {
+    return ipcRenderer.invoke('enable-mobile-access', options);
   },
 
   disableMobileAccess: () => {
@@ -842,6 +842,52 @@ const api = {
       return () => {
         ipcRenderer.removeListener('plugins-changed', listener);
       };
+    },
+  },
+
+  // ========================================
+  // Artist Enrichment APIs
+  // ========================================
+
+  enrichment: {
+    // Get available enrichment types from installed plugins
+    getAvailableTypes: () => {
+      return ipcRenderer.invoke('get-available-enrichment-types');
+    },
+
+    // Get artist music videos
+    getVideos: (artistName: string, limit?: number) => {
+      return ipcRenderer.invoke('get-artist-videos', { artistName, limit });
+    },
+
+    // Get album music videos
+    getAlbumVideos: (albumTitle: string, artistName: string, trackNames?: string[], limit?: number) => {
+      return ipcRenderer.invoke('get-album-videos', { albumTitle, artistName, trackNames, limit });
+    },
+
+    // Get artist timeline/discography
+    getTimeline: (artistName: string) => {
+      return ipcRenderer.invoke('get-artist-timeline', { artistName });
+    },
+
+    // Get artist setlists
+    getSetlists: (artistName: string, mbid?: string, limit?: number) => {
+      return ipcRenderer.invoke('get-artist-setlists', { artistName, mbid, limit });
+    },
+
+    // Get upcoming concerts
+    getConcerts: (artistName: string) => {
+      return ipcRenderer.invoke('get-artist-concerts', { artistName });
+    },
+
+    // Get artist gallery/images
+    getGallery: (mbid?: string, artistName?: string) => {
+      return ipcRenderer.invoke('get-artist-gallery', { mbid, artistName });
+    },
+
+    // Get merchandise URL
+    getMerchandise: (artistName: string) => {
+      return ipcRenderer.invoke('get-artist-merchandise', { artistName });
     },
   },
 };
