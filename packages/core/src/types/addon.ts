@@ -593,6 +593,9 @@ export interface ArtistEnrichmentProvider extends BaseAddon {
   /** Get music videos for an artist */
   getArtistVideos?(artistName: string, limit?: number): Promise<MusicVideo[]>;
 
+  /** Get music videos for an album (matching album title and track names) */
+  getAlbumVideos?(albumTitle: string, artistName: string, trackNames?: string[], limit?: number): Promise<MusicVideo[]>;
+
   /** Get artist timeline/discography history */
   getArtistTimeline?(artistName: string): Promise<TimelineEntry[]>;
 
@@ -602,8 +605,8 @@ export interface ArtistEnrichmentProvider extends BaseAddon {
   /** Get upcoming concerts/events */
   getUpcomingConcerts?(artistName: string): Promise<Concert[]>;
 
-  /** Get artist gallery images (requires MusicBrainz ID) */
-  getArtistGallery?(mbid: string): Promise<ArtistImages>;
+  /** Get artist gallery images (can use MusicBrainz ID or artist name) */
+  getArtistGallery?(mbid: string, artistName?: string): Promise<ArtistImages>;
 
   /** Get merchandise URL for artist */
   getMerchandiseUrl?(artistName: string): Promise<string | null>;

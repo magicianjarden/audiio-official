@@ -41,10 +41,11 @@ export abstract class BaseArtistEnrichmentProvider implements ArtistEnrichmentPr
 
   // Optional methods - implement based on enrichmentType
   getArtistVideos?(artistName: string, limit?: number): Promise<MusicVideo[]>;
+  getAlbumVideos?(albumTitle: string, artistName: string, trackNames?: string[], limit?: number): Promise<MusicVideo[]>;
   getArtistTimeline?(artistName: string): Promise<TimelineEntry[]>;
   getArtistSetlists?(artistName: string, mbid?: string, limit?: number): Promise<Setlist[]>;
   getUpcomingConcerts?(artistName: string): Promise<Concert[]>;
-  getArtistGallery?(mbid: string): Promise<ArtistImages>;
+  getArtistGallery?(mbid: string, artistName?: string): Promise<ArtistImages>;
   getMerchandiseUrl?(artistName: string): Promise<string | null>;
   searchArtist?(artistName: string): Promise<{ id: string; name: string } | null>;
 }

@@ -2,6 +2,7 @@
  * ArtistDetailView - Apple + Spotify Hybrid Design
  * Features: Large hero section, simplified layout, clean aesthetic
  * Layout: Hero -> Popular Tracks -> Discography -> Similar Artists
+ * Now includes adaptive enrichment sections from installed plugins
  */
 
 import React, { useEffect, useState, useRef } from 'react';
@@ -14,7 +15,18 @@ import { useTrackContextMenu, useAlbumContextMenu } from '../../contexts/Context
 import { showSuccessToast } from '../../stores/toast-store';
 import { MusicNoteIcon, PlayIcon, ShuffleIcon, ChevronLeftIcon, RadioIcon } from '@audiio/icons';
 import { getColorsForArtwork, getDefaultColors, type ExtractedColors } from '../../utils/color-extraction';
-import type { UnifiedTrack } from '@audiio/core';
+import { useArtistEnrichment } from '../../hooks/useArtistEnrichment';
+import { CollapsibleSection } from './CollapsibleSection';
+import {
+  MusicVideosSection,
+  ConcertsSection,
+  SetlistsSection,
+  TimelineSection,
+  GallerySection,
+  MerchandiseSection
+} from './sections';
+import { VideoPlayerModal } from '../Modals/VideoPlayerModal';
+import type { UnifiedTrack, MusicVideo } from '@audiio/core';
 import type { SearchAlbum } from '../../stores/search-store';
 
 type DiscographyTab = 'albums' | 'singles' | 'eps';
@@ -130,6 +142,7 @@ export const ArtistDetailView: React.FC = () => {
 
   const [colors, setColors] = useState<ExtractedColors>(getDefaultColors());
   const [activeTab, setActiveTab] = useState<DiscographyTab>('albums');
+  const [activeVideo, setActiveVideo] = useState<MusicVideo | null>(null);
   const discographyScrollRef = useRef<HTMLDivElement>(null);
   const similarArtistsScrollRef = useRef<HTMLDivElement>(null);
 
@@ -137,6 +150,12 @@ export const ArtistDetailView: React.FC = () => {
   const artistDetail = getArtist(selectedArtistId || '');
   const artist = artistDetail || selectedArtistData;
   const isLoading = loadingArtistId === selectedArtistId;
+
+  // Fetch enrichment data from plugins (adaptive - only shows if plugins installed)
+  const enrichment = useArtistEnrichment(artistDetail?.name || selectedArtistData?.name, {
+    enabled: !isLoading && !!(artistDetail?.name || selectedArtistData?.name),
+    mbid: artistDetail?.mbid,
+  });
 
   // Extract colors from artwork
   useEffect(() => {
@@ -222,6 +241,11 @@ export const ArtistDetailView: React.FC = () => {
       image: similarArtist.image,
       source: artistDetail?.source
     });
+  };
+
+  const handleVideoClick = (video: MusicVideo) => {
+    // Open video in modal player
+    setActiveVideo(video);
   };
 
   const formatDuration = (seconds?: number): string => {
@@ -602,6 +626,90 @@ export const ArtistDetailView: React.FC = () => {
           </section>
         )}
 
+        {/* ===== ENRICHMENT SECTIONS (Adaptive - only show if plugins provide data) ===== */}
+
+        {/* Upcoming Concerts */}
+        {(enrichment.loading.concerts || enrichment.data.concerts.length > 0) && (
+          <CollapsibleSection
+            title="Upcoming Shows"
+            sectionId={`artist-concerts-${selectedArtistId}`}
+            className="artist-section-enrichment"
+            loading={enrichment.loading.concerts}
+          >
+            <ConcertsSection concerts={enrichment.data.concerts} />
+          </CollapsibleSection>
+        )}
+
+        {/* Music Videos */}
+        {(enrichment.loading.videos || enrichment.data.videos.length > 0) && (
+          <CollapsibleSection
+            title="Music Videos"
+            sectionId={`artist-videos-${selectedArtistId}`}
+            className="artist-section-enrichment"
+            loading={enrichment.loading.videos}
+          >
+            <MusicVideosSection
+              videos={enrichment.data.videos}
+              onVideoClick={handleVideoClick}
+            />
+          </CollapsibleSection>
+        )}
+
+        {/* Timeline */}
+        {(enrichment.loading.timeline || enrichment.data.timeline.length > 0) && (
+          <CollapsibleSection
+            title="Timeline"
+            sectionId={`artist-timeline-${selectedArtistId}`}
+            className="artist-section-enrichment"
+            loading={enrichment.loading.timeline}
+          >
+            <TimelineSection timeline={enrichment.data.timeline} />
+          </CollapsibleSection>
+        )}
+
+        {/* Gallery */}
+        {(enrichment.loading.gallery || enrichment.data.gallery) && (
+          <CollapsibleSection
+            title="Gallery"
+            sectionId={`artist-gallery-${selectedArtistId}`}
+            className="artist-section-enrichment"
+            loading={enrichment.loading.gallery}
+          >
+            {enrichment.data.gallery && (
+              <GallerySection gallery={enrichment.data.gallery} />
+            )}
+          </CollapsibleSection>
+        )}
+
+        {/* Recent Setlists */}
+        {(enrichment.loading.setlists || enrichment.data.setlists.length > 0) && (
+          <CollapsibleSection
+            title="Recent Setlists"
+            sectionId={`artist-setlists-${selectedArtistId}`}
+            className="artist-section-enrichment"
+            loading={enrichment.loading.setlists}
+          >
+            <SetlistsSection setlists={enrichment.data.setlists} />
+          </CollapsibleSection>
+        )}
+
+        {/* Merchandise */}
+        {(enrichment.loading.merchandise || enrichment.data.merchandiseUrl) && (
+          <CollapsibleSection
+            title="Merchandise"
+            sectionId={`artist-merch-${selectedArtistId}`}
+            className="artist-section-enrichment"
+            loading={enrichment.loading.merchandise}
+          >
+            {enrichment.data.merchandiseUrl && (
+              <MerchandiseSection
+                merchandiseUrl={enrichment.data.merchandiseUrl}
+                artistName={artistDetail?.name || selectedArtistData?.name || 'Artist'}
+              />
+            )}
+          </CollapsibleSection>
+        )}
+
         {/* ===== ABOUT SECTION (Bio) ===== */}
         {artistDetail?.bio && (
           <section className="artist-section-about">
@@ -665,6 +773,12 @@ export const ArtistDetailView: React.FC = () => {
           </section>
         )}
       </div>
+
+      {/* Video Player Modal */}
+      <VideoPlayerModal
+        video={activeVideo}
+        onClose={() => setActiveVideo(null)}
+      />
     </div>
   );
 };

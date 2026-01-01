@@ -1022,17 +1022,33 @@ function setupIPCHandlers(): void {
 
   // Get current mobile access status
   ipcMain.handle('get-mobile-status', () => {
+    // Get pairing info if server is running
+    let pairing = null;
+    if (mobileServer) {
+      const pairingCode = mobileServer.getPairingCode?.();
+      if (pairingCode) {
+        pairing = {
+          code: pairingCode.code,
+          qrCode: pairingCode.qrCode,
+          localUrl: pairingCode.localUrl,
+          expiresAt: pairingCode.expiresAt,
+          relayActive: mobileAccessConfig?.relayActive || mobileAccessConfig?.p2pActive || false
+        };
+      }
+    }
+
     return {
       isEnabled: mobileServer !== null,
       accessConfig: mobileAccessConfig,
+      pairing,
       sessions: mobileServer?.getSessions() || [],
       enableRemoteAccess: mobileAccessConfig?.tunnelUrl !== undefined
     };
   });
 
   // Enable mobile access
-  ipcMain.handle('enable-mobile-access', async () => {
-    console.log('[Mobile] enable-mobile-access called');
+  ipcMain.handle('enable-mobile-access', async (_event, options?: { customRelayUrl?: string }) => {
+    console.log('[Mobile] enable-mobile-access called', options?.customRelayUrl ? `with relay: ${options.customRelayUrl}` : '');
     try {
       // Lazy load the mobile server module using dynamic import
       if (!MobileServer) {
@@ -1076,6 +1092,7 @@ function setupIPCHandlers(): void {
           port: 8484,
           enableTunnel: false
         },
+        customRelayUrl: options?.customRelayUrl,
         orchestrators: {
           search: searchOrchestrator,
           trackResolver,
@@ -1121,7 +1138,19 @@ function setupIPCHandlers(): void {
       console.log('[Mobile] Relay code:', access.relayCode || 'N/A');
       console.log('[Mobile] QR Code available:', !!access.qrCode);
 
-      return { success: true, accessConfig: access };
+      // Get pairing info for simplified flow
+      const pairingCode = mobileServer?.getPairingCode?.();
+      const pairing = pairingCode ? {
+        code: pairingCode.code,
+        qrCode: pairingCode.qrCode,
+        localUrl: pairingCode.localUrl,
+        expiresAt: pairingCode.expiresAt,
+        relayActive: access.relayActive || access.p2pActive || false
+      } : null;
+
+      console.log('[Mobile] Returning pairing:', pairing?.code || 'none');
+
+      return { success: true, accessConfig: access, pairing };
     } catch (error) {
       console.error('[Mobile] Failed to start server:', error);
       mobileServer = null;
@@ -1363,49 +1392,55 @@ function setupIPCHandlers(): void {
     }
   });
 
-  // Get authorized devices
+  // Get authorized devices (from PairingService's DeviceManager)
   ipcMain.handle('get-mobile-devices', () => {
-    if (!mobileAuthManager) {
+    if (!mobileServer) {
       return { devices: [] };
     }
     try {
-      const devices = mobileAuthManager.listDevices();
+      // Use mobileServer.getDevices() which gets devices from PairingService
+      const devices = mobileServer.getDevices?.() || [];
       return {
         devices: devices.map((d: any) => ({
           id: d.id,
           name: d.name,
-          createdAt: d.createdAt?.toISOString(),
-          lastAccessAt: d.lastAccessAt?.toISOString(),
-          expiresAt: d.expiresAt?.toISOString() || null
+          createdAt: d.createdAt?.toISOString?.() || d.createdAt,
+          lastAccessAt: d.lastAccessAt?.toISOString?.() || d.lastAccessAt,
+          expiresAt: d.expiresAt?.toISOString?.() || d.expiresAt || null
         }))
       };
     } catch (error) {
+      console.error('[Mobile] Error getting devices:', error);
       return { devices: [] };
     }
   });
 
-  // Revoke a device
+  // Revoke a device (from PairingService's DeviceManager)
   ipcMain.handle('revoke-mobile-device', (_event, deviceId: string) => {
-    if (!mobileAuthManager) {
-      return { success: false, error: 'Auth manager not available' };
+    if (!mobileServer) {
+      return { success: false, error: 'Mobile server not running' };
     }
     try {
-      const success = mobileAuthManager.revokeDevice(deviceId);
+      const success = mobileServer.revokeDevice?.(deviceId) || false;
+      console.log(`[Mobile] Revoked device ${deviceId}: ${success}`);
       return { success };
     } catch (error) {
+      console.error('[Mobile] Error revoking device:', error);
       return { success: false, error: String(error) };
     }
   });
 
-  // Revoke all devices
+  // Revoke all devices (from PairingService's DeviceManager)
   ipcMain.handle('revoke-all-mobile-devices', () => {
-    if (!mobileAuthManager) {
-      return { success: false, error: 'Auth manager not available' };
+    if (!mobileServer) {
+      return { success: false, error: 'Mobile server not running' };
     }
     try {
-      const count = mobileAuthManager.revokeAllDevices();
+      const count = mobileServer.revokeAllDevices?.() || 0;
+      console.log(`[Mobile] Revoked all devices: ${count}`);
       return { success: true, count };
     } catch (error) {
+      console.error('[Mobile] Error revoking all devices:', error);
       return { success: false, error: String(error) };
     }
   });
@@ -2168,6 +2203,182 @@ function setupIPCHandlers(): void {
       mainWindow?.webContents.send('plugins-changed');
     }
     return result;
+  });
+
+  // =============================================
+  // Artist Enrichment Handlers
+  // =============================================
+
+  // Get available enrichment types from installed plugins
+  ipcMain.handle('get-available-enrichment-types', () => {
+    const providers = registry.getArtistEnrichmentProviders();
+    const types = registry.getAvailableEnrichmentTypes();
+    console.log('[Enrichment] Called get-available-enrichment-types');
+    console.log('[Enrichment] Providers found:', providers.length, providers.map(p => ({ id: p.id, type: p.enrichmentType, roles: p.manifest?.roles })));
+    console.log('[Enrichment] Available types:', types);
+    return types;
+  });
+
+  // Get artist music videos
+  ipcMain.handle('get-artist-videos', async (_event, { artistName, limit }: { artistName: string; limit?: number }) => {
+    try {
+      const providers = registry.getArtistEnrichmentProvidersByType('videos');
+      for (const provider of providers) {
+        if (provider.getArtistVideos) {
+          const videos = await provider.getArtistVideos(artistName, limit);
+          if (videos && videos.length > 0) {
+            return { success: true, data: videos, source: provider.id };
+          }
+        }
+      }
+      return { success: false, error: 'No video provider available', data: [] };
+    } catch (error) {
+      console.error('[Enrichment] Failed to get artist videos:', error);
+      return { success: false, error: String(error), data: [] };
+    }
+  });
+
+  // Get album videos (search for videos matching album title and track names)
+  ipcMain.handle('get-album-videos', async (_event, {
+    albumTitle,
+    artistName,
+    trackNames,
+    limit = 8
+  }: {
+    albumTitle: string;
+    artistName: string;
+    trackNames?: string[];
+    limit?: number
+  }) => {
+    try {
+      console.log('[Enrichment] Getting album videos for:', albumTitle, 'by', artistName);
+      const providers = registry.getArtistEnrichmentProvidersByType('videos');
+
+      for (const provider of providers) {
+        if (provider.getAlbumVideos) {
+          // Use dedicated album videos method if available
+          const videos = await provider.getAlbumVideos(albumTitle, artistName, trackNames, limit);
+          if (videos && videos.length > 0) {
+            return { success: true, data: videos, source: provider.id };
+          }
+        } else if (provider.getArtistVideos) {
+          // Fallback: search for album title + artist
+          const searchQuery = `${albumTitle} ${artistName}`;
+          const videos = await provider.getArtistVideos(searchQuery, limit);
+          if (videos && videos.length > 0) {
+            return { success: true, data: videos, source: provider.id };
+          }
+        }
+      }
+      return { success: false, error: 'No video provider available', data: [] };
+    } catch (error) {
+      console.error('[Enrichment] Failed to get album videos:', error);
+      return { success: false, error: String(error), data: [] };
+    }
+  });
+
+  // Get artist timeline/discography
+  ipcMain.handle('get-artist-timeline', async (_event, { artistName }: { artistName: string }) => {
+    console.log('[Enrichment] Getting timeline for:', artistName);
+    try {
+      const providers = registry.getArtistEnrichmentProvidersByType('timeline');
+      console.log('[Enrichment] Timeline providers:', providers.length);
+      for (const provider of providers) {
+        if (provider.getArtistTimeline) {
+          console.log('[Enrichment] Calling timeline provider:', provider.id);
+          const timeline = await provider.getArtistTimeline(artistName);
+          console.log('[Enrichment] Timeline result:', timeline?.length, 'entries');
+          if (timeline && timeline.length > 0) {
+            return { success: true, data: timeline, source: provider.id };
+          }
+        }
+      }
+      return { success: false, error: 'No timeline provider available', data: [] };
+    } catch (error) {
+      console.error('[Enrichment] Failed to get artist timeline:', error);
+      return { success: false, error: String(error), data: [] };
+    }
+  });
+
+  // Get artist setlists
+  ipcMain.handle('get-artist-setlists', async (_event, { artistName, mbid, limit }: { artistName: string; mbid?: string; limit?: number }) => {
+    try {
+      const providers = registry.getArtistEnrichmentProvidersByType('setlists');
+      for (const provider of providers) {
+        if (provider.getArtistSetlists) {
+          const setlists = await provider.getArtistSetlists(artistName, mbid, limit);
+          if (setlists && setlists.length > 0) {
+            return { success: true, data: setlists, source: provider.id };
+          }
+        }
+      }
+      return { success: false, error: 'No setlists provider available', data: [] };
+    } catch (error) {
+      console.error('[Enrichment] Failed to get artist setlists:', error);
+      return { success: false, error: String(error), data: [] };
+    }
+  });
+
+  // Get upcoming concerts
+  ipcMain.handle('get-artist-concerts', async (_event, { artistName }: { artistName: string }) => {
+    try {
+      const providers = registry.getArtistEnrichmentProvidersByType('concerts');
+      for (const provider of providers) {
+        if (provider.getUpcomingConcerts) {
+          const concerts = await provider.getUpcomingConcerts(artistName);
+          if (concerts && concerts.length > 0) {
+            return { success: true, data: concerts, source: provider.id };
+          }
+        }
+      }
+      return { success: false, error: 'No concerts provider available', data: [] };
+    } catch (error) {
+      console.error('[Enrichment] Failed to get artist concerts:', error);
+      return { success: false, error: String(error), data: [] };
+    }
+  });
+
+  // Get artist gallery/images
+  ipcMain.handle('get-artist-gallery', async (_event, { mbid, artistName }: { mbid?: string; artistName?: string }) => {
+    try {
+      const providers = registry.getArtistEnrichmentProvidersByType('gallery');
+      for (const provider of providers) {
+        if (provider.getArtistGallery) {
+          // Pass both mbid and artistName for flexible lookup
+          const gallery = await provider.getArtistGallery(mbid || '', artistName);
+          if (gallery && (gallery.backgrounds?.length || gallery.thumbs?.length)) {
+            return { success: true, data: gallery, source: provider.id };
+          }
+        }
+      }
+      return { success: false, error: 'No gallery provider available', data: null };
+    } catch (error) {
+      console.error('[Enrichment] Failed to get artist gallery:', error);
+      return { success: false, error: String(error), data: null };
+    }
+  });
+
+  // Get merchandise URL
+  ipcMain.handle('get-artist-merchandise', async (_event, { artistName }: { artistName: string }) => {
+    console.log('[Enrichment] Getting merchandise for:', artistName);
+    try {
+      const providers = registry.getArtistEnrichmentProvidersByType('merchandise');
+      console.log('[Enrichment] Merchandise providers:', providers.length);
+      for (const provider of providers) {
+        if (provider.getMerchandiseUrl) {
+          console.log('[Enrichment] Calling merchandise provider:', provider.id);
+          const merchUrl = await provider.getMerchandiseUrl(artistName);
+          console.log('[Enrichment] Merchandise result:', merchUrl);
+          if (merchUrl) {
+            return { success: true, data: merchUrl, source: provider.id };
+          }
+        }
+      }
+      return { success: false, error: 'No merchandise provider available', data: null };
+    } catch (error) {
+      console.error('[Enrichment] Failed to get artist merchandise:', error);
+      return { success: false, error: String(error), data: null };
+    }
   });
 }
 

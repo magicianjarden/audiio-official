@@ -11,7 +11,11 @@ import { useTrackContextMenu, useAlbumContextMenu } from '../../contexts/Context
 import { CreditsModal } from './CreditsModal';
 import { MusicNoteIcon, PlayIcon, ShuffleIcon, MoreIcon, BackIcon } from '@audiio/icons';
 import { getColorsForArtwork, getDefaultColors, type ExtractedColors } from '../../utils/color-extraction';
-import type { UnifiedTrack, AlbumCredits } from '@audiio/core';
+import { useAlbumEnrichment } from '../../hooks/useAlbumEnrichment';
+import { MusicVideosSection } from '../Artist/sections/MusicVideosSection';
+import { VideoPlayerModal } from '../Modals/VideoPlayerModal';
+import { CollapsibleSection } from '../Artist/CollapsibleSection';
+import type { UnifiedTrack, AlbumCredits, MusicVideo } from '@audiio/core';
 import type { SearchAlbum } from '../../stores/search-store';
 
 // Helper to check if credits object has any content
@@ -34,11 +38,24 @@ export const AlbumDetailView: React.FC = () => {
 
   const [colors, setColors] = useState<ExtractedColors>(getDefaultColors());
   const [showCredits, setShowCredits] = useState(false);
+  const [activeVideo, setActiveVideo] = useState<MusicVideo | null>(null);
 
   // Get album data
   const albumDetail = getAlbum(selectedAlbumId || '');
   const album = albumDetail || selectedAlbumData;
   const isLoading = loadingAlbumId === selectedAlbumId;
+
+  // Fetch album enrichment (videos)
+  const trackNames = albumDetail?.tracks?.map(t => t.title) || [];
+  const enrichment = useAlbumEnrichment(album?.title, album?.artist, {
+    enabled: !isLoading && !!(album?.title && album?.artist),
+    trackNames,
+    limit: 8,
+  });
+
+  const handleVideoClick = (video: MusicVideo) => {
+    setActiveVideo(video);
+  };
 
   // Extract colors from artwork
   useEffect(() => {
@@ -312,6 +329,21 @@ export const AlbumDetailView: React.FC = () => {
         )}
       </section>
 
+      {/* Music Videos Section (from enrichment plugins) */}
+      {(enrichment.loading.videos || enrichment.data.videos.length > 0) && (
+        <CollapsibleSection
+          title="Music Videos"
+          sectionId={`album-videos-${selectedAlbumId}`}
+          className="album-section-videos"
+          loading={enrichment.loading.videos}
+        >
+          <MusicVideosSection
+            videos={enrichment.data.videos}
+            onVideoClick={handleVideoClick}
+          />
+        </CollapsibleSection>
+      )}
+
       {/* Artist Card - Full artist display */}
       {albumDetail?.artistInfo && (
         <section className="album-artist-section">
@@ -461,6 +493,12 @@ export const AlbumDetailView: React.FC = () => {
           onClose={() => setShowCredits(false)}
         />
       )}
+
+      {/* Video Player Modal */}
+      <VideoPlayerModal
+        video={activeVideo}
+        onClose={() => setActiveVideo(null)}
+      />
     </div>
   );
 };
