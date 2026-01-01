@@ -85,6 +85,7 @@ export type {
   Tool,
   // Artist enrichment types
   MusicVideo,
+  VideoStreamInfo,
   TimelineEntry,
   Concert,
   Setlist,

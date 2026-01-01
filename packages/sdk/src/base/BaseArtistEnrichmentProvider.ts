@@ -10,6 +10,7 @@ import type {
   ArtistEnrichmentProvider,
   ArtistEnrichmentType,
   MusicVideo,
+  VideoStreamInfo,
   TimelineEntry,
   Setlist,
   Concert,
@@ -48,4 +49,5 @@ export abstract class BaseArtistEnrichmentProvider implements ArtistEnrichmentPr
   getArtistGallery?(mbid: string, artistName?: string): Promise<ArtistImages>;
   getMerchandiseUrl?(artistName: string): Promise<string | null>;
   searchArtist?(artistName: string): Promise<{ id: string; name: string } | null>;
+  getVideoStream?(videoId: string, preferredQuality?: string): Promise<VideoStreamInfo | null>;
 }

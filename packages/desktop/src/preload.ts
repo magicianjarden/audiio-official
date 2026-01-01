@@ -409,6 +409,52 @@ const api = {
     return ipcRenderer.invoke('get-local-tracks');
   },
 
+  // Get embedded artwork from a local file
+  getEmbeddedArtwork: (trackId: string) => {
+    return ipcRenderer.invoke('get-embedded-artwork', trackId);
+  },
+
+  // Enrich local tracks with metadata from online providers
+  enrichLocalTracks: (tracks: Array<{
+    id: string;
+    title: string;
+    artists: string[];
+    album?: string;
+    duration?: number;
+    filePath: string;
+  }>) => {
+    return ipcRenderer.invoke('enrich-local-tracks', tracks);
+  },
+
+  // Write metadata to a local file
+  writeTrackMetadata: (params: {
+    filePath: string;
+    metadata: {
+      title?: string;
+      artists?: string[];
+      album?: string;
+      genre?: string[];
+      year?: number;
+    };
+    artworkUrl?: string;
+  }) => {
+    return ipcRenderer.invoke('write-track-metadata', params);
+  },
+
+  // Listen for scan progress events
+  onScanProgress: (callback: (progress: { current: number; total: number; status: string }) => void) => {
+    const handler = (_event: any, progress: { current: number; total: number; status: string }) => callback(progress);
+    ipcRenderer.on('scan-progress', handler);
+    return () => ipcRenderer.removeListener('scan-progress', handler);
+  },
+
+  // Listen for enrichment progress events
+  onEnrichProgress: (callback: (progress: { current: number; total: number; status: string }) => void) => {
+    const handler = (_event: any, progress: { current: number; total: number; status: string }) => callback(progress);
+    ipcRenderer.on('enrich-progress', handler);
+    return () => ipcRenderer.removeListener('enrich-progress', handler);
+  },
+
   // Settings sync
   updateSettings: (key: string, value: unknown) => {
     return ipcRenderer.invoke('update-settings', { key, value });
@@ -863,6 +909,11 @@ const api = {
     // Get album music videos
     getAlbumVideos: (albumTitle: string, artistName: string, trackNames?: string[], limit?: number) => {
       return ipcRenderer.invoke('get-album-videos', { albumTitle, artistName, trackNames, limit });
+    },
+
+    // Get video stream URL for native playback
+    getVideoStream: (videoId: string, source: string, preferredQuality?: string) => {
+      return ipcRenderer.invoke('get-video-stream', { videoId, source, preferredQuality });
     },
 
     // Get artist timeline/discography

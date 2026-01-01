@@ -1,64 +1,35 @@
 /**
- * VideoPlayerModal - Source-agnostic video player modal
- * Supports embedded playback from various video providers (YouTube, Vimeo, etc.)
+ * VideoPlayerModal - Custom HTML5 video player modal
+ * Fetches direct stream URLs from plugins for native playback
  */
 
-import React, { useEffect, useCallback } from 'react';
-import type { MusicVideo } from '@audiio/core';
-import { CloseIcon } from '@audiio/icons';
+import React, { useEffect, useCallback, useState, useRef } from 'react';
+import type { MusicVideo, VideoStreamInfo } from '@audiio/core';
+import { CloseIcon, PlayIcon, PauseIcon, VolumeHighIcon, ExpandIcon } from '@audiio/icons';
+
+// Extend Window type for video stream API
+declare global {
+  interface Window {
+    api?: {
+      enrichment?: {
+        getVideoStream?: (
+          videoId: string,
+          source: string,
+          preferredQuality?: string
+        ) => Promise<{
+          success: boolean;
+          data?: VideoStreamInfo;
+          error?: string;
+        }>;
+      };
+    };
+  }
+}
 
 interface VideoPlayerModalProps {
   video: MusicVideo | null;
   onClose: () => void;
 }
-
-/**
- * Get the embed URL for a video based on its source or URL pattern
- */
-const getEmbedUrl = (video: MusicVideo): string | null => {
-  const { url, source, id } = video;
-
-  // Try source-specific embed formats first
-  switch (source) {
-    case 'youtube':
-      return `https://www.youtube.com/embed/${id}?autoplay=1&rel=0&modestbranding=1`;
-    case 'vimeo':
-      return `https://player.vimeo.com/video/${id}?autoplay=1`;
-    case 'dailymotion':
-      return `https://www.dailymotion.com/embed/video/${id}?autoplay=1`;
-  }
-
-  // Try to detect from URL patterns
-  return detectEmbedFromUrl(url, id);
-};
-
-/**
- * Detect embed URL from various video platform URL patterns
- */
-const detectEmbedFromUrl = (url: string, videoId: string): string | null => {
-  // YouTube patterns
-  if (url.includes('youtube.com') || url.includes('youtu.be')) {
-    const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|embed\/)([^&\n?#]+)/);
-    const id = ytMatch?.[1] || videoId;
-    return `https://www.youtube.com/embed/${id}?autoplay=1&rel=0&modestbranding=1`;
-  }
-
-  // Vimeo patterns
-  if (url.includes('vimeo.com')) {
-    const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
-    const id = vimeoMatch?.[1] || videoId;
-    return `https://player.vimeo.com/video/${id}?autoplay=1`;
-  }
-
-  // Dailymotion patterns
-  if (url.includes('dailymotion.com')) {
-    const dmMatch = url.match(/dailymotion\.com\/video\/([a-zA-Z0-9]+)/);
-    const id = dmMatch?.[1] || videoId;
-    return `https://www.dailymotion.com/embed/video/${id}?autoplay=1`;
-  }
-
-  return null;
-};
 
 /**
  * Get display name for video source
@@ -72,14 +43,123 @@ const getSourceLabel = (source: string): string => {
   return labels[source] || source.charAt(0).toUpperCase() + source.slice(1);
 };
 
+/**
+ * Format duration for display
+ */
+const formatTime = (seconds: number): string => {
+  if (!seconds || !isFinite(seconds)) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
 export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
   video,
   onClose,
 }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const progressRef = useRef<HTMLDivElement>(null);
+
+  const [streamInfo, setStreamInfo] = useState<VideoStreamInfo | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [showControls, setShowControls] = useState(true);
+
+  // Fetch stream URL when video changes
+  useEffect(() => {
+    if (!video) {
+      setStreamInfo(null);
+      setError(null);
+      return;
+    }
+
+    const fetchStream = async () => {
+      if (!window.api?.enrichment?.getVideoStream) {
+        setError('Video streaming not available');
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await window.api.enrichment.getVideoStream(
+          video.id,
+          video.source,
+          '720p'
+        );
+
+        if (result.success && result.data) {
+          setStreamInfo(result.data);
+        } else {
+          setError(result.error || 'Failed to get video stream');
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load video');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStream();
+  }, [video]);
+
+  // Sync video and audio playback for adaptive streams
+  useEffect(() => {
+    const videoEl = videoRef.current;
+    const audioEl = audioRef.current;
+
+    if (!videoEl || !audioEl || !streamInfo?.audioUrl) return;
+
+    const syncAudio = () => {
+      if (Math.abs(audioEl.currentTime - videoEl.currentTime) > 0.3) {
+        audioEl.currentTime = videoEl.currentTime;
+      }
+    };
+
+    const handlePlay = () => {
+      audioEl.play().catch(() => {});
+    };
+
+    const handlePause = () => {
+      audioEl.pause();
+    };
+
+    const handleSeek = () => {
+      audioEl.currentTime = videoEl.currentTime;
+    };
+
+    videoEl.addEventListener('play', handlePlay);
+    videoEl.addEventListener('pause', handlePause);
+    videoEl.addEventListener('seeked', handleSeek);
+    videoEl.addEventListener('timeupdate', syncAudio);
+
+    return () => {
+      videoEl.removeEventListener('play', handlePlay);
+      videoEl.removeEventListener('pause', handlePause);
+      videoEl.removeEventListener('seeked', handleSeek);
+      videoEl.removeEventListener('timeupdate', syncAudio);
+    };
+  }, [streamInfo?.audioUrl]);
+
   // Handle escape key
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       onClose();
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      togglePlay();
+    } else if (e.key === 'ArrowLeft') {
+      seek(-10);
+    } else if (e.key === 'ArrowRight') {
+      seek(10);
+    } else if (e.key === 'f') {
+      toggleFullscreen();
     }
   }, [onClose]);
 
@@ -87,7 +167,6 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     if (!video) return;
 
     document.addEventListener('keydown', handleKeyDown);
-    // Prevent body scroll when modal is open
     document.body.style.overflow = 'hidden';
 
     return () => {
@@ -96,32 +175,85 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     };
   }, [video, handleKeyDown]);
 
-  if (!video) return null;
+  // Auto-hide controls
+  useEffect(() => {
+    if (!isPlaying) {
+      setShowControls(true);
+      return;
+    }
 
-  const embedUrl = getEmbedUrl(video);
+    const timer = setTimeout(() => setShowControls(false), 3000);
+    return () => clearTimeout(timer);
+  }, [isPlaying, showControls]);
 
-  // Handle click on backdrop
+  const togglePlay = () => {
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+
+    if (videoEl.paused) {
+      videoEl.play();
+    } else {
+      videoEl.pause();
+    }
+  };
+
+  const seek = (delta: number) => {
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+    videoEl.currentTime = Math.max(0, Math.min(videoEl.currentTime + delta, videoEl.duration));
+  };
+
+  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const videoEl = videoRef.current;
+    const progressEl = progressRef.current;
+    if (!videoEl || !progressEl) return;
+
+    const rect = progressEl.getBoundingClientRect();
+    const percent = (e.clientX - rect.left) / rect.width;
+    videoEl.currentTime = percent * videoEl.duration;
+  };
+
+  const toggleFullscreen = () => {
+    const container = document.querySelector('.video-player-modal-content');
+    if (!container) return;
+
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      container.requestFullscreen();
+    }
+  };
+
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
       onClose();
     }
   };
 
-  // Fallback to external if can't embed
   const handleOpenExternal = () => {
-    window.open(video.url, '_blank', 'noopener,noreferrer');
+    if (video) {
+      window.open(video.url, '_blank', 'noopener,noreferrer');
+    }
     onClose();
   };
 
+  if (!video) return null;
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
   return (
     <div className="video-player-modal" onClick={handleBackdropClick}>
-      <div className="video-player-modal-content">
+      <div
+        className="video-player-modal-content"
+        onMouseMove={() => setShowControls(true)}
+      >
         {/* Header */}
-        <header className="video-player-modal-header">
+        <header className={`video-player-modal-header ${showControls ? 'visible' : 'hidden'}`}>
           <div className="video-player-modal-title">
             <h3>{video.title}</h3>
             <span className="video-player-modal-source">
               {getSourceLabel(video.source)}
+              {streamInfo && ` • ${streamInfo.quality}`}
             </span>
           </div>
           <button
@@ -134,26 +266,113 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
         </header>
 
         {/* Video Player */}
-        <div className="video-player-modal-player">
-          {embedUrl ? (
-            <iframe
-              src={embedUrl}
-              title={video.title}
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-              referrerPolicy="no-referrer-when-downgrade"
-              sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
-            />
-          ) : (
-            <div className="video-player-modal-fallback">
-              <p>Unable to embed this video.</p>
-              <button onClick={handleOpenExternal}>
-                Open in Browser
-              </button>
+        <div className="video-player-modal-player" onClick={togglePlay}>
+          {loading && (
+            <div className="video-player-loading">
+              <div className="video-player-spinner" />
+              <span>Loading video...</span>
             </div>
           )}
+
+          {error && (
+            <div className="video-player-error">
+              <p>{error}</p>
+              <button onClick={handleOpenExternal}>Open in Browser</button>
+            </div>
+          )}
+
+          {streamInfo && (
+            <>
+              <video
+                ref={videoRef}
+                src={streamInfo.url}
+                autoPlay
+                playsInline
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                onDurationChange={(e) => setDuration(e.currentTarget.duration)}
+                onVolumeChange={(e) => setVolume(e.currentTarget.volume)}
+                onError={() => setError('Video playback failed')}
+              />
+
+              {/* Separate audio track for adaptive streams */}
+              {streamInfo.audioUrl && (
+                <audio
+                  ref={audioRef}
+                  src={streamInfo.audioUrl}
+                  preload="auto"
+                />
+              )}
+
+              {/* Play/Pause overlay */}
+              {!isPlaying && (
+                <div className="video-player-play-overlay">
+                  <PlayIcon size={64} />
+                </div>
+              )}
+            </>
+          )}
         </div>
+
+        {/* Controls */}
+        {streamInfo && (
+          <div className={`video-player-controls ${showControls ? 'visible' : 'hidden'}`}>
+            {/* Progress bar */}
+            <div
+              ref={progressRef}
+              className="video-player-progress"
+              onClick={handleProgressClick}
+            >
+              <div className="video-player-progress-bg" />
+              <div
+                className="video-player-progress-fill"
+                style={{ width: `${progress}%` }}
+              />
+              <div
+                className="video-player-progress-handle"
+                style={{ left: `${progress}%` }}
+              />
+            </div>
+
+            <div className="video-player-controls-row">
+              {/* Play/Pause */}
+              <button className="video-player-btn" onClick={togglePlay}>
+                {isPlaying ? <PauseIcon size={24} /> : <PlayIcon size={24} />}
+              </button>
+
+              {/* Time */}
+              <span className="video-player-time">
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </span>
+
+              <div className="video-player-controls-spacer" />
+
+              {/* Volume */}
+              <div className="video-player-volume">
+                <VolumeHighIcon size={20} />
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={volume}
+                  onChange={(e) => {
+                    const vol = parseFloat(e.target.value);
+                    setVolume(vol);
+                    if (videoRef.current) videoRef.current.volume = vol;
+                    if (audioRef.current) audioRef.current.volume = vol;
+                  }}
+                />
+              </div>
+
+              {/* Fullscreen */}
+              <button className="video-player-btn" onClick={toggleFullscreen}>
+                <ExpandIcon size={20} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

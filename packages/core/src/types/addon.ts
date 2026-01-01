@@ -123,6 +123,28 @@ export interface MusicVideo {
   source: string;
 }
 
+/** Video stream information for playback */
+export interface VideoStreamInfo {
+  /** Direct stream URL */
+  url: string;
+  /** MIME type (e.g., 'video/mp4', 'video/webm') */
+  mimeType: string;
+  /** Video quality label (e.g., '1080p', '720p') */
+  quality: string;
+  /** Video width */
+  width?: number;
+  /** Video height */
+  height?: number;
+  /** Whether this is an audio-only stream */
+  audioOnly?: boolean;
+  /** Separate audio stream URL if video is muxed separately */
+  audioUrl?: string;
+  /** Audio MIME type */
+  audioMimeType?: string;
+  /** Expiration timestamp */
+  expiresAt?: number;
+}
+
 /** Timeline entry for artist discography history */
 export interface TimelineEntry {
   year: number;
@@ -613,4 +635,7 @@ export interface ArtistEnrichmentProvider extends BaseAddon {
 
   /** Search for artist (returns provider-specific ID) */
   searchArtist?(artistName: string): Promise<{ id: string; name: string } | null>;
+
+  /** Get direct video stream URL for playback */
+  getVideoStream?(videoId: string, preferredQuality?: string): Promise<VideoStreamInfo | null>;
 }

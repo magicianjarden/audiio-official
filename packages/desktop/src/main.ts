@@ -24,6 +24,14 @@ import { pluginRepositoryService } from './services/plugin-repository';
 import { pluginInstaller } from './services/plugin-installer';
 import { karaokeService } from './services/karaoke-service';
 import { componentService } from './services/component-service';
+import {
+  createTrackFromFile,
+  readFileMetadata,
+  writeFileMetadata,
+  enrichTracks,
+  getEmbeddedArtwork,
+  type EnrichmentResult
+} from './local-metadata-service';
 
 // Tools with registered handlers (for cleanup on quit)
 const registeredToolHandlers: Set<string> = new Set();
@@ -936,7 +944,15 @@ function setupIPCHandlers(): void {
   // Download Handler
   // =============================================
 
-  ipcMain.handle('download-track', async (_event, track: { id: string; title: string; artists: { name: string }[] }) => {
+  ipcMain.handle('download-track', async (_event, track: {
+    id: string;
+    title: string;
+    artists: { name: string }[];
+    album?: { title: string; artwork?: { small?: string; medium?: string; large?: string } };
+    artwork?: { small?: string; medium?: string; large?: string };
+    genre?: string;
+    duration?: number;
+  }) => {
     try {
       console.log(`[Download] Starting download for: ${track.title}`);
 
@@ -984,10 +1000,37 @@ function setupIPCHandlers(): void {
       await downloadFile(streamInfo.url, filePath, (progress) => {
         mainWindow?.webContents.send('download-progress', {
           trackId: track.id,
-          progress,
+          progress: Math.min(progress, 95), // Reserve 5% for metadata writing
           status: 'downloading'
         });
       });
+
+      console.log(`[Download] File downloaded, writing metadata...`);
+
+      // Send metadata writing progress
+      mainWindow?.webContents.send('download-progress', {
+        trackId: track.id,
+        progress: 96,
+        status: 'writing metadata'
+      });
+
+      // Write ID3 tags with metadata and artwork
+      try {
+        const artworkUrl = track.artwork?.large || track.artwork?.medium ||
+                          track.album?.artwork?.large || track.album?.artwork?.medium;
+
+        await writeFileMetadata(filePath, {
+          title: track.title,
+          artists: track.artists.map(a => a.name),
+          album: track.album?.title,
+          genre: track.genre ? [track.genre] : undefined
+        }, artworkUrl);
+
+        console.log(`[Download] Metadata written successfully`);
+      } catch (metadataError) {
+        // Don't fail the download if metadata writing fails
+        console.error(`[Download] Failed to write metadata:`, metadataError);
+      }
 
       console.log(`[Download] Completed: ${filePath}`);
 
@@ -1643,33 +1686,14 @@ function setupIPCHandlers(): void {
   });
 
   // Scan music folder for audio files - returns UnifiedTrack-compatible format
+  // Now reads actual ID3 metadata from files
   ipcMain.handle('scan-music-folder', async (_event, folderPath: string) => {
     const audioExtensions = ['.mp3', '.flac', '.wav', '.m4a', '.aac', '.ogg', '.opus', '.wma', '.aiff'];
-    const tracks: Array<{
-      id: string;
-      title: string;
-      artists: Array<{ id: string; name: string }>;
-      album: { id: string; title: string };
-      duration: number;
-      artwork?: { small?: string; medium?: string; large?: string };
-      streamInfo: {
-        url: string;
-        format: string;
-        quality: string;
-        expiresAt: null;
-      };
-      streamSources: Array<{
-        providerId: string;
-        trackId: string;
-        available: boolean;
-      }>;
-      _meta: {
-        metadataProvider: string;
-        lastUpdated: Date;
-      };
-    }> = [];
+    const tracks: Array<Awaited<ReturnType<typeof createTrackFromFile>>> = [];
+    const filePaths: string[] = [];
 
-    const scanDirectory = async (dirPath: string) => {
+    // First pass: collect all audio file paths
+    const collectFiles = async (dirPath: string) => {
       try {
         const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
 
@@ -1677,50 +1701,11 @@ function setupIPCHandlers(): void {
           const fullPath = path.join(dirPath, entry.name);
 
           if (entry.isDirectory()) {
-            // Recursively scan subdirectories
-            await scanDirectory(fullPath);
+            await collectFiles(fullPath);
           } else if (entry.isFile()) {
             const ext = path.extname(entry.name).toLowerCase();
             if (audioExtensions.includes(ext)) {
-              // Parse filename for metadata (basic: "Artist - Title.mp3")
-              const baseName = path.basename(entry.name, ext);
-              let title = baseName;
-              let artist = 'Unknown Artist';
-              let album = path.basename(path.dirname(fullPath));
-
-              // Try to parse "Artist - Title" format
-              const dashIndex = baseName.indexOf(' - ');
-              if (dashIndex > 0) {
-                artist = baseName.substring(0, dashIndex).trim();
-                title = baseName.substring(dashIndex + 3).trim();
-              }
-
-              const trackId = `local:${Buffer.from(fullPath).toString('base64')}`;
-              const format = ext.slice(1); // Remove the dot: '.mp3' -> 'mp3'
-
-              tracks.push({
-                id: trackId,
-                title,
-                artists: [{ id: `local-artist:${Buffer.from(artist).toString('base64')}`, name: artist }],
-                album: { id: `local-album:${Buffer.from(album).toString('base64')}`, title: album },
-                duration: 0, // Would need audio metadata library for actual duration
-                artwork: undefined,
-                streamInfo: {
-                  url: `local-audio://localhost${fullPath}`,  // Use localhost as host, path starts with /
-                  format,
-                  quality: 'lossless',
-                  expiresAt: null
-                },
-                streamSources: [{
-                  providerId: 'local-file',
-                  trackId: fullPath,
-                  available: true
-                }],
-                _meta: {
-                  metadataProvider: 'local-file',
-                  lastUpdated: new Date()
-                }
-              });
+              filePaths.push(fullPath);
             }
           }
         }
@@ -1730,10 +1715,88 @@ function setupIPCHandlers(): void {
     };
 
     console.log(`[LocalMusic] Scanning folder: ${folderPath}`);
-    await scanDirectory(folderPath);
-    console.log(`[LocalMusic] Found ${tracks.length} tracks`);
+    await collectFiles(folderPath);
+    console.log(`[LocalMusic] Found ${filePaths.length} audio files, reading metadata...`);
 
-    return { trackCount: tracks.length, tracks };
+    // Send initial progress
+    mainWindow?.webContents.send('scan-progress', {
+      current: 0,
+      total: filePaths.length,
+      status: 'Reading metadata...'
+    });
+
+    // Second pass: read metadata from each file
+    for (let i = 0; i < filePaths.length; i++) {
+      const filePath = filePaths[i];
+      try {
+        const track = await createTrackFromFile(filePath);
+        tracks.push(track);
+      } catch (error) {
+        console.error(`[LocalMusic] Error reading metadata from ${filePath}:`, error);
+        // Create basic track from filename on error
+        const ext = path.extname(filePath);
+        const baseName = path.basename(filePath, ext);
+        let title = baseName;
+        let artist = 'Unknown Artist';
+
+        const dashIndex = baseName.indexOf(' - ');
+        if (dashIndex > 0) {
+          artist = baseName.substring(0, dashIndex).trim();
+          title = baseName.substring(dashIndex + 3).trim();
+        }
+
+        const trackId = `local:${Buffer.from(filePath).toString('base64')}`;
+        tracks.push({
+          id: trackId,
+          title,
+          artists: [{ id: `local-artist:${Buffer.from(artist).toString('base64')}`, name: artist }],
+          album: {
+            id: `local-album:${Buffer.from(path.basename(path.dirname(filePath))).toString('base64')}`,
+            title: path.basename(path.dirname(filePath))
+          },
+          duration: 0,
+          artwork: undefined,
+          streamInfo: {
+            url: `local-audio://localhost${filePath}`,
+            format: ext.slice(1),
+            quality: 'lossless',
+            expiresAt: null
+          },
+          streamSources: [{
+            providerId: 'local-file',
+            trackId: filePath,
+            available: true
+          }],
+          _meta: {
+            metadataProvider: 'local-file',
+            lastUpdated: new Date(),
+            hasEmbeddedArt: false,
+            needsEnrichment: true,
+            missingFields: ['artwork', 'genre', 'year']
+          },
+          _localPath: filePath
+        });
+      }
+
+      // Send progress updates every 10 files
+      if (i % 10 === 0 || i === filePaths.length - 1) {
+        mainWindow?.webContents.send('scan-progress', {
+          current: i + 1,
+          total: filePaths.length,
+          status: 'Reading metadata...'
+        });
+      }
+    }
+
+    // Count tracks needing enrichment
+    const needsEnrichment = tracks.filter(t => t._meta.needsEnrichment).length;
+    console.log(`[LocalMusic] Processed ${tracks.length} tracks, ${needsEnrichment} need enrichment`);
+
+    return {
+      trackCount: tracks.length,
+      tracks,
+      needsEnrichment
+    };
   });
 
   // Get all local tracks from configured folders
@@ -1741,6 +1804,148 @@ function setupIPCHandlers(): void {
     // This would need to read from settings and aggregate all local tracks
     // For now, return empty - UI will manage this via settings store
     return { tracks: [] };
+  });
+
+  // Get embedded artwork from a local file
+  ipcMain.handle('get-embedded-artwork', async (_event, trackId: string) => {
+    try {
+      // Decode file path from track ID
+      if (!trackId.startsWith('local:')) {
+        return null;
+      }
+      const base64Path = trackId.slice(6);
+      const filePath = Buffer.from(base64Path, 'base64').toString('utf-8');
+
+      const artworkDataUrl = await getEmbeddedArtwork(filePath);
+      return artworkDataUrl;
+    } catch (error) {
+      console.error('[LocalMusic] Error getting embedded artwork:', error);
+      return null;
+    }
+  });
+
+  // Enrich local tracks with metadata from online providers
+  ipcMain.handle('enrich-local-tracks', async (_event, tracks: Array<{
+    id: string;
+    title: string;
+    artists: string[];
+    album?: string;
+    duration?: number;
+    filePath: string;
+  }>) => {
+    console.log(`[LocalMusic] Enriching ${tracks.length} tracks...`);
+
+    // Use Spotify matching if available
+    const matchFn = async (tracksToMatch: Array<{ id: string; title: string; artist: string; album?: string; duration?: number }>) => {
+      try {
+        // Try to use the sposify plugin for matching
+        const sposifyAddon = registry.getAddon('sposify');
+        if (sposifyAddon && 'matchByMetadata' in sposifyAddon) {
+          const matches = await (sposifyAddon as any).matchByMetadata(
+            tracksToMatch.map(t => ({
+              id: t.id,
+              title: t.title,
+              artist: t.artist,
+              album: t.album,
+              duration: t.duration
+            }))
+          );
+          return matches.map((m: any) => ({
+            matched: m.matched,
+            confidence: m.confidence || 0,
+            source: 'spotify',
+            metadata: m.track ? {
+              title: m.track.title,
+              artists: m.track.artists?.map((a: any) => a.name) || [],
+              album: m.track.album?.title,
+              albumArtist: m.track.album?.artist,
+              genre: m.track.genres,
+              year: m.track.album?.releaseDate ? new Date(m.track.album.releaseDate).getFullYear() : undefined,
+              artwork: m.track.artwork || m.track.album?.artwork,
+              isrc: m.track.isrc,
+              duration: m.track.duration
+            } : undefined
+          }));
+        }
+
+        // Fallback: use search to find matches
+        const results = [];
+        for (const track of tracksToMatch) {
+          try {
+            const searchResult = await searchOrchestrator.search({
+              query: `${track.artist} ${track.title}`,
+              type: 'track',
+              limit: 1
+            });
+
+            if (searchResult.tracks && searchResult.tracks.length > 0) {
+              const match = searchResult.tracks[0];
+              results.push({
+                matched: true,
+                confidence: 0.8,
+                source: 'search',
+                metadata: {
+                  title: match.title,
+                  artists: match.artists?.map(a => a.name) || [],
+                  album: match.album?.title,
+                  artwork: match.artwork || match.album?.artwork,
+                  duration: match.duration
+                }
+              });
+            } else {
+              results.push({ matched: false, confidence: 0 });
+            }
+          } catch {
+            results.push({ matched: false, confidence: 0 });
+          }
+        }
+        return results;
+      } catch (error) {
+        console.error('[LocalMusic] Match error:', error);
+        return tracksToMatch.map(() => ({ matched: false, confidence: 0 }));
+      }
+    };
+
+    const results = await enrichTracks(
+      tracks,
+      matchFn,
+      (current, total, status) => {
+        mainWindow?.webContents.send('enrich-progress', { current, total, status });
+      }
+    );
+
+    // Summarize results
+    const enriched = results.filter(r => r.status === 'enriched').length;
+    const skipped = results.filter(r => r.status === 'skipped').length;
+    const failed = results.filter(r => r.status === 'failed').length;
+
+    console.log(`[LocalMusic] Enrichment complete: ${enriched} enriched, ${skipped} skipped, ${failed} failed`);
+
+    return {
+      results,
+      summary: { enriched, skipped, failed, total: results.length }
+    };
+  });
+
+  // Write metadata to a single local file
+  ipcMain.handle('write-track-metadata', async (_event, params: {
+    filePath: string;
+    metadata: {
+      title?: string;
+      artists?: string[];
+      album?: string;
+      genre?: string[];
+      year?: number;
+    };
+    artworkUrl?: string;
+  }) => {
+    try {
+      const success = await writeFileMetadata(params.filePath, params.metadata, params.artworkUrl);
+      return { success };
+    } catch (error) {
+      console.error('[LocalMusic] Error writing metadata:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
   });
 
   // Update settings (sync from renderer to main)
@@ -2274,6 +2479,49 @@ function setupIPCHandlers(): void {
     } catch (error) {
       console.error('[Enrichment] Failed to get album videos:', error);
       return { success: false, error: String(error), data: [] };
+    }
+  });
+
+  // Get video stream URL for playback
+  ipcMain.handle('get-video-stream', async (_event, {
+    videoId,
+    source,
+    preferredQuality = '720p'
+  }: {
+    videoId: string;
+    source: string;
+    preferredQuality?: string;
+  }) => {
+    try {
+      console.log('[Enrichment] Getting video stream for:', videoId, 'from', source);
+      const providers = registry.getArtistEnrichmentProvidersByType('videos');
+
+      // Find the provider that matches the source
+      for (const provider of providers) {
+        if (provider.id === source || provider.id.includes(source)) {
+          if (provider.getVideoStream) {
+            const streamInfo = await provider.getVideoStream(videoId, preferredQuality);
+            if (streamInfo) {
+              return { success: true, data: streamInfo, source: provider.id };
+            }
+          }
+        }
+      }
+
+      // If no matching provider found, try all video providers
+      for (const provider of providers) {
+        if (provider.getVideoStream) {
+          const streamInfo = await provider.getVideoStream(videoId, preferredQuality);
+          if (streamInfo) {
+            return { success: true, data: streamInfo, source: provider.id };
+          }
+        }
+      }
+
+      return { success: false, error: 'No stream available for this video' };
+    } catch (error) {
+      console.error('[Enrichment] Failed to get video stream:', error);
+      return { success: false, error: String(error) };
     }
   });
 
