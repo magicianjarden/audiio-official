@@ -29,7 +29,7 @@
         "arch": ["x64"]
       }
     ],
-    "icon": "build/icon.png",
+    "icon": "build/icon.ico",
     "sign": false,
     "signAndEditExecutable": false,
     "artifactName": "Audiio-${version}-win-x64.${ext}"
