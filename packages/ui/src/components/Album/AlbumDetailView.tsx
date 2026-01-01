@@ -3,7 +3,7 @@
  * Features: centered layout, ambient glow, clean borderless track list
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigationStore } from '../../stores/navigation-store';
 import { usePlayerStore } from '../../stores/player-store';
 import { useAlbumStore } from '../../stores/album-store';
@@ -45,8 +45,11 @@ export const AlbumDetailView: React.FC = () => {
   const album = albumDetail || selectedAlbumData;
   const isLoading = loadingAlbumId === selectedAlbumId;
 
-  // Fetch album enrichment (videos)
-  const trackNames = albumDetail?.tracks?.map(t => t.title) || [];
+  // Fetch album enrichment (videos) - memoize trackNames to prevent re-fetching
+  const trackNames = useMemo(
+    () => albumDetail?.tracks?.map(t => t.title) || [],
+    [albumDetail?.tracks]
+  );
   const enrichment = useAlbumEnrichment(album?.title, album?.artist, {
     enabled: !isLoading && !!(album?.title && album?.artist),
     trackNames,

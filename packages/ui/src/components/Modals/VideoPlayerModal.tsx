@@ -142,6 +142,8 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
               frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowFullScreen
+              referrerPolicy="no-referrer-when-downgrade"
+              sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
             />
           ) : (
             <div className="video-player-modal-fallback">

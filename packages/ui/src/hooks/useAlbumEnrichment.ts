@@ -4,7 +4,7 @@
  * Currently supports fetching videos that match the album title and track names.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { MusicVideo } from '@audiio/core';
 
 // Extend the global Window type to include album videos API
@@ -74,13 +74,31 @@ export function useAlbumEnrichment(
   // Refs to track component mount state and prevent race conditions
   const mountedRef = useRef(true);
   const fetchIdRef = useRef(0);
+  // Store trackNames and limit in refs to avoid re-fetching when they change
+  const trackNamesRef = useRef(trackNames);
+  const limitRef = useRef(limit);
+  trackNamesRef.current = trackNames;
+  limitRef.current = limit;
+
+  // Create a stable cache key for the album
+  const cacheKey = useMemo(
+    () => albumTitle && artistName ? `${albumTitle}-${artistName}` : null,
+    [albumTitle, artistName]
+  );
+  const lastFetchedKeyRef = useRef<string | null>(null);
 
   const fetchVideos = useCallback(async () => {
     if (!albumTitle || !artistName || !window.api?.enrichment?.getAlbumVideos) {
       return;
     }
 
+    // Skip if already fetched for this album
+    if (lastFetchedKeyRef.current === cacheKey) {
+      return;
+    }
+
     const fetchId = ++fetchIdRef.current;
+    lastFetchedKeyRef.current = cacheKey;
 
     setLoading(prev => ({ ...prev, videos: true }));
     setErrors(prev => ({ ...prev, videos: null }));
@@ -89,8 +107,8 @@ export function useAlbumEnrichment(
       const result = await window.api.enrichment.getAlbumVideos(
         albumTitle,
         artistName,
-        trackNames,
-        limit
+        trackNamesRef.current,
+        limitRef.current
       );
 
       // Check if this is still the current request and component is mounted
@@ -115,17 +133,19 @@ export function useAlbumEnrichment(
         setLoading(prev => ({ ...prev, videos: false }));
       }
     }
-  }, [albumTitle, artistName, trackNames, limit]);
+  }, [albumTitle, artistName, cacheKey]);
 
   // Fetch videos when album/artist changes
   useEffect(() => {
     mountedRef.current = true;
 
     if (enabled && albumTitle && artistName) {
-      // Reset state for new album
-      setData(initialData);
-      setLoading(initialLoading);
-      setErrors(initialErrors);
+      // Only reset state if album actually changed
+      if (lastFetchedKeyRef.current !== cacheKey) {
+        setData(initialData);
+        setLoading(initialLoading);
+        setErrors(initialErrors);
+      }
 
       // Fetch videos
       fetchVideos();
@@ -134,7 +154,7 @@ export function useAlbumEnrichment(
     return () => {
       mountedRef.current = false;
     };
-  }, [enabled, albumTitle, artistName, fetchVideos]);
+  }, [enabled, albumTitle, artistName, cacheKey, fetchVideos]);
 
   return { data, loading, errors };
 }
