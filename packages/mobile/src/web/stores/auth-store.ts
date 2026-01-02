@@ -279,8 +279,8 @@ export const useAuthStore = create<AuthState>()(
           set({ isConnecting: true, error: null });
 
           try {
-            // Use device token for validation
-            const response = await fetch('/api/auth/device', {
+            // Use apiFetch to route through P2P when connected
+            const response = await apiFetch('/api/auth/device', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json'
@@ -291,10 +291,12 @@ export const useAuthStore = create<AuthState>()(
             const data = await response.json();
 
             if (data.valid) {
+              // Determine connection mode based on P2P status
+              const connectionMode = isP2PConnected() ? 'relay' : 'local';
               set({
                 isAuthenticated: true,
                 isConnecting: false,
-                connectionMode: 'local'
+                connectionMode
               });
               return true;
             } else {

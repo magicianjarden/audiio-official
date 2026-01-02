@@ -4,7 +4,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../stores/auth-store';
+import { useAuthStore, apiFetch } from '../stores/auth-store';
 import { usePlayerStore } from '../stores/player-store';
 import { usePluginStore } from '../stores/plugin-store';
 import { PlugIcon, ChevronRightIcon } from '@audiio/icons';
@@ -27,7 +27,7 @@ export function SettingsPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/access/info').then(r => r.json()),
+      apiFetch('/api/access/info').then(r => r.json()),
       fetchPlugins()
     ]).then(([access]) => {
       setAccessInfo(access);
