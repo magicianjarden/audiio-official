@@ -21,9 +21,24 @@ export function Footer() {
             <div className="footer-column">
               <h4>Product</h4>
               <a href="#features">Features</a>
-              <a href="#themes">Themes</a>
               <a href="#plugins">Plugins</a>
               <a href="#download">Download</a>
+              <a href="https://magicianjarden.github.io/audiio-official/remote/" target="_blank" rel="noopener noreferrer">
+                Mobile Remote
+              </a>
+            </div>
+
+            <div className="footer-column">
+              <h4>Plugins</h4>
+              <a href="https://github.com/magicianjarden/audiio-official/tree/main/packages" target="_blank" rel="noopener noreferrer">
+                Official Plugins
+              </a>
+              <a href="https://github.com/magicianjarden/audiio-official/tree/main/docs/sdk" target="_blank" rel="noopener noreferrer">
+                Plugin SDK
+              </a>
+              <a href="https://github.com/magicianjarden/audiio-official/discussions" target="_blank" rel="noopener noreferrer">
+                Community Plugins
+              </a>
             </div>
 
             <div className="footer-column">
@@ -43,15 +58,6 @@ export function Footer() {
               <h4>Resources</h4>
               <a href="https://github.com/magicianjarden/audiio-official/tree/main/docs" target="_blank" rel="noopener noreferrer">
                 Documentation
-              </a>
-              <a href="https://github.com/magicianjarden/audiio-official/tree/main/docs/user-guide" target="_blank" rel="noopener noreferrer">
-                User Guide
-              </a>
-              <a href="https://github.com/magicianjarden/audiio-official/tree/main/docs/development" target="_blank" rel="noopener noreferrer">
-                Developer Docs
-              </a>
-              <a href="https://github.com/magicianjarden/audiio-official/tree/main/docs/sdk" target="_blank" rel="noopener noreferrer">
-                Addon SDK
               </a>
               <a href="https://github.com/magicianjarden/audiio-official/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">
                 Changelog

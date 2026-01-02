@@ -13,10 +13,9 @@ export function Navbar({ scrolled }: NavbarProps) {
 
   const navLinks = [
     { label: 'Features', href: '#features' },
-    { label: 'Themes', href: '#themes' },
     { label: 'Plugins', href: '#plugins' },
+    { label: 'Remote', href: 'https://magicianjarden.github.io/audiio-official/remote/', external: true },
     { label: 'Docs', href: 'https://github.com/magicianjarden/audiio-official/tree/main/docs', external: true },
-    { label: 'Community', href: '#community' },
   ];
 
   return (

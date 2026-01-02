@@ -54,8 +54,8 @@ const platformInfo = {
 };
 
 const GITHUB_RELEASES_URL = 'https://github.com/magicianjarden/audiio-official/releases/latest';
-// Remote portal hosted at /remote on same domain
-const MOBILE_REMOTE_URL = '/remote';
+// Remote portal hosted on GitHub Pages
+const MOBILE_REMOTE_URL = 'https://magicianjarden.github.io/audiio-official/remote/';
 
 export function Download() {
   const [platform, setPlatform] = useState<Platform>('unknown');

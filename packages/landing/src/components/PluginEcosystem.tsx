@@ -122,11 +122,27 @@ export default definePlugin({
         )}
 
         <div className="plugin-cta">
-          <p>
-            Can't find what you need? Build your own plugin with our
-            <a href="https://github.com/magicianjarden/audiio-official" target="_blank" rel="noopener noreferrer">
-              {' '}TypeScript SDK
-            </a>.
+          <div className="plugin-cta-buttons">
+            <a
+              href="https://github.com/magicianjarden/audiio-official/tree/main/packages"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-primary"
+            >
+              <PluginIcon size={18} />
+              Browse Official Plugins
+            </a>
+            <a
+              href="https://github.com/magicianjarden/audiio-official/tree/main/docs/sdk"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-secondary"
+            >
+              Build Your Own <ExternalLinkIcon size={14} />
+            </a>
+          </div>
+          <p className="plugin-cta-text">
+            Official plugins include lyrics providers, scrobbling services, metadata sources, and more.
           </p>
         </div>
       </div>
