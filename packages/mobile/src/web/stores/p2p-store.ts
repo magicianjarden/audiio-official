@@ -89,8 +89,14 @@ interface P2PState {
   authToken: string | null;
   localUrl: string | null;
 
+  // Password requirement state
+  requiresPassword: boolean;
+  pendingRoomId: string | null;
+  pendingServerName: string | null;
+
   // Actions
-  connect: (code: string, deviceName?: string) => Promise<boolean>;
+  connect: (code: string, deviceName?: string, passwordHash?: string) => Promise<boolean>;
+  connectWithPassword: (password: string) => Promise<boolean>;
   disconnect: () => void;
   send: (type: string, payload?: unknown) => void;
   apiRequest: (url: string, options?: { method?: string; body?: unknown }) => Promise<{ ok: boolean; status: number; data: unknown }>;
@@ -136,7 +142,12 @@ export const useP2PStore = create<P2PState>((set, get) => ({
   authToken: null,
   localUrl: null,
 
-  connect: async (code: string, deviceName?: string) => {
+  // Password requirement state
+  requiresPassword: false,
+  pendingRoomId: null,
+  pendingServerName: null,
+
+  connect: async (code: string, deviceName?: string, passwordHash?: string) => {
     const normalizedCode = code.toUpperCase().trim();
 
     // Store for auto-reconnect
@@ -152,7 +163,10 @@ export const useP2PStore = create<P2PState>((set, get) => ({
     set({
       status: 'connecting',
       connectionCode: normalizedCode,
-      error: null
+      error: null,
+      requiresPassword: false,
+      pendingRoomId: null,
+      pendingServerName: null
     });
 
     try {
@@ -190,16 +204,29 @@ export const useP2PStore = create<P2PState>((set, get) => ({
           console.log('[P2P] Connected to relay server');
 
           // Send join request with roomId (new static room model)
+          const joinPayload: {
+            roomId: string;
+            code: string;
+            publicKey: string;
+            deviceName: string;
+            userAgent: string;
+            passwordHash?: string;
+          } = {
+            roomId: normalizedCode, // Room ID is the static code
+            code: normalizedCode,   // Keep for backwards compatibility
+            publicKey: get().keyPair.publicKey,
+            deviceName: deviceName || getDeviceName(),
+            userAgent: navigator.userAgent
+          };
+
+          // Include password hash if provided
+          if (passwordHash) {
+            joinPayload.passwordHash = passwordHash;
+          }
+
           const joinMessage = {
             type: 'join',
-            payload: {
-              roomId: normalizedCode, // Room ID is the static code
-              code: normalizedCode,   // Keep for backwards compatibility
-              publicKey: get().keyPair.publicKey,
-              deviceName: deviceName || getDeviceName(),
-              userAgent: navigator.userAgent
-              // passwordHash would be added here if we implement password UI
-            },
+            payload: joinPayload,
             timestamp: Date.now()
           };
           ws.send(JSON.stringify(joinMessage));
@@ -272,6 +299,33 @@ export const useP2PStore = create<P2PState>((set, get) => ({
       });
       return false;
     }
+  },
+
+  connectWithPassword: async (password: string) => {
+    const { pendingRoomId } = get();
+    if (!pendingRoomId) {
+      console.error('[P2P] No pending room ID for password connection');
+      return false;
+    }
+
+    // Hash the password (SHA-512 to match desktop)
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-512', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const passwordHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+    console.log('[P2P] Connecting with password hash');
+
+    // Clear the password requirement state
+    set({
+      requiresPassword: false,
+      pendingRoomId: null,
+      pendingServerName: null
+    });
+
+    // Connect with the password hash
+    return get().connect(pendingRoomId, lastDeviceName || undefined, passwordHash);
   },
 
   disconnect: () => {
@@ -390,11 +444,17 @@ function handleRelayMessage(
     }
 
     case 'auth-required': {
-      // Room requires password
+      // Room requires password - set state for password UI
       const payload = message.payload as { roomId: string; serverName?: string };
       console.log(`[P2P] Password required for room: ${payload.roomId}`);
-      // For now, show error. Later we can add password UI.
-      onError(`Password required to connect to ${payload.serverName || 'this server'}`);
+      set({
+        status: 'disconnected',
+        requiresPassword: true,
+        pendingRoomId: payload.roomId,
+        pendingServerName: payload.serverName || null,
+        error: null
+      });
+      // Don't call onError - let the UI handle password input
       break;
     }
 

@@ -23,6 +23,8 @@ export interface ServerIdentity {
   createdAt: string;
   /** Short code for relay room (derived from serverId) */
   relayCode: string;
+  /** Optional password hash for room protection (SHA-512) */
+  passwordHash?: string;
 }
 
 export interface ServerIdentityConfig {
@@ -115,6 +117,45 @@ export class ServerIdentityService {
     this.identity.serverName = name;
     this.saveToDisk();
     console.log(`[ServerIdentity] Server name updated to: ${name}`);
+  }
+
+  /**
+   * Set a password for room protection
+   * Password is hashed with SHA-512 before storage
+   */
+  setPassword(password: string): void {
+    if (!this.identity) return;
+
+    // Hash with SHA-512 (matches relay server expectation)
+    const hash = crypto.createHash('sha512').update(password).digest('hex');
+    this.identity.passwordHash = hash;
+    this.saveToDisk();
+    console.log('[ServerIdentity] Room password set');
+  }
+
+  /**
+   * Remove the room password
+   */
+  removePassword(): void {
+    if (!this.identity) return;
+
+    delete this.identity.passwordHash;
+    this.saveToDisk();
+    console.log('[ServerIdentity] Room password removed');
+  }
+
+  /**
+   * Check if room has password protection
+   */
+  hasPassword(): boolean {
+    return !!this.identity?.passwordHash;
+  }
+
+  /**
+   * Get the password hash (for relay registration)
+   */
+  getPasswordHash(): string | undefined {
+    return this.identity?.passwordHash;
   }
 
   /**

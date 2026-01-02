@@ -1605,6 +1605,82 @@ function setupIPCHandlers(): void {
     }
   });
 
+  // ========================================
+  // Room Security Handlers
+  // ========================================
+
+  // Set room password
+  ipcMain.handle('set-room-password', (_event, password: string) => {
+    if (!mobileServer) {
+      return { success: false, error: 'Mobile server not running' };
+    }
+    try {
+      mobileServer.setRoomPassword?.(password);
+      console.log('[Mobile] Room password set');
+      return { success: true };
+    } catch (error) {
+      console.error('[Mobile] Error setting room password:', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Remove room password
+  ipcMain.handle('remove-room-password', () => {
+    if (!mobileServer) {
+      return { success: false, error: 'Mobile server not running' };
+    }
+    try {
+      mobileServer.removeRoomPassword?.();
+      console.log('[Mobile] Room password removed');
+      return { success: true };
+    } catch (error) {
+      console.error('[Mobile] Error removing room password:', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Get room security info
+  ipcMain.handle('get-room-security-info', () => {
+    if (!mobileServer) {
+      return { hasPassword: false, roomCode: null };
+    }
+    try {
+      return mobileServer.getRoomSecurityInfo?.() || { hasPassword: false, roomCode: null };
+    } catch (error) {
+      console.error('[Mobile] Error getting room security info:', error);
+      return { hasPassword: false, roomCode: null };
+    }
+  });
+
+  // Regenerate room ID (creates new code, revokes all devices)
+  ipcMain.handle('regenerate-room-id', async () => {
+    if (!mobileServer) {
+      return { success: false, error: 'Mobile server not running' };
+    }
+    try {
+      const result = await mobileServer.regenerateRoomId?.();
+      console.log(`[Mobile] Room regenerated: ${result?.code}, ${result?.devicesRevoked} devices revoked`);
+
+      // Update the access config
+      mobileAccessConfig = {
+        ...mobileAccessConfig,
+        relayCode: result?.code,
+        p2pCode: result?.code
+      };
+
+      // Notify renderer
+      mainWindow?.webContents.send('mobile-status-change', {
+        isEnabled: true,
+        accessConfig: mobileAccessConfig
+      });
+
+      return { success: true, code: result?.code, devicesRevoked: result?.devicesRevoked };
+    } catch (error) {
+      console.error('[Mobile] Error regenerating room ID:', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
   // Get auth settings
   ipcMain.handle('get-mobile-auth-settings', () => {
     if (!mobileAuthManager) {

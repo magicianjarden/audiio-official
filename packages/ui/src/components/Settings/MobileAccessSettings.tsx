@@ -41,6 +41,8 @@ interface MobileAccessState {
   accessConfig: AccessConfig | null;
   devices: PairedDevice[];
   hasAcceptedPrivacy: boolean;
+  hasPassword: boolean;
+  roomCode: string | null;
 }
 
 // ========================================
@@ -401,6 +403,193 @@ const RelaySettings: React.FC<RelaySettingsProps> = ({
 };
 
 // ========================================
+// Room Security Settings
+// ========================================
+
+interface RoomSecurityProps {
+  hasPassword: boolean;
+  roomCode: string | null;
+  onSetPassword: (password: string) => void;
+  onRemovePassword: () => void;
+  onRegenerateRoom: () => void;
+  isLoading: boolean;
+}
+
+const RoomSecurity: React.FC<RoomSecurityProps> = ({
+  hasPassword,
+  roomCode,
+  onSetPassword,
+  onRemovePassword,
+  onRegenerateRoom,
+  isLoading
+}) => {
+  const [showPasswordInput, setShowPasswordInput] = useState(false);
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [showRegenConfirm, setShowRegenConfirm] = useState(false);
+
+  const handleSetPassword = () => {
+    if (password.length < 4) {
+      setPasswordError('Password must be at least 4 characters');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setPasswordError('Passwords do not match');
+      return;
+    }
+    setPasswordError('');
+    onSetPassword(password);
+    setPassword('');
+    setConfirmPassword('');
+    setShowPasswordInput(false);
+  };
+
+  const handleRemovePassword = () => {
+    onRemovePassword();
+  };
+
+  const handleRegenerate = () => {
+    setShowRegenConfirm(false);
+    onRegenerateRoom();
+  };
+
+  return (
+    <div className="mobile-security-settings">
+      <div className="mobile-access-section-header">
+        <LockIcon size={16} />
+        <h4>Room Security</h4>
+      </div>
+
+      {/* Password Protection */}
+      <div className="mobile-security-option">
+        <div className="mobile-security-option-info">
+          <h5>Password Protection</h5>
+          <p>
+            {hasPassword
+              ? 'Mobile devices must enter a password to connect'
+              : 'Anyone with your code can connect'}
+          </p>
+        </div>
+
+        {hasPassword ? (
+          <div className="mobile-security-actions">
+            <span className="mobile-security-badge active">
+              <LockIcon size={12} />
+              Protected
+            </span>
+            <button
+              className="mobile-security-btn danger"
+              onClick={handleRemovePassword}
+              disabled={isLoading}
+            >
+              Remove Password
+            </button>
+          </div>
+        ) : showPasswordInput ? (
+          <div className="mobile-password-form">
+            <input
+              type="password"
+              placeholder="Enter password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="mobile-password-input"
+              autoFocus
+            />
+            <input
+              type="password"
+              placeholder="Confirm password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="mobile-password-input"
+            />
+            {passwordError && (
+              <span className="mobile-password-error">{passwordError}</span>
+            )}
+            <div className="mobile-password-actions">
+              <button
+                className="mobile-security-btn secondary"
+                onClick={() => {
+                  setShowPasswordInput(false);
+                  setPassword('');
+                  setConfirmPassword('');
+                  setPasswordError('');
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="mobile-security-btn primary"
+                onClick={handleSetPassword}
+                disabled={!password || !confirmPassword}
+              >
+                Set Password
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            className="mobile-security-btn"
+            onClick={() => setShowPasswordInput(true)}
+            disabled={isLoading}
+          >
+            <LockIcon size={14} />
+            Set Password
+          </button>
+        )}
+      </div>
+
+      {/* Room ID Reset */}
+      <div className="mobile-security-option">
+        <div className="mobile-security-option-info">
+          <h5>Room Code</h5>
+          <p>
+            {roomCode ? (
+              <>Your permanent code: <strong>{roomCode}</strong></>
+            ) : (
+              'Generate a new permanent room code'
+            )}
+          </p>
+        </div>
+
+        {showRegenConfirm ? (
+          <div className="mobile-regen-confirm">
+            <p className="mobile-regen-warning">
+              <WarningIcon size={14} />
+              This will disconnect all devices. They'll need to pair again with the new code.
+            </p>
+            <div className="mobile-regen-actions">
+              <button
+                className="mobile-security-btn secondary"
+                onClick={() => setShowRegenConfirm(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="mobile-security-btn danger"
+                onClick={handleRegenerate}
+                disabled={isLoading}
+              >
+                Generate New Code
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            className="mobile-security-btn"
+            onClick={() => setShowRegenConfirm(true)}
+            disabled={isLoading}
+          >
+            <RefreshIcon size={14} />
+            Reset Room Code
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ========================================
 // Paired Devices List
 // ========================================
 
@@ -489,7 +678,9 @@ export const MobileAccessSettings: React.FC = () => {
     pairing: null,
     accessConfig: null,
     devices: [],
-    hasAcceptedPrivacy: localStorage.getItem('audiio-mobile-privacy-accepted') === 'true'
+    hasAcceptedPrivacy: localStorage.getItem('audiio-mobile-privacy-accepted') === 'true',
+    hasPassword: false,
+    roomCode: null
   });
 
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -499,10 +690,11 @@ export const MobileAccessSettings: React.FC = () => {
     loadMobileStatus();
   }, []);
 
-  // Load devices when enabled
+  // Load devices and security info when enabled
   useEffect(() => {
     if (state.isEnabled) {
       loadDevices();
+      loadSecurityInfo();
     }
   }, [state.isEnabled]);
 
@@ -525,6 +717,22 @@ export const MobileAccessSettings: React.FC = () => {
     } catch (err) {
       console.error('[MobileAccess] Error loading status:', err);
       setState(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  const loadSecurityInfo = async () => {
+    try {
+      // @ts-ignore - API exposed via preload
+      const info = await window.api?.getRoomSecurityInfo?.();
+      if (info) {
+        setState(prev => ({
+          ...prev,
+          hasPassword: info.hasPassword || false,
+          roomCode: info.roomCode || null
+        }));
+      }
+    } catch (err) {
+      console.error('[MobileAccess] Error loading security info:', err);
     }
   };
 
@@ -674,6 +882,66 @@ export const MobileAccessSettings: React.FC = () => {
     }
   };
 
+  // ========================================
+  // Room Security Handlers
+  // ========================================
+
+  const handleSetPassword = async (password: string) => {
+    setState(prev => ({ ...prev, isLoading: true }));
+    try {
+      // @ts-ignore - API exposed via preload
+      const result = await window.api?.setRoomPassword?.(password);
+      if (result?.success) {
+        setState(prev => ({ ...prev, hasPassword: true, isLoading: false }));
+      } else {
+        setState(prev => ({ ...prev, isLoading: false }));
+      }
+    } catch (error) {
+      console.error('[MobileAccess] Failed to set password:', error);
+      setState(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  const handleRemovePassword = async () => {
+    setState(prev => ({ ...prev, isLoading: true }));
+    try {
+      // @ts-ignore - API exposed via preload
+      const result = await window.api?.removeRoomPassword?.();
+      if (result?.success) {
+        setState(prev => ({ ...prev, hasPassword: false, isLoading: false }));
+      } else {
+        setState(prev => ({ ...prev, isLoading: false }));
+      }
+    } catch (error) {
+      console.error('[MobileAccess] Failed to remove password:', error);
+      setState(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  const handleRegenerateRoom = async () => {
+    setState(prev => ({ ...prev, isLoading: true }));
+    try {
+      // @ts-ignore - API exposed via preload
+      const result = await window.api?.regenerateRoomId?.();
+      if (result?.success) {
+        setState(prev => ({
+          ...prev,
+          roomCode: result.code,
+          devices: [], // All devices were revoked
+          isLoading: false
+        }));
+        // Reload the full status to get updated QR codes etc
+        loadMobileStatus();
+        loadSecurityInfo();
+      } else {
+        setState(prev => ({ ...prev, isLoading: false }));
+      }
+    } catch (error) {
+      console.error('[MobileAccess] Failed to regenerate room:', error);
+      setState(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
   // Loading state
   if (state.isLoading && !state.isEnabled) {
     return (
@@ -732,6 +1000,16 @@ export const MobileAccessSettings: React.FC = () => {
                 customUrl={customRelayUrl}
                 onToggle={handleRelayToggle}
                 onUrlChange={handleRelayUrlChange}
+              />
+
+              {/* Room Security */}
+              <RoomSecurity
+                hasPassword={state.hasPassword}
+                roomCode={state.roomCode || state.accessConfig?.relayCode || state.accessConfig?.p2pCode || null}
+                onSetPassword={handleSetPassword}
+                onRemovePassword={handleRemovePassword}
+                onRegenerateRoom={handleRegenerateRoom}
+                isLoading={state.isLoading}
               />
 
               {/* Paired Devices */}
@@ -860,6 +1138,12 @@ const LinkIcon: React.FC<{ size: number }> = ({ size }) => (
 const WifiIcon: React.FC<{ size: number }> = ({ size }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
     <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/>
+  </svg>
+);
+
+const WarningIcon: React.FC<{ size: number }> = ({ size }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
   </svg>
 );
 

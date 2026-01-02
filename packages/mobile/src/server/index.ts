@@ -501,6 +501,13 @@ export class MobileServer {
       console.log(`[P2P] Room registered: ${this.p2pInfo.code}`);
       console.log('[P2P] Remote access ready - static room ID never changes!');
 
+      // Set password hash if configured
+      const passwordHash = serverIdentity?.getPasswordHash();
+      if (passwordHash) {
+        this.p2pManager.setPasswordHash(passwordHash);
+        console.log('[P2P] Room password protection enabled');
+      }
+
       // Sync relay code to PairingService so it accepts this code
       this.pairingService.setRelayCode(this.p2pInfo.code);
     } catch (error) {
@@ -790,6 +797,98 @@ export class MobileServer {
    */
   getLocalUrl(): string | null {
     return this.pairingService.getLocalUrl();
+  }
+
+  // ========================================
+  // Room Security Methods
+  // ========================================
+
+  /**
+   * Set password for room protection
+   */
+  setRoomPassword(password: string): void {
+    const serverIdentity = this.pairingService.getServerIdentity();
+    if (!serverIdentity) {
+      console.error('[Mobile] Cannot set password - server identity not initialized');
+      return;
+    }
+    serverIdentity.setPassword(password);
+    // Update P2P manager with new password hash
+    this.p2pManager.setPasswordHash(serverIdentity.getPasswordHash());
+    console.log('[Mobile] Room password set');
+  }
+
+  /**
+   * Remove room password
+   */
+  removeRoomPassword(): void {
+    const serverIdentity = this.pairingService.getServerIdentity();
+    if (!serverIdentity) return;
+    serverIdentity.removePassword();
+    this.p2pManager.setPasswordHash(undefined);
+    console.log('[Mobile] Room password removed');
+  }
+
+  /**
+   * Check if room has password
+   */
+  hasRoomPassword(): boolean {
+    const serverIdentity = this.pairingService.getServerIdentity();
+    return serverIdentity?.hasPassword() ?? false;
+  }
+
+  /**
+   * Regenerate room ID (invalidates all connections)
+   * This creates a new room code and revokes all paired devices
+   */
+  async regenerateRoomId(): Promise<{ code: string; devicesRevoked: number }> {
+    console.log('[Mobile] Regenerating room ID...');
+
+    // 1. Revoke all devices first
+    const devicesRevoked = this.pairingService.revokeAllDevices();
+    console.log(`[Mobile] Revoked ${devicesRevoked} devices`);
+
+    // 2. Stop P2P connection
+    await this.p2pManager.stop();
+
+    // 3. Regenerate server identity
+    const serverIdentity = this.pairingService.getServerIdentity();
+    if (!serverIdentity) {
+      throw new Error('Server identity not initialized');
+    }
+    const newIdentity = serverIdentity.regenerate();
+    console.log(`[Mobile] New room ID: ${newIdentity.relayCode}`);
+
+    // 4. Restart P2P with new room ID
+    const roomId = newIdentity.relayCode;
+    const serverName = newIdentity.serverName;
+    const passwordHash = serverIdentity.getPasswordHash();
+
+    this.p2pInfo = await this.p2pManager.startAsHost(roomId, serverName);
+    if (passwordHash) {
+      this.p2pManager.setPasswordHash(passwordHash);
+    }
+
+    // 5. Update pairing service with new relay code
+    this.pairingService.setRelayCode(this.p2pInfo.code);
+
+    console.log(`[Mobile] Room regenerated: ${this.p2pInfo.code}`);
+
+    return {
+      code: this.p2pInfo.code,
+      devicesRevoked
+    };
+  }
+
+  /**
+   * Get room security info
+   */
+  getRoomSecurityInfo(): { hasPassword: boolean; roomCode: string | null } {
+    const serverIdentity = this.pairingService.getServerIdentity();
+    return {
+      hasPassword: serverIdentity?.hasPassword() ?? false,
+      roomCode: this.p2pManager.getConnectionCode()
+    };
   }
 
   private async handleWebSocketMessage(socket: WebSocket, sessionId: string, data: { type: string; payload?: unknown }) {

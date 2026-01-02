@@ -36,8 +36,14 @@ export function AuthPage() {
     status: p2pStatus,
     error: p2pError,
     connect: p2pConnect,
+    connectWithPassword: p2pConnectWithPassword,
+    requiresPassword,
+    pendingServerName,
     authToken: p2pAuthToken
   } = useP2PStore();
+
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
 
   // Generate default device name on mount
   useEffect(() => {
@@ -212,6 +218,21 @@ export function AuthPage() {
     }
   };
 
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!password.trim()) {
+      setPasswordError('Please enter a password');
+      return;
+    }
+    setPasswordError('');
+    setIsAutoConnecting(true);
+    const success = await p2pConnectWithPassword(password);
+    if (!success) {
+      setPasswordError('Incorrect password');
+      setIsAutoConnecting(false);
+    }
+  };
+
   const error = authError || p2pError;
   const loading = isPairing || isConnecting || p2pStatus === 'connecting';
 
@@ -238,6 +259,78 @@ export function AuthPage() {
                 : 'Setting up your device'}
             </p>
           </div>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
+  // Password required state
+  if (requiresPassword) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.content}>
+          <div className={styles.logo}>
+            <AudiioLogo />
+          </div>
+          <h1 className={styles.title}>Audiio</h1>
+          <p className={styles.subtitle}>
+            {pendingServerName
+              ? `Enter password for ${pendingServerName}`
+              : 'This server requires a password'}
+          </p>
+
+          <form onSubmit={handlePasswordSubmit} className={styles.form}>
+            <div className={styles.inputGroup}>
+              <label htmlFor="password" className={styles.label}>
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className={styles.input}
+                disabled={loading}
+                autoComplete="off"
+                autoFocus
+              />
+            </div>
+
+            {passwordError && <p className={styles.error}>{passwordError}</p>}
+
+            <button
+              type="submit"
+              className={styles.button}
+              disabled={!password.trim() || loading}
+            >
+              {loading ? (
+                <>
+                  <SpinnerIcon size={18} />
+                  Connecting...
+                </>
+              ) : (
+                'Connect'
+              )}
+            </button>
+          </form>
+
+          <button
+            className={styles.backLink}
+            onClick={() => {
+              setPassword('');
+              setPasswordError('');
+              // Reset the P2P state to go back to code entry
+              useP2PStore.setState({
+                requiresPassword: false,
+                pendingRoomId: null,
+                pendingServerName: null
+              });
+            }}
+          >
+            ← Enter a different code
+          </button>
         </div>
         <Footer />
       </div>

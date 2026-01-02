@@ -307,6 +307,26 @@ const api = {
   },
 
   // ========================================
+  // Room Security APIs
+  // ========================================
+
+  setRoomPassword: (password: string) => {
+    return ipcRenderer.invoke('set-room-password', password);
+  },
+
+  removeRoomPassword: () => {
+    return ipcRenderer.invoke('remove-room-password');
+  },
+
+  getRoomSecurityInfo: () => {
+    return ipcRenderer.invoke('get-room-security-info');
+  },
+
+  regenerateRoomId: () => {
+    return ipcRenderer.invoke('regenerate-room-id');
+  },
+
+  // ========================================
   // Relay Management APIs
   // ========================================
 
