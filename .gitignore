@@ -5,6 +5,13 @@ node_modules/
 dist/
 out/
 .turbo/
+packages/desktop/renderer/assets/
+packages/desktop/asar-contents.txt
+
+# Compiled TypeScript (keep .ts source, ignore compiled output)
+packages/mobile/src/shared/*.js
+packages/mobile/src/shared/*.js.map
+packages/mobile/src/shared/*.d.ts.map
 
 # IDE
 .vscode/
@@ -40,8 +47,17 @@ database/
 audiiodb/
 audiio-musicbrainz/
 
-# Misc
-nul
+# Large ML model files (should be downloaded separately)
+*.bin
+
+# AI-generated analysis/planning files
+*ANALYSIS*.md
+*PLAN*.md
+*REDESIGN*.md
+
+# Accidental/junk files
+/C
+/tsc
 
 # Claude Code
 .claude/
