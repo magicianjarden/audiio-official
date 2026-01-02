@@ -124,7 +124,7 @@ export default definePlugin({
         <div className="plugin-cta">
           <div className="plugin-cta-buttons">
             <a
-              href="https://github.com/magicianjarden/audiio-official/tree/main/packages"
+              href="https://github.com/magicianjarden/audiio-official-plugins"
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-primary"
@@ -144,6 +144,12 @@ export default definePlugin({
           <p className="plugin-cta-text">
             Official plugins include lyrics providers, scrobbling services, metadata sources, and more.
           </p>
+          <div className="plugin-registry">
+            <span className="plugin-registry-label">Plugin Registry:</span>
+            <code className="plugin-registry-url">
+              https://raw.githubusercontent.com/magicianjarden/audiio-official-plugins/main/registry.json
+            </code>
+          </div>
         </div>
       </div>
     </section>

@@ -30,7 +30,7 @@ export function Footer() {
 
             <div className="footer-column">
               <h4>Plugins</h4>
-              <a href="https://github.com/magicianjarden/audiio-official/tree/main/packages" target="_blank" rel="noopener noreferrer">
+              <a href="https://github.com/magicianjarden/audiio-official-plugins" target="_blank" rel="noopener noreferrer">
                 Official Plugins
               </a>
               <a href="https://github.com/magicianjarden/audiio-official/tree/main/docs/sdk" target="_blank" rel="noopener noreferrer">
