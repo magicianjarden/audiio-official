@@ -10,7 +10,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { usePlaybackControls, useQueueControls } from '../stores/player-store';
+import { useQueueControls } from '../stores/player-store';
 import { tunnelFetch } from '../stores/auth-store';
 import { TrackList } from '../components/TrackList';
 import { StickyHeader } from '../components/StickyHeader';
@@ -54,7 +54,6 @@ export function ArtistPage() {
   const [activeTab, setActiveTab] = useState<DiscographyTab>('albums');
 
   const { setQueue } = useQueueControls();
-  const { play } = usePlaybackControls();
 
   // Get artist name from search params (for initial display)
   const artistName = searchParams.get('name') || '';
@@ -93,8 +92,8 @@ export function ArtistPage() {
   const handlePlayAll = () => {
     if (artist?.topTracks && artist.topTracks.length > 0) {
       triggerHaptic('medium');
+      // setQueue already calls play() internally
       setQueue(artist.topTracks, 0);
-      play(artist.topTracks[0]);
     }
   };
 
@@ -102,8 +101,8 @@ export function ArtistPage() {
     if (artist?.topTracks && artist.topTracks.length > 0) {
       triggerHaptic('medium');
       const shuffled = [...artist.topTracks].sort(() => Math.random() - 0.5);
+      // setQueue already calls play() internally
       setQueue(shuffled, 0);
-      play(shuffled[0]);
     }
   };
 

@@ -10,7 +10,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { usePlaybackControls, useQueueControls } from '../stores/player-store';
+import { useQueueControls } from '../stores/player-store';
 import { tunnelFetch } from '../stores/auth-store';
 import { TrackList } from '../components/TrackList';
 import { StickyHeader } from '../components/StickyHeader';
@@ -45,7 +45,6 @@ export function AlbumPage() {
   const [error, setError] = useState<string | null>(null);
 
   const { setQueue } = useQueueControls();
-  const { play } = usePlaybackControls();
 
   // Get album name from search params (for initial display)
   const albumName = searchParams.get('name') || '';
@@ -83,8 +82,8 @@ export function AlbumPage() {
   const handlePlayAll = () => {
     if (album?.tracks && album.tracks.length > 0) {
       triggerHaptic('medium');
+      // setQueue already calls play() internally
       setQueue(album.tracks, 0);
-      play(album.tracks[0]);
     }
   };
 
@@ -92,8 +91,8 @@ export function AlbumPage() {
     if (album?.tracks && album.tracks.length > 0) {
       triggerHaptic('medium');
       const shuffled = [...album.tracks].sort(() => Math.random() - 0.5);
+      // setQueue already calls play() internally
       setQueue(shuffled, 0);
-      play(shuffled[0]);
     }
   };
 

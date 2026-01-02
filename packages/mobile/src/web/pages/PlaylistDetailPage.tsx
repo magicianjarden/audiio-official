@@ -23,7 +23,7 @@ export function PlaylistDetailPage() {
   const { playlistId } = useParams<{ playlistId: string }>();
   const navigate = useNavigate();
   const { getPlaylist, deletePlaylist, renamePlaylist, fetchLibrary } = useLibraryStore();
-  const { play, setQueue, shuffle } = usePlayerStore();
+  const { setQueue } = usePlayerStore();
   const [showMenu, setShowMenu] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -56,17 +56,17 @@ export function PlaylistDetailPage() {
     ? getTrackArtwork(playlist.tracks[0], 'large')
     : null;
 
-  const handlePlayAll = async () => {
+  const handlePlayAll = () => {
     if (playlist.tracks.length === 0) return;
+    // setQueue already calls play() internally
     setQueue(playlist.tracks);
-    await play(playlist.tracks[0]);
   };
 
-  const handleShuffle = async () => {
+  const handleShuffle = () => {
     if (playlist.tracks.length === 0) return;
     const shuffled = [...playlist.tracks].sort(() => Math.random() - 0.5);
+    // setQueue already calls play() internally
     setQueue(shuffled);
-    await play(shuffled[0]);
   };
 
   const handleRename = async () => {

@@ -7,7 +7,7 @@
 
 import React, { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { usePlaybackControls, useQueueControls } from '../../stores/player-store';
+import { useQueueControls } from '../../stores/player-store';
 import { triggerHaptic } from '../../utils/haptics';
 import { MobileHorizontalSection } from './MobileHorizontalSection';
 import { SectionData, SectionTrack, SectionArtist, SectionAlbum, getSectionLayout } from './MobileSectionRegistry';
@@ -19,16 +19,14 @@ interface MobileSectionRendererProps {
 
 export function MobileSectionRenderer({ sections, isLoading }: MobileSectionRendererProps) {
   const navigate = useNavigate();
-  const { play } = usePlaybackControls();
   const { setQueue } = useQueueControls();
 
   const handleTrackPlay = useCallback((track: SectionTrack, tracks: SectionTrack[]) => {
     triggerHaptic('medium');
     const trackIndex = tracks.findIndex(t => t.id === track.id);
-    // Cast to any to avoid type issues between stores
+    // setQueue already calls play() internally with the track at startIndex
     setQueue(tracks as any[], Math.max(0, trackIndex));
-    play(track as any);
-  }, [play, setQueue]);
+  }, [setQueue]);
 
   const handleArtistClick = useCallback((artist: SectionArtist) => {
     triggerHaptic('light');
