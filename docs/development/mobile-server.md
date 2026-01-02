@@ -6,35 +6,38 @@ Technical documentation for Audiio's mobile server internals.
 
 The mobile server enables remote control from phones/tablets. It runs inside the desktop app and provides:
 
-- REST API for library and playback
+- REST API for library and playback (60+ endpoints)
 - WebSocket for real-time updates
-- P2P connectivity via relay server
+- P2P connectivity via relay server (static room model)
 - E2E encryption for security
+- Two playback modes: Remote Control and Local Playback (Plex-like)
+- Multi-layer authentication with device management
+- Room-based security with optional password protection
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Mobile Server                           │
-│                                                              │
-│  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐   │
-│  │  REST Routes  │  │   WebSocket   │  │  P2P Manager  │   │
-│  │   /api/...    │  │   /ws         │  │               │   │
-│  └───────┬───────┘  └───────┬───────┘  └───────┬───────┘   │
-│          │                  │                  │            │
-│          └──────────────────┼──────────────────┘            │
-│                             │                               │
-│                    ┌────────▼────────┐                      │
-│                    │   Auth Manager  │                      │
-│                    │                 │                      │
-│                    └────────┬────────┘                      │
-│                             │                               │
-│                    ┌────────▼────────┐                      │
-│                    │ Device Manager  │                      │
-│                    │                 │                      │
-│                    └─────────────────┘                      │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            Mobile Server                                     │
+│                                                                             │
+│  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐  ┌─────────────┐ │
+│  │  REST Routes  │  │   WebSocket   │  │  P2P Manager  │  │  Pairing    │ │
+│  │   /api/...    │  │   /ws         │  │ (Static Room) │  │  Service    │ │
+│  └───────┬───────┘  └───────┬───────┘  └───────┬───────┘  └──────┬──────┘ │
+│          │                  │                  │                  │        │
+│          └──────────────────┼──────────────────┼──────────────────┘        │
+│                             │                  │                           │
+│                    ┌────────▼────────┐  ┌──────▼──────┐                    │
+│                    │   Auth Manager  │  │   Device    │                    │
+│                    │                 │  │   Manager   │                    │
+│                    └────────┬────────┘  └──────┬──────┘                    │
+│                             │                  │                           │
+│                    ┌────────▼──────────────────▼──────┐                    │
+│                    │       Server Identity             │                    │
+│                    │  (Persistent ID, Room Code, PWD) │                    │
+│                    └───────────────────────────────────┘                    │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Server Setup
@@ -43,127 +46,323 @@ The mobile server enables remote control from phones/tablets. It runs inside the
 // packages/mobile/src/server/index.ts
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
+import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import { registerRoutes } from './api/routes';
-import { AuthManager } from './services/auth-manager';
+import { PairingService } from './services/pairing-service';
 import { DeviceManager } from './services/device-manager';
 import { P2PManager } from './services/p2p-manager';
+import { ServerIdentityService } from './services/server-identity';
 
-export async function createMobileServer(port: number = 9484) {
+export async function createMobileServer(config: ServerConfig) {
   const fastify = Fastify({ logger: true });
 
   // Initialize services
-  const authManager = new AuthManager();
+  const serverIdentity = new ServerIdentityService();
   const deviceManager = new DeviceManager();
-  const p2pManager = new P2PManager();
+  const pairingService = new PairingService(deviceManager, serverIdentity);
+  const p2pManager = new P2PManager(serverIdentity);
 
-  // Register WebSocket
+  // Middleware
+  await fastify.register(cors, { origin: true });
+  await fastify.register(rateLimit, { max: 100 });
   await fastify.register(websocket);
 
-  // Register routes
-  await registerRoutes(fastify, { authManager, deviceManager });
-
-  // WebSocket handler
-  fastify.register(async (app) => {
-    app.get('/ws', { websocket: true }, (socket, req) => {
-      handleWebSocket(socket, req, { authManager, deviceManager });
-    });
+  // Register routes (60+ endpoints)
+  await registerRoutes(fastify, {
+    pairingService,
+    deviceManager,
+    p2pManager,
+    serverIdentity
   });
 
   // Start server
-  await fastify.listen({ port, host: '0.0.0.0' });
+  await fastify.listen({ port: config.port, host: '0.0.0.0' });
 
   return {
     fastify,
-    authManager,
+    pairingService,
     deviceManager,
     p2pManager,
+    serverIdentity,
     close: () => fastify.close(),
   };
 }
 ```
 
-## Authentication
+**Default Configuration:**
+```typescript
+{
+  port: 8484,              // Auto-increment if in use
+  rateLimit: 100,          // 100 requests/minute
+  maxStreams: 3,           // 3 concurrent audio streams
+  streamQuality: 'medium', // Quality for mobile streaming
+  codeExpiration: 5        // Pairing code expires in 5 minutes
+}
+```
 
-### Auth Manager
+## Static Room Model
+
+The mobile server uses a **static room model** for P2P connections:
+
+```
+Desktop (Host)
+     │
+     ├── Persistent Server ID (UUID, generated once)
+     ├── Deterministic Room Code (derived from Server ID)
+     ├── Optional Password (SHA-512 hashed)
+     │
+     ▼
+Relay Server (wss://audiio-relay.fly.dev)
+     │
+     ├── Room ID → Desktop mapping
+     ├── Password verification (if enabled)
+     ├── E2E encrypted message relay
+     │
+     ▼
+Mobile (Client)
+     │
+     ├── Enter room code + optional password
+     ├── Receive desktop's public key
+     └── E2E encrypted tunnel established
+```
+
+### Server Identity
 
 ```typescript
-// services/auth-manager.ts
-import { randomBytes, createHash } from 'crypto';
-import { box, randomBytes as naclRandomBytes } from 'tweetnacl';
-
-interface Session {
-  token: string;
-  deviceId: string;
-  createdAt: Date;
-  expiresAt: Date;
+// services/server-identity.ts
+interface ServerIdentity {
+  serverId: string;      // Persistent UUID
+  serverName: string;    // User's device name
+  relayCode: string;     // ADJECTIVE-NOUN-NUMBER format
+  passwordHash?: string; // SHA-512 hashed password
 }
 
-export class AuthManager {
-  private sessions: Map<string, Session> = new Map();
-  private connectionCode: string = '';
-  private keyPair: { publicKey: Uint8Array; secretKey: Uint8Array };
+export class ServerIdentityService {
+  private identity: ServerIdentity;
+  private storagePath: string;
 
   constructor() {
-    this.keyPair = box.keyPair();
-    this.regenerateCode();
+    this.storagePath = path.join(app.getPath('userData'), 'server-identity.json');
+    this.identity = this.loadOrCreate();
   }
 
-  regenerateCode(): string {
-    // Generate memorable 3-word code
-    const words = ['SWIFT', 'EAGLE', 'TIGER', 'HAPPY', 'BLUE', ...];
-    const code = [
-      words[Math.floor(Math.random() * words.length)],
-      words[Math.floor(Math.random() * words.length)],
-      Math.floor(Math.random() * 100).toString().padStart(2, '0'),
+  private loadOrCreate(): ServerIdentity {
+    if (fs.existsSync(this.storagePath)) {
+      return JSON.parse(fs.readFileSync(this.storagePath, 'utf8'));
+    }
+
+    const identity: ServerIdentity = {
+      serverId: crypto.randomUUID(),
+      serverName: os.hostname(),
+      relayCode: this.generateRelayCode(),
+    };
+
+    this.save(identity);
+    return identity;
+  }
+
+  private generateRelayCode(): string {
+    // Deterministic from server ID
+    const adjectives = ['SWIFT', 'BLUE', 'HAPPY', ...];
+    const nouns = ['TIGER', 'EAGLE', 'WOLF', ...];
+    const hash = crypto.createHash('sha256').update(this.serverId).digest();
+
+    return [
+      adjectives[hash[0] % adjectives.length],
+      nouns[hash[1] % nouns.length],
+      (hash[2] % 100).toString().padStart(2, '0')
+    ].join('-');
+  }
+
+  // Password management
+  setPassword(password: string): void {
+    this.identity.passwordHash = crypto
+      .createHash('sha512')
+      .update(password)
+      .digest('hex');
+    this.save();
+  }
+
+  removePassword(): void {
+    delete this.identity.passwordHash;
+    this.save();
+  }
+
+  hasPassword(): boolean {
+    return !!this.identity.passwordHash;
+  }
+
+  validatePassword(password: string): boolean {
+    const hash = crypto.createHash('sha512').update(password).digest('hex');
+    return hash === this.identity.passwordHash;
+  }
+
+  // Room ID regeneration (security reset)
+  regenerate(): void {
+    this.identity.serverId = crypto.randomUUID();
+    this.identity.relayCode = this.generateRelayCode();
+    delete this.identity.passwordHash;
+    this.save();
+  }
+}
+```
+
+## Multi-Layer Authentication
+
+### Authentication Layers
+
+| Layer | Purpose | Lifetime |
+|-------|---------|----------|
+| Access Token | Legacy quick access | In-memory (session) |
+| Pairing Code | Initial device pairing | 5 minutes |
+| Device Token | Persistent device auth | Configurable (default: never expires) |
+| Room Password | Optional room protection | Persistent |
+
+### Pairing Service
+
+```typescript
+// services/pairing-service.ts
+export class PairingService {
+  private deviceManager: DeviceManager;
+  private serverIdentity: ServerIdentityService;
+  private currentCode: string;
+  private codeExpiresAt: number;
+
+  generatePairingCode(): { code: string; expiresAt: number } {
+    // Generate fresh WORD-WORD-NUMBER code
+    const adjectives = ['SWIFT', 'BLUE', 'HAPPY', ...];
+    const nouns = ['TIGER', 'EAGLE', 'WOLF', ...];
+
+    this.currentCode = [
+      adjectives[Math.floor(Math.random() * adjectives.length)],
+      nouns[Math.floor(Math.random() * nouns.length)],
+      Math.floor(Math.random() * 100).toString().padStart(2, '0')
     ].join('-');
 
-    this.connectionCode = code;
-    return code;
-  }
+    this.codeExpiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
 
-  getConnectionCode(): string {
-    return this.connectionCode;
-  }
-
-  getPublicKey(): Uint8Array {
-    return this.keyPair.publicKey;
+    return { code: this.currentCode, expiresAt: this.codeExpiresAt };
   }
 
   validateCode(code: string): boolean {
-    return code.toUpperCase() === this.connectionCode;
+    if (Date.now() > this.codeExpiresAt) return false;
+    return code.toUpperCase() === this.currentCode;
   }
 
-  createSession(deviceId: string): string {
-    const token = randomBytes(32).toString('hex');
-    const session: Session = {
-      token,
-      deviceId,
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-    };
-
-    this.sessions.set(token, session);
-    return token;
-  }
-
-  validateSession(token: string): Session | null {
-    const session = this.sessions.get(token);
-    if (!session) return null;
-
-    if (session.expiresAt < new Date()) {
-      this.sessions.delete(token);
-      return null;
+  async pairDevice(code: string, deviceInfo: DeviceInfo): Promise<PairResult> {
+    // Validate code
+    if (!this.validateCode(code)) {
+      return { success: false, error: 'Invalid or expired code' };
     }
 
-    return session;
+    // Register device
+    const device = await this.deviceManager.registerDevice(deviceInfo);
+
+    // Generate device token
+    const token = crypto.randomBytes(32).toString('hex');
+    await this.deviceManager.setDeviceToken(device.id, token);
+
+    // Consume code (one-time use)
+    this.currentCode = '';
+
+    return {
+      success: true,
+      deviceId: device.id,
+      deviceToken: `${device.id}:${token}`,
+    };
+  }
+}
+```
+
+### Device Manager
+
+```typescript
+// services/device-manager.ts
+interface Device {
+  id: string;
+  name: string;
+  userAgent: string;
+  tokenHash: string;
+  createdAt: Date;
+  lastAccessAt: Date;
+  expiresAt?: Date;
+  revoked: boolean;
+}
+
+export class DeviceManager {
+  private devices: Map<string, Device> = new Map();
+  private storagePath: string;
+
+  constructor() {
+    this.storagePath = path.join(app.getPath('userData'), 'devices.json');
+    this.load();
   }
 
-  revokeSession(token: string): void {
-    this.sessions.delete(token);
+  async registerDevice(info: DeviceInfo): Promise<Device> {
+    const device: Device = {
+      id: `device_${crypto.randomBytes(8).toString('hex')}`,
+      name: info.deviceName,
+      userAgent: info.userAgent,
+      tokenHash: '',
+      createdAt: new Date(),
+      lastAccessAt: new Date(),
+      revoked: false,
+    };
+
+    this.devices.set(device.id, device);
+    this.save();
+    return device;
   }
 
-  revokeAllSessions(): void {
-    this.sessions.clear();
+  async setDeviceToken(deviceId: string, token: string): Promise<void> {
+    const device = this.devices.get(deviceId);
+    if (!device) throw new Error('Device not found');
+
+    device.tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    this.save();
+  }
+
+  validateDeviceToken(deviceToken: string): Device | null {
+    const [deviceId, token] = deviceToken.split(':');
+    const device = this.devices.get(deviceId);
+
+    if (!device || device.revoked) return null;
+    if (device.expiresAt && device.expiresAt < new Date()) return null;
+
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    if (tokenHash !== device.tokenHash) return null;
+
+    // Update last access
+    device.lastAccessAt = new Date();
+    this.save();
+
+    return device;
+  }
+
+  getAuthorizedDevices(): Device[] {
+    return Array.from(this.devices.values())
+      .filter(d => !d.revoked);
+  }
+
+  revokeDevice(deviceId: string): void {
+    const device = this.devices.get(deviceId);
+    if (device) {
+      device.revoked = true;
+      this.save();
+    }
+  }
+
+  revokeAllDevices(): number {
+    let count = 0;
+    for (const device of this.devices.values()) {
+      if (!device.revoked) {
+        device.revoked = true;
+        count++;
+      }
+    }
+    this.save();
+    return count;
   }
 }
 ```
@@ -172,230 +371,57 @@ export class AuthManager {
 
 ```typescript
 // middleware/auth.ts
-import { FastifyRequest, FastifyReply } from 'fastify';
-
 export async function authMiddleware(
   request: FastifyRequest,
   reply: FastifyReply,
-  authManager: AuthManager
+  services: Services
 ) {
-  // Skip auth for public routes
-  if (request.url === '/api/auth/connect') {
+  const { pairingService, accessManager } = services;
+
+  // Public routes (no auth required)
+  const publicPaths = ['/api/health', '/api/auth/pair', '/api/auth/login', '/api/auth/device'];
+  if (publicPaths.some(p => request.url.startsWith(p))) {
     return;
   }
 
-  const authHeader = request.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  // P2P requests (authenticated at P2P layer)
+  if (request.headers['x-p2p-request'] === 'true') {
+    return;
+  }
+
+  // Extract token
+  const token = extractToken(request);
+  if (!token) {
     return reply.status(401).send({ error: 'Unauthorized' });
   }
 
-  const token = authHeader.slice(7);
-  const session = authManager.validateSession(token);
-
-  if (!session) {
-    return reply.status(401).send({ error: 'Invalid or expired session' });
+  // Try device token first
+  const device = pairingService.validateDeviceToken(token);
+  if (device) {
+    request.device = device;
+    return;
   }
 
-  // Attach session to request
-  request.session = session;
-}
-```
+  // Try legacy access token
+  if (accessManager.validateToken(token)) {
+    return;
+  }
 
-## REST API Routes
-
-```typescript
-// api/routes.ts
-import { FastifyInstance } from 'fastify';
-
-export async function registerRoutes(fastify: FastifyInstance, services: Services) {
-  const { authManager, deviceManager } = services;
-
-  // Auth
-  fastify.post('/api/auth/connect', async (request, reply) => {
-    const { code, deviceName, publicKey } = request.body as any;
-
-    if (!authManager.validateCode(code)) {
-      return reply.status(401).send({ error: 'Invalid code' });
-    }
-
-    const device = await deviceManager.registerDevice(deviceName, publicKey);
-    const token = authManager.createSession(device.id);
-
-    return {
-      token,
-      deviceId: device.id,
-      serverPublicKey: Buffer.from(authManager.getPublicKey()).toString('base64'),
-    };
-  });
-
-  fastify.post('/api/auth/disconnect', async (request, reply) => {
-    const token = request.headers.authorization?.slice(7);
-    if (token) {
-      authManager.revokeSession(token);
-    }
-    return { success: true };
-  });
-
-  // Library
-  fastify.get('/api/library/likes', async (request) => {
-    return libraryBridge.getLikes();
-  });
-
-  fastify.get('/api/library/playlists', async (request) => {
-    return libraryBridge.getPlaylists();
-  });
-
-  fastify.get('/api/library/playlists/:id', async (request) => {
-    const { id } = request.params as any;
-    return libraryBridge.getPlaylist(id);
-  });
-
-  // Player
-  fastify.get('/api/player/state', async (request) => {
-    return playerBridge.getState();
-  });
-
-  fastify.post('/api/player/play', async (request) => {
-    const { trackId } = request.body as any;
-    await playerBridge.play(trackId);
-    return { success: true };
-  });
-
-  fastify.post('/api/player/pause', async (request) => {
-    await playerBridge.pause();
-    return { success: true };
-  });
-
-  fastify.post('/api/player/next', async (request) => {
-    await playerBridge.next();
-    return { success: true };
-  });
-
-  fastify.post('/api/player/previous', async (request) => {
-    await playerBridge.previous();
-    return { success: true };
-  });
-
-  fastify.post('/api/player/seek', async (request) => {
-    const { position } = request.body as any;
-    await playerBridge.seek(position);
-    return { success: true };
-  });
-
-  fastify.post('/api/player/volume', async (request) => {
-    const { volume } = request.body as any;
-    await playerBridge.setVolume(volume);
-    return { success: true };
-  });
-
-  // Queue
-  fastify.get('/api/queue', async (request) => {
-    return playerBridge.getQueue();
-  });
-
-  fastify.post('/api/queue/add', async (request) => {
-    const { tracks, position } = request.body as any;
-    await playerBridge.addToQueue(tracks, position);
-    return { success: true };
-  });
-
-  fastify.delete('/api/queue/:index', async (request) => {
-    const { index } = request.params as any;
-    await playerBridge.removeFromQueue(parseInt(index));
-    return { success: true };
-  });
-
-  // Search
-  fastify.get('/api/search', async (request) => {
-    const { q, type = 'all', limit = 25 } = request.query as any;
-    return searchBridge.search(q, type, limit);
-  });
-}
-```
-
-## WebSocket Handler
-
-```typescript
-// websocket/handler.ts
-import { WebSocket } from 'ws';
-
-interface WSMessage {
-  type: string;
-  payload?: any;
+  return reply.status(401).send({ error: 'Invalid or expired token' });
 }
 
-export function handleWebSocket(
-  socket: WebSocket,
-  request: any,
-  services: Services
-) {
-  const { authManager, deviceManager } = services;
-  let session: Session | null = null;
+function extractToken(request: FastifyRequest): string | null {
+  // Query parameter
+  const queryToken = (request.query as any).token;
+  if (queryToken) return queryToken;
 
-  socket.on('message', async (data) => {
-    try {
-      const message: WSMessage = JSON.parse(data.toString());
+  // Authorization header
+  const authHeader = request.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
 
-      switch (message.type) {
-        case 'auth':
-          session = authManager.validateSession(message.payload.token);
-          if (session) {
-            socket.send(JSON.stringify({ type: 'auth:success' }));
-            // Subscribe to updates
-            subscribeToUpdates(socket);
-          } else {
-            socket.send(JSON.stringify({ type: 'auth:failed' }));
-            socket.close();
-          }
-          break;
-
-        case 'player:play':
-          if (!session) return;
-          await playerBridge.play(message.payload?.trackId);
-          break;
-
-        case 'player:pause':
-          if (!session) return;
-          await playerBridge.pause();
-          break;
-
-        case 'player:seek':
-          if (!session) return;
-          await playerBridge.seek(message.payload.position);
-          break;
-
-        case 'ping':
-          socket.send(JSON.stringify({ type: 'pong' }));
-          break;
-      }
-    } catch (error) {
-      console.error('WebSocket message error:', error);
-    }
-  });
-
-  socket.on('close', () => {
-    unsubscribeFromUpdates(socket);
-  });
-}
-
-const connectedSockets = new Set<WebSocket>();
-
-function subscribeToUpdates(socket: WebSocket) {
-  connectedSockets.add(socket);
-}
-
-function unsubscribeFromUpdates(socket: WebSocket) {
-  connectedSockets.delete(socket);
-}
-
-// Broadcast updates to all connected clients
-export function broadcast(message: WSMessage) {
-  const data = JSON.stringify(message);
-  connectedSockets.forEach(socket => {
-    if (socket.readyState === WebSocket.OPEN) {
-      socket.send(data);
-    }
-  });
+  return null;
 }
 ```
 
@@ -403,37 +429,35 @@ export function broadcast(message: WSMessage) {
 
 ```typescript
 // services/p2p-manager.ts
-import { box, randomBytes } from 'tweetnacl';
-import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
-
-interface PeerConnection {
-  peerId: string;
-  publicKey: Uint8Array;
-  sharedKey: Uint8Array;
-}
-
 export class P2PManager extends EventEmitter {
   private relayUrl: string;
   private ws: WebSocket | null = null;
-  private keyPair: { publicKey: Uint8Array; secretKey: Uint8Array };
-  private peers: Map<string, PeerConnection> = new Map();
-  private connectionCode: string = '';
+  private keyPair: nacl.BoxKeyPair;
+  private peers: Map<string, Peer> = new Map();
+  private serverIdentity: ServerIdentityService;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 10;
 
-  constructor(relayUrl: string = 'wss://audiio-relay.fly.dev') {
+  constructor(serverIdentity: ServerIdentityService) {
     super();
-    this.relayUrl = relayUrl;
-    this.keyPair = box.keyPair();
+    this.serverIdentity = serverIdentity;
+    this.keyPair = nacl.box.keyPair();
+    this.relayUrl = 'wss://audiio-relay.fly.dev';
   }
 
-  async connect(): Promise<string> {
+  async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.ws = new WebSocket(this.relayUrl);
 
       this.ws.onopen = () => {
-        // Request a connection code
+        this.reconnectAttempts = 0;
+
+        // Register with room code
         this.ws?.send(JSON.stringify({
           type: 'register',
+          roomId: this.serverIdentity.getRelayCode(),
           publicKey: encodeBase64(this.keyPair.publicKey),
+          hasPassword: this.serverIdentity.hasPassword(),
         }));
       };
 
@@ -442,9 +466,12 @@ export class P2PManager extends EventEmitter {
         this.handleMessage(message);
 
         if (message.type === 'registered') {
-          this.connectionCode = message.code;
-          resolve(this.connectionCode);
+          resolve();
         }
+      };
+
+      this.ws.onclose = () => {
+        this.handleDisconnect();
       };
 
       this.ws.onerror = (error) => {
@@ -453,252 +480,460 @@ export class P2PManager extends EventEmitter {
     });
   }
 
-  private handleMessage(message: any) {
+  private handleMessage(message: any): void {
     switch (message.type) {
-      case 'peer-connect':
-        this.handlePeerConnect(message);
+      case 'join-request':
+        this.handleJoinRequest(message);
         break;
 
-      case 'peer-message':
-        this.handlePeerMessage(message);
+      case 'peer-joined':
+        this.handlePeerJoined(message);
         break;
 
-      case 'peer-disconnect':
+      case 'peer-left':
         this.peers.delete(message.peerId);
-        this.emit('peer-disconnect', message.peerId);
+        this.emit('peer-left', message.peerId);
+        break;
+
+      case 'data':
+        this.handleEncryptedData(message);
+        break;
+
+      case 'api-request':
+        this.handleApiRequest(message);
         break;
     }
   }
 
-  private handlePeerConnect(message: any) {
-    const peerPublicKey = decodeBase64(message.publicKey);
+  private handleJoinRequest(message: any): void {
+    // Verify password if required
+    if (this.serverIdentity.hasPassword()) {
+      if (!message.passwordHash ||
+          !this.serverIdentity.validatePasswordHash(message.passwordHash)) {
+        this.ws?.send(JSON.stringify({
+          type: 'join-denied',
+          peerId: message.peerId,
+          reason: 'Invalid password',
+        }));
+        return;
+      }
+    }
 
-    // Generate shared secret
-    const sharedKey = box.before(peerPublicKey, this.keyPair.secretKey);
-
-    this.peers.set(message.peerId, {
+    // Accept join
+    this.ws?.send(JSON.stringify({
+      type: 'join-accepted',
       peerId: message.peerId,
-      publicKey: peerPublicKey,
-      sharedKey,
-    });
-
-    this.emit('peer-connect', message.peerId);
+      publicKey: encodeBase64(this.keyPair.publicKey),
+    }));
   }
 
-  private handlePeerMessage(message: any) {
+  private handlePeerJoined(message: any): void {
+    const peerPublicKey = decodeBase64(message.publicKey);
+    const sharedKey = nacl.box.before(peerPublicKey, this.keyPair.secretKey);
+
+    this.peers.set(message.peerId, {
+      id: message.peerId,
+      publicKey: peerPublicKey,
+      sharedKey,
+      deviceName: message.deviceName,
+    });
+
+    // Send welcome message with auth token
+    this.sendToPeer(message.peerId, {
+      type: 'welcome',
+      authToken: this.generatePeerToken(message.peerId),
+      localUrl: this.getLocalUrl(),
+    });
+
+    this.emit('peer-joined', message.peerId, message.deviceName);
+  }
+
+  private async handleApiRequest(message: any): Promise<void> {
     const peer = this.peers.get(message.peerId);
     if (!peer) return;
 
-    // Decrypt message
-    const nonce = decodeBase64(message.nonce);
-    const encrypted = decodeBase64(message.data);
-    const decrypted = box.open.after(encrypted, nonce, peer.sharedKey);
+    // Decrypt request
+    const request = this.decrypt(message.data, message.nonce, peer.sharedKey);
 
-    if (!decrypted) {
-      console.error('Failed to decrypt message');
-      return;
-    }
+    // Execute API request
+    const response = await this.executeApiRequest(request);
 
-    const data = JSON.parse(new TextDecoder().decode(decrypted));
-    this.emit('message', { peerId: message.peerId, data });
+    // Send encrypted response
+    this.sendToPeer(message.peerId, {
+      type: 'api-response',
+      requestId: message.requestId,
+      ...response,
+    });
   }
 
-  sendToPeer(peerId: string, data: any) {
+  sendToPeer(peerId: string, data: any): void {
     const peer = this.peers.get(peerId);
     if (!peer || !this.ws) return;
 
-    // Encrypt message
-    const nonce = randomBytes(box.nonceLength);
+    const nonce = nacl.randomBytes(nacl.box.nonceLength);
     const message = new TextEncoder().encode(JSON.stringify(data));
-    const encrypted = box.after(message, nonce, peer.sharedKey);
+    const encrypted = nacl.box.after(message, nonce, peer.sharedKey);
 
     this.ws.send(JSON.stringify({
-      type: 'send',
+      type: 'data',
       peerId,
       nonce: encodeBase64(nonce),
       data: encodeBase64(encrypted),
     }));
   }
 
-  disconnect() {
-    this.ws?.close();
-    this.peers.clear();
-  }
-}
-```
-
-## Device Manager
-
-```typescript
-// services/device-manager.ts
-interface Device {
-  id: string;
-  name: string;
-  publicKey: string;
-  authorized: boolean;
-  lastSeen: Date;
-  createdAt: Date;
-}
-
-export class DeviceManager {
-  private devices: Map<string, Device> = new Map();
-
-  async registerDevice(name: string, publicKey: string): Promise<Device> {
-    const id = crypto.randomUUID();
-
-    const device: Device = {
-      id,
-      name,
-      publicKey,
-      authorized: false,
-      lastSeen: new Date(),
-      createdAt: new Date(),
-    };
-
-    this.devices.set(id, device);
-
-    // Emit event for UI to prompt authorization
-    this.emit('device-pending', device);
-
-    return device;
-  }
-
-  authorizeDevice(deviceId: string): boolean {
-    const device = this.devices.get(deviceId);
-    if (!device) return false;
-
-    device.authorized = true;
-    this.emit('device-authorized', device);
-    return true;
-  }
-
-  revokeDevice(deviceId: string): boolean {
-    const device = this.devices.get(deviceId);
-    if (!device) return false;
-
-    this.devices.delete(deviceId);
-    this.emit('device-revoked', device);
-    return true;
-  }
-
-  getDevice(deviceId: string): Device | null {
-    return this.devices.get(deviceId) || null;
-  }
-
-  getAuthorizedDevices(): Device[] {
-    return Array.from(this.devices.values()).filter(d => d.authorized);
-  }
-
-  updateLastSeen(deviceId: string): void {
-    const device = this.devices.get(deviceId);
-    if (device) {
-      device.lastSeen = new Date();
+  private handleDisconnect(): void {
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      this.reconnectAttempts++;
+      setTimeout(() => this.connect(), 3000);
     }
   }
+
+  // Room security management
+  setPassword(password: string): void {
+    this.serverIdentity.setPassword(password);
+    this.reconnect();
+  }
+
+  removePassword(): void {
+    this.serverIdentity.removePassword();
+    this.reconnect();
+  }
+
+  regenerateRoomId(): { newCode: string; revokedDevices: number } {
+    const revokedCount = this.deviceManager.revokeAllDevices();
+    this.disconnect();
+    this.serverIdentity.regenerate();
+    this.connect();
+
+    return {
+      newCode: this.serverIdentity.getRelayCode(),
+      revokedDevices: revokedCount,
+    };
+  }
 }
 ```
 
-## Bridge to Main Process
+## Playback Modes
+
+The mobile server supports two playback modes:
+
+### Remote Control Mode
+
+Commands are sent to the desktop, which plays the audio:
 
 ```typescript
-// services/library-bridge.ts
-import { ipcRenderer } from 'electron';
+// POST /api/playback/play
+app.post('/api/playback/play', async (request) => {
+  const { track } = request.body;
+  await orchestrators.playback.play(track);
+  return { success: true };
+});
+```
 
-export const libraryBridge = {
-  async getLikes(): Promise<Track[]> {
-    return ipcRenderer.invoke('library:getLikes');
-  },
+### Local Playback Mode (Plex-like)
 
-  async getPlaylists(): Promise<Playlist[]> {
-    return ipcRenderer.invoke('library:getPlaylists');
-  },
+Stream URL is resolved and returned to mobile for local playback:
 
-  async getPlaylist(id: string): Promise<Playlist> {
-    return ipcRenderer.invoke('library:getPlaylist', id);
-  },
-};
+```typescript
+// POST /api/stream/resolve
+app.post('/api/stream/resolve', async (request) => {
+  const { track, quality } = request.body;
 
-export const playerBridge = {
-  async getState(): Promise<PlayerState> {
-    return ipcRenderer.invoke('player:getState');
-  },
+  // Resolve stream without triggering desktop playback
+  const streamInfo = await orchestrators.trackResolver.resolveStream(track, quality);
 
-  async play(trackId?: string): Promise<void> {
-    return ipcRenderer.invoke('player:play', trackId);
-  },
+  if (!streamInfo) {
+    return reply.status(404).send({ error: 'Stream not found' });
+  }
 
-  async pause(): Promise<void> {
-    return ipcRenderer.invoke('player:pause');
-  },
+  return {
+    url: streamInfo.url,
+    format: streamInfo.format,
+    quality: streamInfo.quality,
+    expiresAt: streamInfo.expiresAt,
+  };
+});
+```
 
-  async next(): Promise<void> {
-    return ipcRenderer.invoke('player:next');
-  },
+## REST API Routes (60+ Endpoints)
 
-  async previous(): Promise<void> {
-    return ipcRenderer.invoke('player:previous');
-  },
+### Authentication
 
-  async seek(position: number): Promise<void> {
-    return ipcRenderer.invoke('player:seek', position);
-  },
+```http
+POST /api/auth/pair              # Pair device with pairing code
+GET  /api/auth/pair/check        # Check if code is valid
+POST /api/auth/login             # Login with password
+POST /api/auth/device            # Authenticate with device token
+POST /api/auth/refresh           # Refresh device token
+POST /api/auth/logout            # Logout and revoke device
+GET  /api/auth/devices           # List authorized devices
+DELETE /api/auth/devices/:id     # Revoke specific device
+GET  /api/auth/passphrase        # Get pairing code
+POST /api/auth/passphrase/regenerate  # Generate new code
+GET  /api/auth/settings          # Get auth settings
+POST /api/auth/settings          # Update auth settings
+```
 
-  async setVolume(volume: number): Promise<void> {
-    return ipcRenderer.invoke('player:setVolume', volume);
-  },
+### Playback Control
 
-  async getQueue(): Promise<Track[]> {
-    return ipcRenderer.invoke('player:getQueue');
-  },
+```http
+POST /api/playback/play          # Start playback
+POST /api/playback/pause         # Pause playback
+POST /api/playback/resume        # Resume playback
+POST /api/playback/seek          # Seek to position
+POST /api/playback/next          # Next track
+POST /api/playback/previous      # Previous track
+POST /api/playback/volume        # Set volume
+POST /api/playback/shuffle       # Toggle shuffle
+POST /api/playback/repeat        # Cycle repeat mode
+GET  /api/playback/state         # Get current state
+```
 
-  async addToQueue(tracks: Track[], position?: 'next' | 'last'): Promise<void> {
-    return ipcRenderer.invoke('player:addToQueue', { tracks, position });
-  },
+### Audio Streaming
 
-  async removeFromQueue(index: number): Promise<void> {
-    return ipcRenderer.invoke('player:removeFromQueue', index);
-  },
-};
+```http
+POST /api/stream/resolve         # Resolve stream URL (for local playback)
+GET  /api/stream/:trackId        # Stream audio directly
+```
+
+### Search & Discovery
+
+```http
+GET  /api/search                 # Search tracks/artists/albums
+GET  /api/artist/:id             # Get artist details
+GET  /api/album/:id              # Get album details
+GET  /api/trending               # Get trending content
+GET  /api/discover               # Get personalized home content
+GET  /api/discover/sections      # Get structured sections
+```
+
+### Library Management
+
+```http
+GET  /api/library/likes          # Get liked tracks
+POST /api/library/likes          # Like a track
+DELETE /api/library/likes/:id    # Unlike track
+GET  /api/library/likes/:id      # Check if liked
+GET  /api/library/dislikes       # Get disliked tracks
+POST /api/library/dislikes       # Dislike track
+DELETE /api/library/dislikes/:id # Remove dislike
+GET  /api/library/playlists      # List playlists
+POST /api/library/playlists      # Create playlist
+GET  /api/library/playlists/:id  # Get playlist
+PUT  /api/library/playlists/:id  # Rename playlist
+DELETE /api/library/playlists/:id    # Delete playlist
+POST /api/library/playlists/:id/tracks    # Add track
+DELETE /api/library/playlists/:id/tracks/:trackId  # Remove track
+```
+
+### Lyrics & Translation
+
+```http
+GET  /api/lyrics                 # Get lyrics for track
+POST /api/translate              # Translate text
+```
+
+### Plugins
+
+```http
+GET  /api/addons                 # List all addons
+GET  /api/addons/:id/settings    # Get addon settings
+POST /api/addons/:id/settings    # Update settings
+POST /api/addons/:id/enabled     # Toggle addon
+POST /api/addons/order           # Reorder addons
+GET  /api/addons/priorities      # Get addon priorities
+```
+
+### ML/Recommendations
+
+```http
+GET  /api/algo/status            # ML service status
+GET  /api/algo/recommendations   # Get personalized recommendations
+GET  /api/algo/similar/:trackId  # Get similar tracks
+POST /api/algo/event             # Record user event
+GET  /api/algo/features/:trackId # Get audio features
+```
+
+### Sessions & Access
+
+```http
+GET  /api/sessions               # List active sessions
+DELETE /api/sessions/:id         # End session
+POST /api/access/rotate          # Rotate access token
+GET  /api/access/info            # Get access configuration
+POST /api/access/refresh         # Refresh pairing code
+GET  /api/access/relay           # Get relay URL
+POST /api/access/relay           # Set custom relay URL
+```
+
+### Room Security
+
+```http
+POST /api/room/password          # Set room password
+DELETE /api/room/password        # Remove password
+GET  /api/room/security          # Get security info
+POST /api/room/regenerate        # Regenerate room ID
+```
+
+## WebSocket Handler
+
+```typescript
+// websocket/handler.ts
+fastify.register(async (app) => {
+  app.get('/ws', { websocket: true }, (socket, req) => {
+    let authenticated = false;
+
+    socket.on('message', async (data) => {
+      const message = JSON.parse(data.toString());
+
+      switch (message.type) {
+        case 'auth':
+          const device = pairingService.validateDeviceToken(message.token);
+          if (device) {
+            authenticated = true;
+            socket.send(JSON.stringify({ type: 'auth:success' }));
+            subscribeToPlaybackUpdates(socket);
+          } else {
+            socket.send(JSON.stringify({ type: 'auth:failed' }));
+            socket.close();
+          }
+          break;
+
+        case 'playback:command':
+          if (!authenticated) return;
+          await handlePlaybackCommand(message);
+          break;
+
+        case 'ping':
+          socket.send(JSON.stringify({ type: 'pong' }));
+          break;
+      }
+    });
+
+    socket.on('close', () => {
+      unsubscribeFromPlaybackUpdates(socket);
+    });
+  });
+});
+
+// Broadcast playback state to all connected clients
+function broadcastPlaybackState(state: PlaybackState) {
+  const message = JSON.stringify({
+    type: 'playback:sync',
+    state,
+  });
+
+  connectedSockets.forEach(socket => {
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(message);
+    }
+  });
+}
+```
+
+## Orchestrator Integration
+
+The mobile server delegates to desktop orchestrators:
+
+```typescript
+// Playback
+orchestrators.playback.play(track)
+orchestrators.playback.pause()
+orchestrators.playback.resume()
+orchestrators.playback.seek(position)
+orchestrators.playback.next()
+orchestrators.playback.previous()
+orchestrators.playback.setVolume(volume)
+orchestrators.playback.getState()
+
+// Search & Metadata
+orchestrators.search.search(query, options)
+orchestrators.metadata.getArtist(id, source)
+orchestrators.metadata.getAlbum(id, source)
+orchestrators.metadata.getCharts(limit)
+
+// Track Resolution
+orchestrators.trackResolver.resolveStream(track, quality)
+
+// ML Service
+orchestrators.mlService.isAlgorithmLoaded()
+orchestrators.mlService.getRecommendations(count)
+orchestrators.mlService.getSimilarTracks(trackId, count)
+orchestrators.mlService.recordEvent(event)
+
+// Library Bridge
+orchestrators.libraryBridge.getLikedTracks()
+orchestrators.libraryBridge.likeTrack(track)
+orchestrators.libraryBridge.getPlaylists()
 ```
 
 ## Security
 
 ### E2E Encryption
 
-All P2P messages are encrypted:
+All P2P messages are encrypted using NaCl:
 
-```typescript
-function encrypt(data: any, sharedKey: Uint8Array): { nonce: string; data: string } {
-  const nonce = randomBytes(box.nonceLength);
-  const message = new TextEncoder().encode(JSON.stringify(data));
-  const encrypted = box.after(message, nonce, sharedKey);
+- **Key Exchange**: X25519 (Curve25519 ECDH)
+- **Encryption**: XSalsa20-Poly1305 (authenticated encryption)
+- **Key Size**: 256 bits
+- **Nonce Size**: 192 bits (24 bytes)
 
-  return {
-    nonce: encodeBase64(nonce),
-    data: encodeBase64(encrypted),
-  };
-}
+### Token Types
 
-function decrypt(encrypted: string, nonce: string, sharedKey: Uint8Array): any {
-  const decrypted = box.open.after(
-    decodeBase64(encrypted),
-    decodeBase64(nonce),
-    sharedKey
-  );
+| Token | Format | Storage | Validation |
+|-------|--------|---------|------------|
+| Access Token | 32 random chars | In-memory | Direct comparison |
+| Device Token | `deviceId:token` | Hashed (SHA-256) | Hash comparison |
+| Pairing Code | WORD-WORD-NN | Temporary | Case-insensitive match |
+| Room Password | User-defined | Hashed (SHA-512) | Hash comparison |
 
-  if (!decrypted) throw new Error('Decryption failed');
-
-  return JSON.parse(new TextDecoder().decode(decrypted));
-}
-```
-
-### CORS Configuration
+### CORS & Rate Limiting
 
 ```typescript
 fastify.register(cors, {
-  origin: true, // Allow all origins for mobile access
+  origin: true,
   credentials: true,
 });
+
+fastify.register(rateLimit, {
+  max: 100,           // 100 requests
+  timeWindow: '1 min', // per minute
+});
+```
+
+## Mobile Web Frontend
+
+```
+src/web/
+├── App.tsx                  # Main router
+├── pages/
+│   ├── HomePage.tsx         # Discover/trending
+│   ├── SearchPage.tsx       # Search interface
+│   ├── NowPlayingPage.tsx   # Full player
+│   ├── QueuePage.tsx        # Queue management
+│   ├── LyricsPage.tsx       # Lyrics display
+│   ├── LibraryPage.tsx      # Likes/playlists
+│   ├── PlaylistDetailPage.tsx
+│   ├── ArtistPage.tsx
+│   ├── AlbumPage.tsx
+│   ├── SettingsPage.tsx
+│   ├── PluginsPage.tsx
+│   └── AuthPage.tsx         # Login/pairing
+├── components/
+│   ├── MiniPlayer.tsx       # Compact player bar
+│   ├── FullPlayer.tsx       # Expanded player
+│   ├── TrackList.tsx        # Track list renderer
+│   └── ...
+├── stores/
+│   ├── auth-store.ts        # Authentication
+│   ├── player-store.ts      # Playback + WebSocket
+│   ├── p2p-store.ts         # P2P relay connection
+│   ├── library-store.ts     # Library sync
+│   └── ...
+└── utils/
+    ├── artwork.ts           # Image URL handling
+    └── haptics.ts           # Vibration feedback
 ```
 
 ## Related
@@ -706,4 +941,4 @@ fastify.register(cors, {
 - [Architecture](architecture.md) - System design
 - [IPC Reference](ipc-reference.md) - Desktop IPC
 - [REST API](../api/README.md) - Full API reference
-
+- [Relay](../relay/README.md) - Relay server documentation

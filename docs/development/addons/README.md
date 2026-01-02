@@ -11,18 +11,22 @@ Addons are TypeScript/JavaScript packages that hook into Audiio's addon system. 
 - Display synced lyrics
 - Process audio (karaoke, stems)
 - Track listening history (scrobbling)
+- Import/export data and connect cloud storage
+- Enrich artist pages with videos, concerts, and images
 
 ## Addon Roles
 
-Each addon declares one or more roles:
+Audiio supports **7 addon roles**. Each addon declares one or more roles:
 
-| Role | Interface | Purpose |
-|------|-----------|---------|
-| `metadata-provider` | `MetadataProvider` | Track/artist/album info |
-| `stream-provider` | `StreamProvider` | Audio stream URLs |
-| `lyrics-provider` | `LyricsProvider` | Synced/plain lyrics |
-| `audio-processor` | `AudioProcessor` | Audio processing |
-| `scrobbler` | `Scrobbler` | Listening history |
+| Role | Interface | Base Class | Purpose |
+|------|-----------|------------|---------|
+| `metadata-provider` | `MetadataProvider` | `BaseMetadataProvider` | Track/artist/album info |
+| `stream-provider` | `StreamProvider` | `BaseStreamProvider` | Audio stream URLs |
+| `lyrics-provider` | `LyricsProvider` | `BaseLyricsProvider` | Synced/plain lyrics |
+| `audio-processor` | `AudioProcessor` | `BaseAudioProcessor` | Audio processing (karaoke, stems) |
+| `scrobbler` | `Scrobbler` | - | Listening history tracking |
+| `tool` | `Tool` | `BaseTool` | Data transfer, cloud mounts, utilities |
+| `artist-enrichment` | `ArtistEnrichmentProvider` | `BaseArtistEnrichmentProvider` | Videos, concerts, setlists, gallery |
 
 ## Quick Start
 
@@ -39,37 +43,59 @@ npm install @audiio/sdk typescript
 
 ```typescript
 // src/index.ts
-import { BaseAddon, MetadataProvider, Track } from '@audiio/sdk';
+import { BaseMetadataProvider, type Track } from '@audiio/sdk';
 
-export default class MyAddon extends BaseAddon implements MetadataProvider {
-  static manifest = {
-    id: 'my-addon',
-    name: 'My Addon',
-    version: '1.0.0',
-    roles: ['metadata-provider'],
-  };
+export default class MyMetadataProvider extends BaseMetadataProvider {
+  readonly id = 'my-addon';
+  readonly name = 'My Addon';
+  readonly priority = 50;
 
-  async searchTracks(query: string): Promise<Track[]> {
+  async search(query: string) {
     // Your implementation
-    return [];
+    return { tracks: [], artists: [], albums: [] };
   }
 
   async getTrack(id: string): Promise<Track | null> {
     return null;
   }
+
+  async getArtist(id: string) { return null; }
+  async getAlbum(id: string) { return null; }
 }
 ```
 
-### 3. Build
+### 3. Configure package.json
+
+```json
+{
+  "name": "audiio-addon-my-feature",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "audiio": {
+    "type": "addon",
+    "manifest": {
+      "id": "my-feature",
+      "name": "My Feature",
+      "roles": ["metadata-provider"]
+    }
+  },
+  "peerDependencies": {
+    "@audiio/sdk": "^1.0.0",
+    "@audiio/core": "^1.0.0"
+  }
+}
+```
+
+### 4. Build
 
 ```bash
 npx tsc
 ```
 
-### 4. Install in Audiio
+### 5. Install in Audiio
 
 1. Go to Settings > Addons
-2. Click "Install from File"
+2. Click "Install from File" or "Load Local"
 3. Select your built addon
 
 ## Development Guides
@@ -82,56 +108,128 @@ npx tsc
 | [Lyrics Provider](lyrics-provider.md) | Provide synced lyrics |
 | [Audio Processor](audio-processor.md) | Process audio |
 | [Scrobbler](scrobbler.md) | Track listening history |
+| [Tool](tool.md) | Data transfer and utilities |
+| [Artist Enrichment](artist-enrichment.md) | Videos, concerts, gallery |
 
-## SDK Reference
+---
 
-### BaseAddon
+## Tool Addon Role
 
-All addons extend `BaseAddon`:
+Tools provide utilities like data import/export, cloud storage mounts, and integrations.
+
+### Tool Types
+
+| Type | Purpose | Example |
+|------|---------|---------|
+| `data-transfer` | Import/export data | Spotify import, library backup |
+| `cloud-mount` | Connect cloud storage | Google Drive, Dropbox |
+| `integration` | Third-party services | Discord presence, smart home |
+| `utility` | Stats, analytics, converters | Library stats, file converter |
+
+### Example Tool
 
 ```typescript
-import { BaseAddon } from '@audiio/sdk';
+import { BaseTool, type ToolType } from '@audiio/sdk';
 
-export default class MyAddon extends BaseAddon {
-  static manifest = {
-    id: 'unique-addon-id',
-    name: 'Display Name',
-    version: '1.0.0',
-    description: 'What this addon does',
-    author: 'Your Name',
-    roles: ['metadata-provider'],
-    settings: [
-      {
-        key: 'apiKey',
-        type: 'string',
-        label: 'API Key',
-        required: true,
-      },
-    ],
-  };
+export default class SpotifyImportTool extends BaseTool {
+  readonly id = 'spotify-import';
+  readonly name = 'Spotify Import';
+  readonly toolType: ToolType = 'data-transfer';
+  readonly description = 'Import playlists and likes from Spotify';
 
-  async initialize(): Promise<void> {
-    // Called when addon loads
+  async execute(params: { accessToken: string }) {
+    const playlists = await this.fetchSpotifyPlaylists(params.accessToken);
+
+    for (const playlist of playlists) {
+      await this.importPlaylist(playlist);
+    }
+
+    return { success: true, imported: playlists.length };
   }
 
-  async destroy(): Promise<void> {
-    // Called when addon unloads
+  // Optional: Provide UI components
+  getUIComponents() {
+    return {
+      settingsPanel: SpotifySettingsPanel,
+      actionButton: SpotifyImportButton
+    };
   }
 }
 ```
 
-### Manifest Fields
+---
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | string | Yes | Unique identifier |
-| `name` | string | Yes | Display name |
-| `version` | string | Yes | Semantic version |
-| `description` | string | No | What it does |
-| `author` | string | No | Developer name |
-| `roles` | string[] | Yes | Addon roles |
-| `settings` | Setting[] | No | User settings |
-| `dependencies` | string[] | No | Required addons |
+## Artist Enrichment Provider Role
+
+Artist enrichment providers add supplementary data to artist pages: videos, concerts, setlists, and gallery images.
+
+### Enrichment Types
+
+| Type | Description |
+|------|-------------|
+| `videos` | Music videos from external sources |
+| `timeline` | Artist discography history |
+| `setlists` | Past concert setlists |
+| `concerts` | Upcoming concerts/events |
+| `gallery` | Artist images (backgrounds, thumbnails, logos, banners) |
+| `merchandise` | Merchandise URLs |
+
+### Example Enrichment Provider
+
+```typescript
+import { BaseArtistEnrichmentProvider, type ArtistEnrichmentType } from '@audiio/sdk';
+
+export default class FanartEnrichmentProvider extends BaseArtistEnrichmentProvider {
+  readonly id = 'fanart-enrichment';
+  readonly name = 'Fanart.tv';
+  readonly priority = 50;
+  readonly supportedTypes: ArtistEnrichmentType[] = ['gallery'];
+
+  async getArtistGallery(mbid: string, artistName?: string) {
+    const response = await fetch(
+      `https://webservice.fanart.tv/v3/music/${mbid}?api_key=${this.apiKey}`
+    );
+    const data = await response.json();
+
+    return {
+      backgrounds: data.artistbackground?.map(bg => bg.url) || [],
+      thumbnails: data.artistthumb?.map(t => t.url) || [],
+      logos: data.hdmusiclogo?.map(l => l.url) || [],
+      banners: data.musicbanner?.map(b => b.url) || []
+    };
+  }
+}
+```
+
+---
+
+## Addon Manifest
+
+Every addon needs a manifest defining its capabilities:
+
+```typescript
+interface AddonManifest {
+  id: string;           // Unique identifier (lowercase, alphanumeric, dashes)
+  name: string;         // Display name
+  version: string;      // Semantic version
+  roles: AddonRole[];   // Array of supported roles
+  description?: string;
+  author?: string;
+  homepage?: string;
+  repository?: string;
+  settings?: SettingDefinition[];
+  dependencies?: string[];
+}
+
+type AddonRole =
+  | 'metadata-provider'
+  | 'stream-provider'
+  | 'lyrics-provider'
+  | 'scrobbler'
+  | 'audio-processor'
+  | 'tool'
+  | 'artist-enrichment';
+```
 
 ### Settings Types
 
@@ -163,12 +261,7 @@ settings: [
 ]
 ```
 
-### Accessing Settings
-
-```typescript
-const apiKey = this.getSetting<string>('apiKey');
-const quality = this.getSetting<string>('quality');
-```
+---
 
 ## Core Types
 
@@ -179,13 +272,15 @@ interface Track {
   id: string;
   title: string;
   artist: string;
+  artists?: Artist[];
   artistId?: string;
   album?: string;
   albumId?: string;
   duration: number;  // seconds
-  artwork?: string;  // URL
+  artwork?: string | ArtworkSet;
   isrc?: string;
   explicit?: boolean;
+  externalIds?: ExternalIds;
 }
 ```
 
@@ -195,9 +290,10 @@ interface Track {
 interface Artist {
   id: string;
   name: string;
-  image?: string;
+  artwork?: ArtworkSet;
   genres?: string[];
   bio?: string;
+  followers?: number;
 }
 ```
 
@@ -207,9 +303,8 @@ interface Artist {
 interface Album {
   id: string;
   title: string;
-  artist: string;
-  artistId?: string;
-  artwork?: string;
+  artists?: Artist[];
+  artwork?: ArtworkSet;
   releaseDate?: string;
   tracks?: Track[];
   trackCount?: number;
@@ -219,39 +314,55 @@ interface Album {
 ### Lyrics
 
 ```typescript
-interface Lyrics {
-  trackId: string;
+interface LyricsResult {
+  synced?: LyricsLine[];
   plain?: string;
-  synced?: SyncedLine[];
-  source?: string;
+  source: string;
 }
 
-interface SyncedLine {
+interface LyricsLine {
   time: number;  // milliseconds
   text: string;
 }
 ```
 
+---
+
 ## Helper Methods
 
-BaseAddon provides helper methods:
+Base classes provide useful helper methods:
+
+### BaseStreamProvider
 
 ```typescript
-// HTTP requests
-const data = await this.fetch('https://api.example.com/data');
+// Select best available quality
+const quality = this.selectQuality(availableQualities, preferredQuality);
 
-// Caching
-await this.cache.set('key', value, ttl);
-const cached = await this.cache.get('key');
+// Calculate match score between tracks (0-1)
+const score = this.calculateMatchScore(candidate, target);
 
-// Logging
-this.log.info('Message');
-this.log.error('Error', error);
-this.log.debug('Debug info');
-
-// Events
-this.emit('custom-event', data);
+// Normalize strings for comparison
+const normalized = this.normalize(str);
 ```
+
+### BaseLyricsProvider
+
+```typescript
+// Parse LRC format to synced lyrics array
+const synced = this.parseLrc(lrcString);
+
+// Convert synced lyrics to plain text
+const plain = this.syncedToPlain(synced);
+```
+
+### BaseMetadataProvider
+
+```typescript
+// Normalize search queries
+const normalized = this.normalizeQuery(query);
+```
+
+---
 
 ## Project Structure
 
@@ -260,7 +371,10 @@ Recommended structure:
 ```
 my-addon/
 ├── src/
-│   ├── index.ts        # Main addon class
+│   ├── index.ts        # Main addon export
+│   ├── providers/      # Provider implementations
+│   │   ├── metadata.ts
+│   │   └── lyrics.ts
 │   ├── api.ts          # API client
 │   └── types.ts        # Type definitions
 ├── package.json
@@ -268,131 +382,164 @@ my-addon/
 └── README.md
 ```
 
-### package.json
-
-```json
-{
-  "name": "my-audiio-addon",
-  "version": "1.0.0",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "audiio": {
-    "addon": true
-  },
-  "dependencies": {
-    "@audiio/sdk": "^1.0.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.0.0"
-  }
-}
-```
-
 ### tsconfig.json
 
 ```json
 {
-  "extends": "@audiio/sdk/tsconfig.addon.json",
   "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "declaration": true,
+    "strict": true,
+    "esModuleInterop": true
   },
   "include": ["src"]
 }
 ```
 
+---
+
+## Loading Addons
+
+Audiio supports multiple ways to load addons:
+
+### 1. Built-in (Bundled)
+
+Place in `addons/` directory of the Audiio installation.
+
+### 2. Local File
+
+Load from a local directory via Settings > Addons > Load Local.
+
+### 3. npm Package
+
+Install from npm with the `audiio-addon-` prefix:
+
+```bash
+# In Audiio settings, enter package name:
+audiio-addon-my-feature
+```
+
+### 4. Git Repository
+
+Install directly from a git URL:
+
+```
+https://github.com/user/audiio-addon-my-feature
+```
+
+### 5. HTTP Archive
+
+Install from a URL pointing to a `.tgz` archive.
+
+---
+
 ## Testing
 
 ### Local Testing
 
-1. Build your addon
-2. Link locally: `npm link`
-3. In Audiio dev: `npm link my-addon`
-4. Test in development mode
+1. Build your addon: `npm run build`
+2. In Audiio, use Settings > Addons > Load Local
+3. Select your addon directory
+4. Test functionality
 
 ### Unit Tests
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import MyAddon from './index';
+import MyProvider from './index';
 
-describe('MyAddon', () => {
-  const addon = new MyAddon();
+describe('MyProvider', () => {
+  const provider = new MyProvider();
 
   it('searches tracks', async () => {
-    const tracks = await addon.searchTracks('test');
-    expect(tracks).toBeInstanceOf(Array);
+    const results = await provider.search('test query');
+    expect(results.tracks).toBeInstanceOf(Array);
+  });
+
+  it('returns null for unknown track', async () => {
+    const track = await provider.getTrack('unknown-id');
+    expect(track).toBeNull();
   });
 });
 ```
 
-## Publishing
-
-### To Addon Gallery
-
-1. Build your addon
-2. Create GitHub release
-3. Submit to gallery
-4. Await review
-
-### Self-Distribution
-
-1. Build: `npm run build`
-2. Package: `npm pack`
-3. Distribute the `.tgz` file
-4. Users install via file
+---
 
 ## Best Practices
 
 ### Performance
 
-- Cache API responses
-- Implement pagination
-- Use streaming for large data
-- Handle rate limits
+- Cache API responses when appropriate
+- Implement pagination for large result sets
+- Use streaming for large data transfers
+- Handle rate limits gracefully
 
 ### Error Handling
 
 ```typescript
-async searchTracks(query: string): Promise<Track[]> {
+async search(query: string) {
   try {
-    const data = await this.fetch(`/search?q=${query}`);
-    return this.parseResults(data);
+    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return this.parseResults(await response.json());
   } catch (error) {
-    this.log.error('Search failed', error);
-    return [];
+    console.error('[MyProvider] Search failed:', error);
+    return { tracks: [], artists: [], albums: [] };
   }
 }
 ```
 
+### Priority Settings
+
+- Higher priority providers are tried first
+- Default priority is 50
+- Range: 0-100
+- Set based on reliability and response time
+
 ### User Experience
 
 - Provide meaningful error messages
-- Show loading states
-- Handle offline gracefully
-- Document required settings
+- Handle offline scenarios gracefully
+- Document required settings clearly
+- Include usage examples
+
+---
 
 ## Examples
 
 ### Built-in Addons
 
-Study the built-in addons:
+Study the built-in addons for reference:
 
-- `addons/deezer-metadata/` - Metadata provider
-- `addons/youtube-music/` - Stream provider
-- `addons/lrclib-lyrics/` - Lyrics provider
-- `addons/karaoke/` - Audio processor
+| Addon | Roles | Description |
+|-------|-------|-------------|
+| `deezer-metadata` | metadata-provider | Metadata from Deezer API |
+| `youtube-music` | stream-provider | Audio streams from YouTube |
+| `lrclib-lyrics` | lyrics-provider | Synced lyrics from LRCLib |
+| `karaoke` | audio-processor | Vocal removal with instant playback |
+| `sposify` | tool | Spotify data import |
+| `fanart-enrichment` | artist-enrichment | Artist images from Fanart.tv |
+
+Location: `addons/` directory in the Audiio source.
+
+---
 
 ## Getting Help
 
-- Check existing addon code
+- Check existing addon code in `addons/`
 - Review SDK documentation
 - Open GitHub issues
-- Join developer community
+- Join the developer community
+
+---
 
 ## Next Steps
 
 - [Tutorial](tutorial.md) - Build your first addon
-- [SDK Reference](../../sdk/README.md) - Complete API docs
+- [SDK Reference](../../sdk/README.md) - Complete API documentation
 - [Architecture](../architecture.md) - System overview
-
+- [API Reference](../../api/README.md) - REST API endpoints

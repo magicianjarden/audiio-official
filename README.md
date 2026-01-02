@@ -9,9 +9,10 @@ A modern, privacy-first music streaming platform that runs on your desktop and s
 
 - **Multi-Source Streaming** - Aggregate music from various sources through addons
 - **Privacy-First** - No cloud accounts, your music stays on your machine
-- **Mobile Remote** - Control your desktop library from anywhere with E2E encryption
-- **Extensible** - Build custom addons for metadata, lyrics, audio processing
+- **Mobile Remote** - Control your desktop or stream directly to mobile with E2E encryption
+- **Extensible** - 7 addon roles for metadata, lyrics, streaming, audio processing, and more
 - **Personalized** - ML-powered recommendations that learn from your listening
+- **Karaoke Mode** - AI-powered vocal removal with instant playback (~3-4 seconds)
 - **Beautiful** - Customizable themes with dynamic album art colors
 
 ## Quick Start
@@ -52,7 +53,7 @@ npm run dev
 | [Getting Started](docs/user-guide/getting-started.md) | First-time setup and basics |
 | [Installation](docs/user-guide/installation.md) | Install on macOS, Windows, Linux |
 | [Features](docs/user-guide/features/README.md) | Library, player, discovery, and more |
-| [Mobile Remote](docs/user-guide/mobile/README.md) | Control Audiio from your phone |
+| [Mobile Remote](docs/user-guide/mobile/README.md) | Control or stream to your phone |
 | [Addons](docs/user-guide/addons/README.md) | Extend Audiio with plugins |
 | [Keyboard Shortcuts](docs/user-guide/keyboard-shortcuts.md) | Master the keyboard |
 | [FAQ](docs/user-guide/faq.md) | Frequently asked questions |
@@ -62,56 +63,81 @@ npm run dev
 | Guide | Description |
 |-------|-------------|
 | [Development Setup](docs/development/setup.md) | Set up your dev environment |
-| [Building](docs/development/building.md) | Build from source |
-| [Architecture](docs/development/architecture.md) | System design overview |
-| [Addon Development](docs/development/addons/README.md) | Create custom addons |
+| [Architecture](docs/development/architecture.md) | System design (21 stores, 131+ IPC) |
+| [Packages](docs/development/packages.md) | Monorepo structure (13 packages) |
+| [Addon Development](docs/development/addons/README.md) | Create custom addons (7 roles) |
 | [SDK Reference](docs/sdk/README.md) | Addon SDK API |
-| [API Reference](docs/api/README.md) | REST API for mobile clients |
+| [API Reference](docs/api/README.md) | REST API (60+ endpoints) |
+| [Relay](docs/relay/README.md) | P2P relay server |
 
 [Browse all documentation](docs/README.md)
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          Desktop App                                 │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
-│  │  UI (React) │  │    Core     │  │   Addons    │  │   Mobile    │ │
-│  │             │  │  Services   │  │  (Plugins)  │  │   Server    │ │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
-         │                                                    │
-         │ IPC                                               │ REST/WS
-         ▼                                                    ▼
-┌─────────────────┐                                 ┌─────────────────┐
-│    Electron     │                                 │  Mobile Web App │
-│    Main Process │                                 │  (PWA)          │
-└─────────────────┘                                 └─────────────────┘
-         │                                                    │
-         │                                                    │ WebSocket
-         ▼                                                    ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                       Audiio Relay Server                            │
-│                   (wss://audiio-relay.fly.dev)                       │
-│                                                                      │
-│  • E2E Encrypted tunneling (NaCl X25519 + XSalsa20-Poly1305)        │
-│  • Memorable connection codes (SWIFT-EAGLE-42)                      │
-│  • No data storage - pure relay                                     │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Desktop App                                     │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │  UI (React) │  │    Core     │  │   Plugins   │  │   Mobile Server     │ │
+│  │  21 Stores  │  │ Orchestrat. │  │  (7 Roles)  │  │   (Fastify + P2P)   │ │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+         │                                                        │
+         │ IPC (131+ handlers)                                   │ REST/WS/P2P
+         ▼                                                        ▼
+┌─────────────────┐                                    ┌─────────────────────┐
+│    Electron     │                                    │  Mobile Web App     │
+│  Main Process   │                                    │  (PWA + Local Play) │
+│                 │                                    │                     │
+│  • Plugin Loader│                                    │  Two Modes:         │
+│  • ML Service   │                                    │  • Remote Control   │
+│  • Karaoke Svc  │                                    │  • Local Playback   │
+│  • Library Brdg │                                    │    (Plex-like)      │
+└─────────────────┘                                    └─────────────────────┘
+         │                                                        │
+         │ WebSocket                                             │ WebSocket
+         ▼                                                        ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Audiio Relay Server                                  │
+│                      (wss://audiio-relay.fly.dev)                           │
+│                                                                             │
+│  • E2E Encrypted tunneling (NaCl X25519 + XSalsa20-Poly1305)               │
+│  • Static room model with persistent room IDs                               │
+│  • Password protection for rooms                                            │
+│  • Memorable connection codes (SWIFT-EAGLE-42)                              │
+│  • No data storage - pure relay                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+## Key Highlights
+
+| Feature | Details |
+|---------|---------|
+| **21 Zustand Stores** | Player, smart queue, karaoke, ML, library, theme, and more |
+| **131+ IPC Handlers** | Playback, search, plugins, ML, karaoke, mobile auth |
+| **7 Addon Roles** | metadata, stream, lyrics, scrobbler, audio-processor, tool, artist-enrichment |
+| **60+ API Endpoints** | Full REST API for mobile clients |
+| **Static Room Model** | Persistent room IDs - pair once, connect forever |
+| **Two Playback Modes** | Remote control or local streaming (Plex-like) |
+| **E2E Encryption** | NaCl X25519 + XSalsa20-Poly1305 |
 
 ## Packages
 
 | Package | Description |
 |---------|-------------|
-| `@audiio/core` | Core types and services |
-| `@audiio/sdk` | SDK for building addons |
-| `@audiio/relay` | Relay server and client |
-| `@audiio/ui` | React UI components |
-| `@audiio/icons` | Icon library |
-| `@audiio/desktop` | Electron desktop app |
-| `@audiio/mobile` | Mobile server and web app |
-| `@audiio/landing` | Landing page |
+| `@audiio/core` | Core types, orchestrators, plugin interfaces |
+| `@audiio/sdk` | SDK for building addons (7 roles) |
+| `@audiio/ui` | React UI components (21 Zustand stores) |
+| `@audiio/desktop` | Electron desktop app (131+ IPC handlers) |
+| `@audiio/mobile` | Mobile server + web app |
+| `@audiio/relay` | P2P relay server/client |
+| `@audiio/icons` | 170+ icon components |
+| `@audiio/landing` | Marketing landing page |
+| `@audiio/ml-core` | ML engine and recommendations |
+| `@audiio/ml-sdk` | SDK for ML algorithm plugins |
+| `@audiio/demucs-server` | AI vocal separation (Python) |
+| `@audiio/server` | Standalone REST API (planned) |
+| `@audiio/plugin-musicbrainz` | MusicBrainz metadata provider |
 
 ## Contributing
 
@@ -123,10 +149,11 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ## Tech Stack
 
-- **Desktop**: Electron, TypeScript
-- **UI**: React, Zustand, CSS Modules
-- **Backend**: Fastify, SQLite
+- **Desktop**: Electron 33, TypeScript
+- **UI**: React 18, Zustand 5, CSS Modules
+- **Backend**: Fastify 5, SQLite
 - **Mobile**: PWA, WebSocket
+- **ML**: TensorFlow.js, Essentia.js
 - **Encryption**: TweetNaCl (X25519, XSalsa20-Poly1305)
 - **Build**: Turborepo, Vite, esbuild
 
