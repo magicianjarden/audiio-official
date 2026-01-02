@@ -87,6 +87,8 @@ export async function apiFetch(url: string, options: RequestInit = {}): Promise<
     });
 
     if (p2pResponse) {
+      // Debug: log the P2P response data
+      console.log(`[apiFetch] P2P response for ${url}:`, p2pResponse.status, p2pResponse.data);
       // Create a Response-like object from P2P response
       return new Response(JSON.stringify(p2pResponse.data), {
         status: p2pResponse.status,
