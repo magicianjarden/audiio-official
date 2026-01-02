@@ -150,8 +150,11 @@ export class P2PManager extends EventEmitter {
       const unsubscribe = this.relay?.on('registered', (roomId) => {
         clearTimeout(timeout);
         unsubscribe?.();
-        console.log(`[P2P] Room registered: ${roomId}`);
-        resolve(roomId);
+        // Use our known room ID from config, not what relay returns
+        // (relay might return undefined if running older version)
+        const effectiveRoomId = roomId || this.config.roomId || '';
+        console.log(`[P2P] Room registered: ${effectiveRoomId}`);
+        resolve(effectiveRoomId);
       });
 
       // If no relay, reject immediately
