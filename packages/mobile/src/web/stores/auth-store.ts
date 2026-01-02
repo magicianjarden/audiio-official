@@ -62,6 +62,18 @@ function getUrlToken(): string | null {
 }
 
 /**
+ * Check if we're running in remote mode (GitHub Pages or other static host)
+ * In remote mode, we can only use P2P - direct HTTP won't work
+ */
+function isRemoteMode(): boolean {
+  const host = window.location.hostname;
+  return host.includes('github.io') ||
+         host.includes('netlify') ||
+         host.includes('vercel') ||
+         host.includes('pages.dev');
+}
+
+/**
  * Fetch wrapper that routes API calls through P2P when connected,
  * or falls back to direct HTTP for local network access.
  */
@@ -83,7 +95,20 @@ export async function apiFetch(url: string, options: RequestInit = {}): Promise<
     }
   }
 
-  // Fall back to direct HTTP (local network)
+  // In remote mode (GitHub Pages), we can only use P2P
+  // Don't fall back to HTTP as it would hit the static host
+  if (isRemoteMode()) {
+    console.error('[apiFetch] P2P not connected in remote mode, cannot make request');
+    return new Response(JSON.stringify({
+      error: 'Not connected',
+      message: 'P2P connection required for remote access'
+    }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  // Fall back to direct HTTP (local network only)
   // Use device token first, then URL session token as fallback
   const token = getTokenPart() || getUrlToken();
   let finalUrl = url;

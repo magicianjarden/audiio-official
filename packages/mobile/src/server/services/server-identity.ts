@@ -145,7 +145,8 @@ export class ServerIdentityService {
 
   /**
    * Generate a deterministic, human-friendly relay code from server ID
-   * Format: adjective-noun-XXXX (e.g., swift-tiger-a3b2)
+   * Format: ADJECTIVE-NOUN-NN (e.g., SWIFT-TIGER-42)
+   * Must match relay server expected format (2-digit number at end)
    */
   private generateRelayCode(serverId: string): string {
     // Use first 8 chars of server ID as seed for deterministic generation
@@ -154,9 +155,18 @@ export class ServerIdentityService {
 
     const adjIndex = seedNum % ADJECTIVES.length;
     const nounIndex = Math.floor(seedNum / ADJECTIVES.length) % NOUNS.length;
-    const suffix = seed.substring(0, 4);
+    // Generate 2-digit number (10-99) from seed
+    const number = (seedNum % 90) + 10;
 
-    return `${ADJECTIVES[adjIndex]}-${NOUNS[nounIndex]}-${suffix}`;
+    return `${ADJECTIVES[adjIndex]}-${NOUNS[nounIndex]}-${number}`;
+  }
+
+  /**
+   * Check if relay code is in valid format (ADJECTIVE-NOUN-NN with 2-digit number)
+   */
+  private isValidRelayCodeFormat(code: string): boolean {
+    const pattern = /^[A-Z]+-[A-Z]+-\d{2}$/;
+    return pattern.test(code.toUpperCase());
   }
 
   /**
@@ -170,6 +180,16 @@ export class ServerIdentityService {
 
         // Validate required fields
         if (parsed.serverId && parsed.relayCode) {
+          // Check if relay code is in valid format
+          // If not (old format like PURE-LIGHT-FBB1), regenerate it
+          if (!this.isValidRelayCodeFormat(parsed.relayCode)) {
+            console.log(`[ServerIdentity] Upgrading relay code format from ${parsed.relayCode}`);
+            parsed.relayCode = this.generateRelayCode(parsed.serverId);
+            console.log(`[ServerIdentity] New relay code: ${parsed.relayCode}`);
+            // Save updated identity
+            this.identity = parsed;
+            this.saveToDisk();
+          }
           return parsed as ServerIdentity;
         }
       }
