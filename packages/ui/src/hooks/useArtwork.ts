@@ -20,18 +20,21 @@ function getArtworkUrl(track: UnifiedTrack | null | undefined): string | undefin
   if (!track) return undefined;
 
   // Try track artwork first, then album artwork
+  // Ensure we return strings only (artwork could be an object in some cases)
   const artwork = track.artwork?.medium || track.artwork?.small || track.artwork?.large;
-  if (artwork) return artwork;
+  if (typeof artwork === 'string') return artwork;
 
   const albumArt = track.album?.artwork?.medium || track.album?.artwork?.small || track.album?.artwork?.large;
-  return albumArt;
+  if (typeof albumArt === 'string') return albumArt;
+
+  return undefined;
 }
 
 /**
  * Check if artwork URL is embedded (requires resolution via IPC)
  */
 function isEmbeddedArtwork(url: string | undefined): boolean {
-  return !!url && url.startsWith('embedded-art://');
+  return typeof url === 'string' && url.startsWith('embedded-art://');
 }
 
 /**

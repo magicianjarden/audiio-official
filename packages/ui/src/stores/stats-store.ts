@@ -318,11 +318,13 @@ export const useStatsStore = create<StatsState>()(
         // Calculate fresh stats
         const stats = calculateStats(state.listenHistory, period);
 
-        // Update cache
-        set(state => ({
-          cachedStats: { ...state.cachedStats, [period]: stats },
-          cacheTimestamp: Date.now(),
-        }));
+        // Update cache (deferred to avoid updating state during render)
+        queueMicrotask(() => {
+          set(state => ({
+            cachedStats: { ...state.cachedStats, [period]: stats },
+            cacheTimestamp: Date.now(),
+          }));
+        });
 
         return stats;
       },
