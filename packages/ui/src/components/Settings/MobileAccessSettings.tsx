@@ -161,7 +161,7 @@ const ConnectionInfoDisplay: React.FC<ConnectionInfoDisplayProps> = ({
   };
 
   // Generate remote URL from code if not provided
-  const actualRemoteUrl = remoteUrl || (code ? `https://magicianjarden.github.io/audiio-official/remote/#p2p=${code}` : '');
+  const actualRemoteUrl = remoteUrl || (code ? `https://magicianjarden.github.io/audiio-official/remote/?room=${code}` : '');
 
   return (
     <div className="mobile-connection-container">

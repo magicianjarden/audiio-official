@@ -539,8 +539,8 @@ export class MobileServer {
       access.relayActive = true;
 
       // Generate QR code for remote access
-      // The URL points to the hosted remote portal with the P2P code in hash
-      const remotePortalUrl = `https://magicianjarden.github.io/audiio-official/remote/#p2p=${this.p2pInfo.code}`;
+      // The URL points to the hosted remote portal with the static room ID
+      const remotePortalUrl = `https://magicianjarden.github.io/audiio-official/remote/?room=${this.p2pInfo.code}`;
       try {
         access.remoteQrCode = await QRCode.toDataURL(remotePortalUrl, {
           width: 256,
