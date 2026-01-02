@@ -307,11 +307,17 @@ function setupMLIPCHandlers(): void {
  * Create the main application window
  */
 function createWindow(): void {
+  // Get the icon path - works for both dev and packaged app
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'build', 'icon.ico')
+    : path.join(__dirname, '..', 'build', 'icon.ico');
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 800,
     minHeight: 600,
+    icon: process.platform === 'win32' ? iconPath : undefined,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

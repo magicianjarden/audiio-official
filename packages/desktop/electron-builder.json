@@ -13,6 +13,13 @@
     "!**/*.map",
     "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,readme,README,test,__tests__,tests,*.ts,*.map}"
   ],
+  "extraResources": [
+    {
+      "from": "build",
+      "to": "build",
+      "filter": ["icon.*"]
+    }
+  ],
   "extraMetadata": {
     "main": "dist/main.js"
   },
