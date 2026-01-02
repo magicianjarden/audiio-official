@@ -140,31 +140,54 @@ function transformTrack(track: any): any {
 
   // Ensure artists array exists with proper format
   let artists = track.artists;
+
+  // Check if artists is valid and has proper structure
   if (!artists || !Array.isArray(artists) || artists.length === 0) {
     // Try to extract artist info from various possible sources
     if (track.artist) {
       // Single artist string or object
       artists = typeof track.artist === 'string'
         ? [{ id: 'unknown', name: track.artist }]
-        : [track.artist];
+        : Array.isArray(track.artist) ? track.artist : [track.artist];
     } else if (track.artistName) {
       artists = [{ id: 'unknown', name: track.artistName }];
     } else if (track.album?.artist) {
       artists = typeof track.album.artist === 'string'
         ? [{ id: 'unknown', name: track.album.artist }]
         : [track.album.artist];
+    } else if (track.album?.artists && Array.isArray(track.album.artists)) {
+      artists = track.album.artists;
     } else if (track._meta?.artist) {
       artists = [{ id: 'unknown', name: track._meta.artist }];
+    } else if (track._meta?.artistName) {
+      artists = [{ id: 'unknown', name: track._meta.artistName }];
     }
+  } else if (Array.isArray(artists)) {
+    // Validate artist objects have name property
+    artists = artists.map(a => {
+      if (typeof a === 'string') {
+        return { id: 'unknown', name: a };
+      }
+      if (a && typeof a === 'object' && !a.name && a.id) {
+        // Artist object without name - try to use id or fallback
+        return { ...a, name: a.displayName || a.id || 'Unknown Artist' };
+      }
+      return a;
+    }).filter(a => a && a.name);
   }
 
-  // Ensure source is set for playback
-  const source = track.source || track._meta?.source || track._meta?.metadataProvider || 'local';
+  // Ensure source is set for playback - check multiple possible locations
+  // No hardcoded defaults - source must come from the track data
+  const source = track.source
+    || track._meta?.source
+    || track._meta?.metadataProvider
+    || track.streamSources?.[0]?.provider
+    || track.provider;
 
   return {
     ...track,
-    artists: artists || [],
-    source,
+    artists: artists && artists.length > 0 ? artists : [{ id: 'unknown', name: 'Unknown Artist' }],
+    ...(source && { source }), // Only include source if it exists
     artwork: extractArtwork(track.artwork),
     album: track.album ? {
       ...track.album,
