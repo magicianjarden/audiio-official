@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './stores/auth-store';
 import { usePlayerStore } from './stores/player-store';
+import { useP2PStore } from './stores/p2p-store';
 import { ActionSheetProvider } from './contexts/ActionSheetContext';
 import { Layout } from './components/Layout';
 import { PageTransition } from './components/PageTransition';
@@ -26,18 +27,39 @@ import { PluginsPage } from './pages/PluginsPage';
 import { PluginDetailPage } from './pages/PluginDetailPage';
 import { AuthPage } from './pages/AuthPage';
 
+// Check if we're in remote mode (GitHub Pages, etc.)
+function isRemoteMode(): boolean {
+  const host = window.location.hostname;
+  return host.includes('github.io') ||
+         host.includes('netlify') ||
+         host.includes('vercel') ||
+         host.includes('pages.dev');
+}
+
 export function App() {
   const { isAuthenticated, validateToken, deviceToken } = useAuthStore();
   const { connectWebSocket } = usePlayerStore();
+  const p2pStatus = useP2PStore((state) => state.status);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Validate the stored device token on mount
+    // In remote mode, don't try to validate via HTTP - it won't work
+    // Just check if we have saved credentials and let AuthPage handle P2P
+    if (isRemoteMode()) {
+      setIsLoading(false);
+      return;
+    }
+    // Validate the stored device token on mount (local mode only)
     validateToken().finally(() => setIsLoading(false));
   }, [validateToken]);
 
   useEffect(() => {
-    // Connect WebSocket when authenticated with device token
+    // In remote mode, P2P handles connection - skip WebSocket
+    if (isRemoteMode()) {
+      console.log('[App] Remote mode - using P2P, skipping WebSocket');
+      return;
+    }
+    // Connect WebSocket when authenticated with device token (local mode)
     if (isAuthenticated && deviceToken) {
       connectWebSocket(deviceToken);
     }
@@ -73,7 +95,13 @@ export function App() {
     );
   }
 
-  if (!isAuthenticated) {
+  // In remote mode, require P2P connection to be authenticated
+  // In local mode, just check the traditional auth state
+  const isActuallyAuthenticated = isRemoteMode()
+    ? (isAuthenticated && p2pStatus === 'connected')
+    : isAuthenticated;
+
+  if (!isActuallyAuthenticated) {
     return <AuthPage />;
   }
 

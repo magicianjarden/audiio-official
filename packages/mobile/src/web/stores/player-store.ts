@@ -525,6 +525,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   connectWebSocket: (token) => {
     const { wsConnection, connectionStatus } = get();
 
+    // Check if we're in remote mode (GitHub Pages, etc.)
+    // In remote mode, we use P2P for all communication - no direct WebSocket
+    const host = window.location.hostname;
+    const isRemoteMode = host.includes('github.io') ||
+                         host.includes('netlify') ||
+                         host.includes('vercel') ||
+                         host.includes('pages.dev');
+
+    if (isRemoteMode) {
+      console.log('[WebSocket] Remote mode detected - using P2P instead of direct WebSocket');
+      // In remote mode, connection is handled by P2P store
+      // Just mark as needing P2P connection
+      set({ connectionStatus: 'disconnected', lastError: 'Use P2P to connect in remote mode' });
+      return;
+    }
+
     // Prevent duplicate connections
     if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
       return;

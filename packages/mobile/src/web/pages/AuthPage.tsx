@@ -79,9 +79,32 @@ export function AuthPage() {
     const attemptReconnect = async () => {
       if (!deviceToken) return;
 
+      // Check if we're in remote mode (GitHub Pages, etc.)
+      const host = window.location.hostname;
+      const isRemoteMode = host.includes('github.io') ||
+                           host.includes('netlify') ||
+                           host.includes('vercel') ||
+                           host.includes('pages.dev');
+
       setIsAutoConnecting(true);
 
-      // First try local validation (same network)
+      // In remote mode, skip local validation and go straight to P2P
+      if (isRemoteMode) {
+        if (savedRelayCode && isP2PSupported()) {
+          console.log('[Auth] Remote mode - connecting via P2P with saved code:', savedRelayCode);
+          setCode(savedRelayCode);
+          const p2pSuccess = await p2pConnect(savedRelayCode, deviceName || getDefaultDeviceName());
+          if (!p2pSuccess) {
+            setIsAutoConnecting(false);
+          }
+        } else {
+          console.log('[Auth] Remote mode - no saved relay code, need to pair');
+          setIsAutoConnecting(false);
+        }
+        return;
+      }
+
+      // Local mode - try local validation first (same network)
       const localSuccess = await validateToken();
       if (localSuccess) {
         setIsAutoConnecting(false);
@@ -154,7 +177,22 @@ export function AuthPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    handlePair();
+
+    // Check if we're in remote mode (GitHub Pages, etc.)
+    // In remote mode, we MUST use P2P - direct HTTP won't work
+    const host = window.location.hostname;
+    const isRemoteMode = host.includes('github.io') ||
+                         host.includes('netlify') ||
+                         host.includes('vercel') ||
+                         host.includes('pages.dev');
+
+    if (isRemoteMode) {
+      // In remote mode, always use P2P
+      handleP2PConnect();
+    } else {
+      // Local mode - can try direct HTTP first
+      handlePair();
+    }
   };
 
   const error = authError || p2pError;
