@@ -48,7 +48,9 @@ export function authMiddleware(
     console.log(`[Auth] Headers: x-p2p-request=${request.headers['x-p2p-request']}, host=${request.headers.host}`);
 
     // Allow public routes
-    if (PUBLIC_ROUTES.includes(pathname)) {
+    const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
+    console.log(`[Auth] Public route check: ${pathname} in PUBLIC_ROUTES = ${isPublicRoute}`);
+    if (isPublicRoute) {
       console.log(`[Auth] Allowed (public route): ${pathname}`);
       return done();
     }
@@ -67,6 +69,7 @@ export function authMiddleware(
 
     // Allow P2P requests (authenticated via relay E2E encryption)
     const p2pHeader = request.headers['x-p2p-request'];
+    console.log(`[Auth] P2P header check: "${p2pHeader}" (type: ${typeof p2pHeader})`);
     if (p2pHeader === 'true') {
       console.log(`[Auth] Allowed (P2P request): ${pathname}`);
       return done();
@@ -78,6 +81,8 @@ export function authMiddleware(
     const token = queryToken || headerToken;
 
     if (!token) {
+      console.log(`[Auth] REJECTED - no token and no P2P header for: ${pathname}`);
+      console.log(`[Auth] All headers:`, JSON.stringify(Object.keys(request.headers)));
       reply.code(401).send({
         error: 'Unauthorized',
         message: 'Access token required'
