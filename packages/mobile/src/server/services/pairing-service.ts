@@ -270,18 +270,26 @@ export class PairingService {
   isCodeValid(code: string): boolean {
     const normalized = this.normalizeCode(code);
 
+    console.log(`[PairingService] Validating code: "${normalized}"`);
+    console.log(`[PairingService] Stored relay code: "${this.relayCode || 'none'}"`);
+    console.log(`[PairingService] Current local code: "${this.currentCode?.code || 'none'}"`);
+
     // Check relay code first (primary code for both local and remote)
     if (this.relayCode && normalized === this.relayCode) {
+      console.log('[PairingService] Code matches relay code');
       return true;
     }
 
     // Check local pairing code
     if (!this.currentCode) {
+      console.log('[PairingService] No current code available');
       return false;
     }
 
     const isMatch = normalized === this.currentCode.code;
     const isNotExpired = Date.now() < this.currentCode.expiresAt;
+
+    console.log(`[PairingService] Local code match: ${isMatch}, not expired: ${isNotExpired}`);
 
     return isMatch && isNotExpired;
   }
