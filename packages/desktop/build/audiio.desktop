@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Audiio
+Comment=Audiio Desktop - Unified modular music platform
+Exec=audiio-desktop %U
+Terminal=false
+Type=Application
+Icon=audiio-desktop
+Categories=Audio;Music;Player;

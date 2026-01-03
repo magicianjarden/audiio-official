@@ -9,6 +9,7 @@
   "homepage": "https://audiio.com",
   "private": true,
   "main": "./dist/main.js",
+
   "scripts": {
     "dev": "tsc && electron ../../packages/desktop --dev",
     "build": "tsc",
@@ -16,6 +17,7 @@
     "package": "electron-builder",
     "clean": "rm -rf dist out"
   },
+
   "dependencies": {
     "@audiio/core": "*",
     "@audiio/ml-core": "*",
@@ -27,9 +29,76 @@
     "node-id3": "^0.2.9",
     "socket.io-client": "^4.7.0"
   },
+
   "devDependencies": {
     "electron": "39.2.7",
     "electron-builder": "^25.1.8",
     "typescript": "^5.7.2"
+  },
+
+  "build": {
+    "appId": "com.audiio.desktop",
+    "productName": "Audiio Desktop",
+
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+
+    "files": [
+      "dist/**/*",
+      {
+        "from": "../../packages/core/dist",
+        "to": "resources/core"
+      },
+      {
+        "from": "../../packages/ml-core/dist",
+        "to": "resources/ml-core"
+      },
+      {
+        "from": "../../packages/ml-sdk/dist",
+        "to": "resources/ml-sdk"
+      }
+    ],
+
+    "extraResources": [
+      {
+        "from": "../../packages/core/dist",
+        "to": "core"
+      },
+      {
+        "from": "../../packages/ml-core/dist",
+        "to": "ml-core"
+      },
+      {
+        "from": "../../packages/ml-sdk/dist",
+        "to": "ml-sdk"
+      }
+    ],
+
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "AudioVideo"
+    },
+
+    "win": {
+      "target": ["nsis"],
+      "publisherName": "Audiio",
+      "signingHashAlgorithms": ["sha256"]
+    },
+
+    "mac": {
+      "target": ["dmg"],
+      "category": "public.app-category.music",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist"
+    },
+
+    "publish": [
+      {
+        "provider": "github"
+      }
+    ]
   }
 }
