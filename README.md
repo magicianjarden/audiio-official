@@ -8,9 +8,10 @@ This repository is a maintained fork of the original **audiio-official** project
 - Stable **production builds** for landing + mobile remote portal  
 - Fixes for ESM, ML‑core exports, and Electron runtime issues  
 
-It tracks upstream changes from  
-`magicianjarden/audiio-official`  
-while adding improvements required for reproducible Linux builds.
+It tracks upstream changes from the original project:  
+👉 **Source repository:** https://github.com/magicianjarden/audiio-official
+
+This fork adds improvements required for reproducible Linux builds and stable desktop packaging.
 
 ---
 
@@ -54,15 +55,13 @@ If you’re trying to build the Audiio desktop app on Linux, this fork is the mo
 ## Repository Structure
 
 packages/
-desktop/        # Electron app (Linux/Windows/macOS)
-landing/        # Marketing site
-mobile/         # Remote control web app
-icons/          # Shared icon build pipeline
-ml-core/        # Machine learning core
-ml-sdk/         # ML SDK
-ui/             # Shared UI components
-
-Code
+  desktop/        # Electron app (Linux/Windows/macOS)
+  landing/        # Marketing site
+  mobile/         # Remote control web app
+  icons/          # Shared icon build pipeline
+  ml-core/        # Machine learning core
+  ml-sdk/         # ML SDK
+  ui/             # Shared UI components
 
 ---
 
@@ -71,17 +70,11 @@ Code
 ### Install dependencies
 npm install
 
-Code
-
 ### Build all workspaces
 npm run build
 
-Code
-
 ### Build the Linux desktop app
 npm run build:linux --workspace=@audiio/desktop
-
-Code
 
 This produces:
 
@@ -92,27 +85,28 @@ Both verified to run cleanly on Debian-based systems.
 
 ---
 
+## Releases
+
+You can download prebuilt `.deb` and `.AppImage` binaries here:  
+👉 **Releases:** https://github.com/cpntodd/audiio-official-test-debian/releases
+
+---
+
 ## Syncing With Upstream
 
 This fork tracks:
 
 magicianjarden/audiio-official:main
 
-Code
-
 To pull upstream changes:
 
 git fetch upstream
 git merge upstream/main
 
-Code
-
 Or, for a clean rebase:
 
 git fetch upstream
 git reset --hard upstream/main
-
-Code
 
 ---
 
