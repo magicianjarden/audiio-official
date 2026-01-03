@@ -119,5 +119,5 @@ For upstream feature development, submit PRs to the original repo.
 
 ## Maintainer
 
-**Eli (cpntodd)**  
+**oddsoul (cpntodd)**  
 Focused on cross‑platform builds, Debian packaging, and monorepo stability.
