@@ -368,14 +368,17 @@ function createWindow(): void {
   );
 
   // Load app - check for dev server first
-  const devServerUrl = process.env['VITE_DEV_SERVER_URL'] || 'http://localhost:5174';
+// Correct dev/prod logic
+if (!app.isPackaged) {
+  // Development mode → load Vite dev server
+  const devServerUrl = 'http://localhost:5174';
+  mainWindow.loadURL(devServerUrl);
+  mainWindow.webContents.openDevTools();
+} else {
+  // Production mode → load built renderer
+  mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+}
 
-  if (process.env['NODE_ENV'] === 'development' || process.argv.includes('--dev')) {
-    mainWindow.loadURL(devServerUrl);
-    mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
-  }
 
   mainWindow.on('closed', () => {
     mainWindow = null;

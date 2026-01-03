@@ -2,6 +2,7 @@
   "name": "audiio",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Unified modular music platform",
   "workspaces": [
     "packages/*"
@@ -9,7 +10,7 @@
   "scripts": {
     "dev": "turbo run dev --concurrency=20",
     "dev:ui": "npm run dev --workspace=@audiio/ui",
-    "dev:desktop": "npm run dev --workspace=@audiio/desktop",
+    "dev:desktop": "npm run dev --workspace=audiio-desktop",
     "dev:landing": "npm run dev --workspace=@audiio/landing",
     "build": "turbo run build",
     "build:core": "npm run build --workspace=@audiio/core",
@@ -21,6 +22,7 @@
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {
+    "electron-builder": "^26.0.12",
     "sharp": "^0.34.5",
     "turbo": "^2.3.0",
     "typescript": "^5.7.2"

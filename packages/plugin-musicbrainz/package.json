@@ -15,6 +15,9 @@
     "name": "MusicBrainz",
     "roles": ["metadata-provider"]
   },
+  "dependencies": {
+    "@audiio/core": "file:../core"
+  },
   "peerDependencies": {
     "@audiio/sdk": "*",
     "@audiio/core": "*"
@@ -31,3 +34,4 @@
   "author": "Audiio Team",
   "license": "MIT"
 }
+

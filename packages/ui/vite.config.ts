@@ -12,10 +12,13 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
     rollupOptions: {
-      external: ['essentia.js']
+      external: ['essentia.js', '@audiio/ml-core']
+    },
+    commonjsOptions: {
+      exclude: ['@audiio/ml-core']
     }
   },
   optimizeDeps: {
-    exclude: ['essentia.js']
+    exclude: ['essentia.js', '@audiio/ml-core']
   }
 });

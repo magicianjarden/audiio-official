@@ -458,17 +458,23 @@ export function registerApiRoutes(fastify: FastifyInstance, context: RouteContex
   // Discover sections - Structured sections for mobile home page
   fastify.get('/api/discover/sections', async (_request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const sections: Array<{
-        id: string;
-        type: string;
-        title: string;
-        subtitle?: string;
-        tracks?: any[];
-        artists?: any[];
-        albums?: any[];
-        isPluginPowered?: boolean;
-        pluginName?: string;
-      }> = [];
+const sections: Array<{
+  id: string;
+  type: string;
+  title: string;
+  subtitle?: string;
+  tracks?: any[];
+  artists?: any[];
+  albums?: any[];
+  isPluginPowered?: boolean;
+  pluginName?: string;
+  genres?: {
+    id: string;
+    name: string;
+    color: string;
+  }[];
+}> = [];
+
 
       // Recently played section
       if (orchestrators?.libraryBridge?.getRecentlyPlayed) {

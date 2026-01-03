@@ -1,0 +1,94 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build packages
+        run: |
+          npm run build:core
+          npm run build:ml
+          npm run build:sdk
+          npm --workspace=audiio-desktop run build
+
+      - name: Package (Linux)
+        run: npm --workspace=audiio-desktop run package
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-builds
+          path: packages/desktop/release/*
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build packages
+        run: |
+          npm run build:core
+          npm run build:ml
+          npm run build:sdk
+          npm --workspace=audiio-desktop run build
+
+      - name: Package (Windows)
+        run: npm --workspace=audiio-desktop run package
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-builds
+          path: packages/desktop/release/*
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build packages
+        run: |
+          npm run build:core
+          npm run build:ml
+          npm run build:sdk
+          npm --workspace=audiio-desktop run build
+
+      - name: Package (macOS)
+        run: npm --workspace=audiio-desktop run package
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-builds
+          path: packages/desktop/release/*

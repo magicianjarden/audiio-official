@@ -1,54 +1,39 @@
 {
-  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.audiio.app",
-  "productName": "Audiio",
+  "appId": "com.audiio.desktop",
+  "productName": "Audiio Desktop",
+
   "directories": {
-    "buildResources": "build",
-    "output": "release"
+    "output": "release",
+    "buildResources": "build"
   },
+
   "files": [
     "dist/**/*",
     "renderer/**/*",
-    "package.json",
-    "!**/*.map",
-    "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,readme,README,test,__tests__,tests,*.ts,*.map}"
+    "package.json"
   ],
+
   "extraResources": [
     {
-      "from": "build",
-      "to": "build",
-      "filter": ["icon.*"]
+      "from": "../core/dist",
+      "to": "core",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "../ml-core/dist",
+      "to": "ml-core",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "../ml-sdk/dist",
+      "to": "ml-sdk",
+      "filter": ["**/*"]
     }
   ],
-  "extraMetadata": {
-    "main": "dist/main.js"
-  },
-  "asar": true,
-  "compression": "normal",
-  "mac": {
-    "target": ["dmg", "zip"],
-    "category": "public.app-category.music"
-  },
-  "win": {
-    "target": [
-      {
-        "target": "nsis",
-        "arch": ["x64"]
-      }
-    ],
-    "icon": "build/icon.ico",
-    "sign": false,
-    "signAndEditExecutable": false,
-    "artifactName": "Audiio-${version}-win-x64.${ext}"
-  },
-  "nsis": {
-    "oneClick": false,
-    "allowToChangeInstallationDirectory": true,
-    "createDesktopShortcut": true,
-    "createStartMenuShortcut": true
-  },
+
   "linux": {
     "target": ["AppImage", "deb"],
-    "category": "Audio"
+    "category": "AudioVideo",
+    "icon": "build/icon.png"
   }
 }
