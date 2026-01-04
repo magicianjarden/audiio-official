@@ -1,0 +1,1805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audiio Server</title>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --bg-secondary: #141414;
+      --bg-tertiary: #1a1a1a;
+      --text: #ffffff;
+      --text-secondary: #a0a0a0;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --border: #2a2a2a;
+      --radius: 12px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 32px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--accent), #a855f7);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .logo h1 {
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    .server-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--bg-secondary);
+      border-radius: 20px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+    }
+
+    /* Navigation */
+    nav {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 32px;
+      background: var(--bg-secondary);
+      padding: 4px;
+      border-radius: var(--radius);
+      width: fit-content;
+      flex-wrap: wrap;
+    }
+
+    nav button {
+      padding: 10px 20px;
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    nav button:hover {
+      color: var(--text);
+    }
+
+    nav button.active {
+      background: var(--accent);
+      color: white;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .card h2 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card h3 {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    /* Grid */
+    .grid {
+      display: grid;
+      gap: 24px;
+    }
+
+    .grid-2 {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .grid-3 {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .grid-4 {
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    @media (max-width: 768px) {
+      .grid-2, .grid-3, .grid-4 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Stats */
+    .stat {
+      text-align: center;
+      padding: 20px;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .stat-label {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .stat-small .stat-value {
+      font-size: 24px;
+    }
+
+    /* Info List */
+    .info-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .info-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .info-item:last-child {
+      border-bottom: none;
+    }
+
+    .info-label {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .info-value {
+      font-weight: 500;
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    .info-value.success { color: var(--success); }
+    .info-value.warning { color: var(--warning); }
+
+    /* Buttons */
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--border);
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+
+    .btn-success {
+      background: var(--success);
+      color: white;
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+
+    /* QR Code */
+    .qr-section {
+      text-align: center;
+      padding: 24px;
+    }
+
+    .qr-code {
+      width: 200px;
+      height: 200px;
+      background: white;
+      border-radius: var(--radius);
+      margin: 0 auto 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .qr-code img {
+      width: 180px;
+      height: 180px;
+    }
+
+    .qr-code.loading {
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+    }
+
+    /* Device List */
+    .device-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .device-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+    }
+
+    .device-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .device-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--accent);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .device-name {
+      font-weight: 500;
+    }
+
+    .device-meta {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-secondary);
+    }
+
+    /* Plugin List */
+    .plugin-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+
+    .plugin-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .plugin-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .plugin-icon.disabled {
+      background: var(--border);
+    }
+
+    .plugin-name {
+      font-weight: 500;
+    }
+
+    .plugin-meta {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .plugin-roles {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .role-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      background: var(--bg-secondary);
+      border-radius: 4px;
+      color: var(--text-secondary);
+    }
+
+    /* Folder List */
+    .folder-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+
+    .folder-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 1;
+    }
+
+    .folder-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .folder-name {
+      font-weight: 500;
+    }
+
+    .folder-path {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    .folder-stats {
+      display: flex;
+      gap: 16px;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+
+    .folder-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* Sections */
+    .section {
+      display: none;
+    }
+
+    .section.active {
+      display: block;
+    }
+
+    /* Tutorial Steps */
+    .tutorial-step {
+      display: flex;
+      gap: 16px;
+      padding: 20px;
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+
+    .step-number {
+      width: 32px;
+      height: 32px;
+      background: var(--accent);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .step-number.done {
+      background: var(--success);
+    }
+
+    .step-content h4 {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .step-content p {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    /* Input */
+    .input-group {
+      margin-bottom: 16px;
+    }
+
+    .input-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .input {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    /* Toggle */
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      background: var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .toggle.active {
+      background: var(--success);
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+
+    .toggle.active::after {
+      transform: translateX(20px);
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 16px 24px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: none;
+      align-items: center;
+      gap: 12px;
+      z-index: 1000;
+    }
+
+    .toast.show {
+      display: flex;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    /* Progress bar */
+    .progress-bar {
+      height: 8px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 4px;
+      transition: width 0.3s;
+    }
+
+    /* Stats chart */
+    .chart-container {
+      height: 200px;
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      padding: 20px 0;
+    }
+
+    .chart-bar {
+      flex: 1;
+      background: var(--accent);
+      border-radius: 4px 4px 0 0;
+      min-height: 4px;
+      transition: height 0.3s;
+    }
+
+    .chart-bar:hover {
+      background: var(--accent-hover);
+    }
+
+    .chart-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+    }
+
+    /* Top list */
+    .top-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .top-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 0;
+    }
+
+    .top-rank {
+      width: 24px;
+      height: 24px;
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .top-rank.gold { background: #f59e0b; color: black; }
+    .top-rank.silver { background: #94a3b8; color: black; }
+    .top-rank.bronze { background: #cd7f32; color: white; }
+
+    .top-info {
+      flex: 1;
+    }
+
+    .top-name {
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    .top-meta {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .top-value {
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    /* Modal */
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      width: 90%;
+      max-width: 500px;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .modal-header h3 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 24px;
+      cursor: pointer;
+    }
+
+    .modal-close:hover {
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <div class="logo-icon">&#127925;</div>
+        <h1>Audiio Server</h1>
+      </div>
+      <div class="server-status">
+        <div class="status-dot"></div>
+        <span id="server-status-text">Running</span>
+      </div>
+    </header>
+
+    <nav>
+      <button class="active" data-section="overview">Overview</button>
+      <button data-section="devices">Devices</button>
+      <button data-section="plugins">Plugins</button>
+      <button data-section="libraries">Libraries</button>
+      <button data-section="stats">Statistics</button>
+      <button data-section="settings">Settings</button>
+    </nav>
+
+    <!-- Overview Section -->
+    <section id="overview" class="section active">
+      <div class="grid grid-2">
+        <div class="card">
+          <h2>&#128187; Server Info</h2>
+          <div class="info-list" id="server-info">
+            <div class="info-item">
+              <span class="info-label">Server Name</span>
+              <span class="info-value" id="info-name">Loading...</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Server ID</span>
+              <span class="info-value" id="info-id">Loading...</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Local URL</span>
+              <span class="info-value" id="info-url">Loading...</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">mDNS Discovery</span>
+              <span class="info-value success" id="info-mdns">Active</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card qr-section">
+          <h2>&#128241; Connect Mobile</h2>
+          <p style="color: var(--text-secondary); margin-bottom: 16px;">Scan this QR code with the Audiio mobile app</p>
+          <div class="qr-code loading" id="qr-code">
+            Generating...
+          </div>
+          <button class="btn btn-secondary" id="refresh-qr">Refresh QR Code</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>&#128640; Quick Start</h2>
+        <div id="tutorial-steps">
+          <div class="tutorial-step">
+            <div class="step-number done">&#10003;</div>
+            <div class="step-content">
+              <h4>Server Running</h4>
+              <p>Your Audiio server is up and running. Clients can connect to stream music.</p>
+            </div>
+          </div>
+          <div class="tutorial-step">
+            <div class="step-number" id="step-plugins">2</div>
+            <div class="step-content">
+              <h4>Install Plugins</h4>
+              <p>Add streaming plugins like Deezer or YouTube Music to enable playback.</p>
+            </div>
+          </div>
+          <div class="tutorial-step">
+            <div class="step-number" id="step-libraries">3</div>
+            <div class="step-content">
+              <h4>Add Libraries</h4>
+              <p>Enable the Local Library plugin and add your music and video folders.</p>
+            </div>
+          </div>
+          <div class="tutorial-step">
+            <div class="step-number" id="step-devices">4</div>
+            <div class="step-content">
+              <h4>Connect Devices</h4>
+              <p>Pair your mobile devices using the QR code above or the desktop client.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-4">
+        <div class="card stat stat-small">
+          <div class="stat-value" id="stat-plugins">0</div>
+          <div class="stat-label">Plugins</div>
+        </div>
+        <div class="card stat stat-small">
+          <div class="stat-value" id="stat-devices">0</div>
+          <div class="stat-label">Devices</div>
+        </div>
+        <div class="card stat stat-small">
+          <div class="stat-value" id="stat-tracks">0</div>
+          <div class="stat-label">Tracks</div>
+        </div>
+        <div class="card stat stat-small">
+          <div class="stat-value" id="stat-videos">0</div>
+          <div class="stat-label">Videos</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Devices Section -->
+    <section id="devices" class="section">
+      <div class="card">
+        <h2>&#128241; Trusted Devices</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 20px;">
+          Devices that are paired with this server and can connect automatically.
+        </p>
+        <div class="device-list" id="device-list">
+          <div class="empty-state">
+            <p>No devices paired yet</p>
+            <p style="font-size: 12px; margin-top: 8px;">Scan the QR code on Overview to pair a device</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>&#128279; Pair New Device</h2>
+        <div class="grid grid-2">
+          <div>
+            <p style="color: var(--text-secondary); margin-bottom: 16px;">
+              Generate a new pairing code for mobile devices to scan.
+            </p>
+            <button class="btn btn-primary" id="generate-pairing">Generate Pairing QR</button>
+          </div>
+          <div class="qr-code loading" id="pairing-qr" style="margin: 0;">
+            Click to generate
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Plugins Section -->
+    <section id="plugins" class="section">
+      <div class="card">
+        <h2>&#128268; Installed Plugins</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 20px;">
+          Plugins provide streaming, metadata, and lyrics capabilities. Toggle to enable/disable.
+        </p>
+        <div id="plugin-list">
+          <div class="empty-state">
+            <p>No plugins installed</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>&#128230; Plugin Repositories</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 16px;">
+          Add plugin repositories to discover and install plugins.
+        </p>
+        <div id="repo-list" style="margin-bottom: 16px;"></div>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" class="input" id="repo-url" placeholder="https://example.com/plugins/manifest.json" style="flex: 1;">
+          <button class="btn btn-primary" id="add-repo">Add Repository</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>&#128269; Available Plugins</h2>
+        <div id="available-plugins">
+          <div class="empty-state">
+            <p>Add a repository to see available plugins</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Libraries Section -->
+    <section id="libraries" class="section">
+      <div class="card">
+        <h2>&#128193; Local Library</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 20px;">
+          Configure local folders to scan for music and video files.
+        </p>
+
+        <div id="local-library-status" style="margin-bottom: 20px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <span style="font-weight: 500;">Local Library Plugin</span>
+              <span id="library-plugin-status" style="margin-left: 12px; font-size: 12px; color: var(--text-secondary);">Checking...</span>
+            </div>
+            <div class="toggle" id="library-plugin-toggle"></div>
+          </div>
+        </div>
+
+        <div id="folder-list">
+          <div class="empty-state">
+            <p>No folders configured</p>
+            <p style="font-size: 12px; margin-top: 8px;">Add a folder to start scanning for local media</p>
+          </div>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <button class="btn btn-primary" id="add-folder-btn">Add Folder</button>
+          <button class="btn btn-secondary" id="scan-all-btn" style="margin-left: 8px;">Scan All</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>&#128200; Library Statistics</h2>
+        <div class="grid grid-3">
+          <div class="stat stat-small">
+            <div class="stat-value" id="lib-tracks">0</div>
+            <div class="stat-label">Audio Tracks</div>
+          </div>
+          <div class="stat stat-small">
+            <div class="stat-value" id="lib-videos">0</div>
+            <div class="stat-label">Videos</div>
+          </div>
+          <div class="stat stat-small">
+            <div class="stat-value" id="lib-size">0 GB</div>
+            <div class="stat-label">Total Size</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="scan-progress-card" style="display: none;">
+        <h2>&#128260; Scan Progress</h2>
+        <div id="scan-status">
+          <p style="color: var(--text-secondary);">Scanning...</p>
+          <div class="progress-bar">
+            <div class="progress-bar-fill" id="scan-progress" style="width: 0%;"></div>
+          </div>
+          <p style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;" id="scan-current"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Statistics Section -->
+    <section id="stats" class="section">
+      <div class="grid grid-4">
+        <div class="card stat stat-small">
+          <div class="stat-value" id="stats-total-plays">0</div>
+          <div class="stat-label">Total Plays</div>
+        </div>
+        <div class="card stat stat-small">
+          <div class="stat-value" id="stats-listening-time">0h</div>
+          <div class="stat-label">Listening Time</div>
+        </div>
+        <div class="card stat stat-small">
+          <div class="stat-value" id="stats-unique-tracks">0</div>
+          <div class="stat-label">Unique Tracks</div>
+        </div>
+        <div class="card stat stat-small">
+          <div class="stat-value" id="stats-streak">0</div>
+          <div class="stat-label">Day Streak</div>
+        </div>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="card">
+          <h2>&#127911; Top Artists</h2>
+          <div class="top-list" id="top-artists">
+            <div class="empty-state">
+              <p>No listening data yet</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>&#127926; Top Tracks</h2>
+          <div class="top-list" id="top-tracks">
+            <div class="empty-state">
+              <p>No listening data yet</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>&#128200; Listening Activity (Last 7 Days)</h2>
+        <div class="chart-container" id="listening-chart">
+          <div class="chart-bar" style="height: 20%;"></div>
+          <div class="chart-bar" style="height: 40%;"></div>
+          <div class="chart-bar" style="height: 60%;"></div>
+          <div class="chart-bar" style="height: 30%;"></div>
+          <div class="chart-bar" style="height: 80%;"></div>
+          <div class="chart-bar" style="height: 50%;"></div>
+          <div class="chart-bar" style="height: 70%;"></div>
+        </div>
+        <div class="chart-labels" id="chart-labels">
+          <span>Mon</span>
+          <span>Tue</span>
+          <span>Wed</span>
+          <span>Thu</span>
+          <span>Fri</span>
+          <span>Sat</span>
+          <span>Sun</span>
+        </div>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="card">
+          <h2>&#127932; Top Genres</h2>
+          <div class="top-list" id="top-genres">
+            <div class="empty-state">
+              <p>No genre data yet</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>&#129504; ML Training Status</h2>
+          <div class="info-list">
+            <div class="info-item">
+              <span class="info-label">Last Training</span>
+              <span class="info-value" id="ml-last-training">Never</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Events Since Training</span>
+              <span class="info-value" id="ml-events-count">0</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Next Training</span>
+              <span class="info-value" id="ml-next-training">After 100 events</span>
+            </div>
+          </div>
+          <button class="btn btn-secondary" style="margin-top: 16px;" id="force-train">Force Training</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Settings Section -->
+    <section id="settings" class="section">
+      <div class="card">
+        <h2>&#128736; Server Settings</h2>
+        <div class="input-group">
+          <label>Server Name</label>
+          <input type="text" class="input" id="setting-name" placeholder="My Audiio Server">
+        </div>
+        <button class="btn btn-primary" id="save-settings">Save Settings</button>
+      </div>
+
+      <div class="card">
+        <h2>&#128274; Security</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 16px;">
+          Device pairing uses cryptographic authentication. No passwords are stored on the relay server.
+        </p>
+        <div class="info-list">
+          <div class="info-item">
+            <span class="info-label">Authentication</span>
+            <span class="info-value success">X25519 Key Exchange</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Encryption</span>
+            <span class="info-value success">XSalsa20-Poly1305</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Relay Mode</span>
+            <span class="info-value">End-to-End Encrypted</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>&#128190; Storage</h2>
+        <div class="info-list" id="storage-info">
+          <div class="info-item">
+            <span class="info-label">Database</span>
+            <span class="info-value" id="storage-db">Loading...</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Cache</span>
+            <span class="info-value" id="storage-cache">Loading...</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Add Folder Modal -->
+  <div class="modal" id="add-folder-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Add Folder</h3>
+        <button class="modal-close" id="close-folder-modal">&times;</button>
+      </div>
+      <div class="input-group">
+        <label>Folder Path</label>
+        <input type="text" class="input" id="folder-path" placeholder="/path/to/your/music">
+      </div>
+      <div class="input-group">
+        <label>Display Name (optional)</label>
+        <input type="text" class="input" id="folder-name" placeholder="My Music">
+      </div>
+      <div class="input-group">
+        <label>Content Types</label>
+        <div style="display: flex; gap: 12px; margin-top: 8px;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="content-audio" checked> Audio
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="content-video" checked> Video
+          </label>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px;">
+        <button class="btn btn-secondary" id="cancel-folder">Cancel</button>
+        <button class="btn btn-primary" id="save-folder">Add Folder</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">
+    <span id="toast-message">Saved successfully</span>
+  </div>
+
+  <script>
+    // State
+    let serverInfo = null;
+    let devices = [];
+    let plugins = [];
+    let folders = [];
+    let scanStatus = { scanning: false };
+
+    // Navigation
+    document.querySelectorAll('nav button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.section).classList.add('active');
+
+        // Load section-specific data
+        if (btn.dataset.section === 'libraries') loadLibraryData();
+        if (btn.dataset.section === 'stats') loadStatsData();
+      });
+    });
+
+    // Toast
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-message').textContent = message;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // API calls
+    async function fetchApi(path, options = {}) {
+      try {
+        const res = await fetch(path, {
+          headers: { 'Content-Type': 'application/json' },
+          ...options,
+          body: options.body ? JSON.stringify(options.body) : undefined
+        });
+        return await res.json();
+      } catch (err) {
+        console.error('API error:', err);
+        return null;
+      }
+    }
+
+    // Load server info
+    async function loadServerInfo() {
+      const identity = await fetchApi('/api/auth/identity');
+      const info = await fetchApi('/api/info');
+      const discovery = await fetchApi('/api/discovery/status');
+
+      if (identity) {
+        document.getElementById('info-name').textContent = identity.serverName || 'Audiio Server';
+        document.getElementById('info-id').textContent = identity.serverId;
+        document.getElementById('setting-name').value = identity.serverName || '';
+      }
+
+      document.getElementById('info-url').textContent = window.location.origin;
+      document.getElementById('info-mdns').textContent = discovery?.advertising ? 'Active' : 'Disabled';
+      document.getElementById('info-mdns').className = 'info-value ' + (discovery?.advertising ? 'success' : 'warning');
+
+      if (info?.library) {
+        document.getElementById('stat-tracks').textContent = info.library.tracks || 0;
+        document.getElementById('stat-videos').textContent = info.library.videos || 0;
+      }
+
+      if (info?.plugins) {
+        document.getElementById('stat-plugins').textContent = info.plugins.length;
+        plugins = info.plugins.map(p => ({ ...p, enabled: p.enabled !== false }));
+        renderPlugins();
+
+        // Update tutorial step
+        if (info.plugins.length > 0) {
+          document.getElementById('step-plugins').textContent = '✓';
+          document.getElementById('step-plugins').classList.add('done');
+        }
+      }
+
+      // Load repos
+      loadRepositories();
+    }
+
+    // Load plugin repositories
+    async function loadRepositories() {
+      const data = await fetchApi('/api/plugins/repositories');
+      const repos = data?.repositories || [];
+      renderRepositories(repos);
+
+      // Load available plugins from repos
+      const available = await fetchApi('/api/plugins/available');
+      renderAvailablePlugins(available?.plugins || []);
+    }
+
+    function renderRepositories(repos) {
+      const list = document.getElementById('repo-list');
+      if (repos.length === 0) {
+        list.innerHTML = '<p style="color: var(--text-secondary); font-size: 14px;">No repositories added yet</p>';
+        return;
+      }
+
+      list.innerHTML = repos.map(r => `
+        <div class="plugin-item">
+          <div class="plugin-info">
+            <div class="plugin-icon" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">📦</div>
+            <div>
+              <div class="plugin-name">${escapeHtml(r.name || r.url)}</div>
+              <div class="plugin-meta">${r.pluginCount || 0} plugins • ${r.lastFetched ? 'Updated ' + formatDate(r.lastFetched) : 'Never refreshed'}</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary btn-sm" onclick="refreshRepo('${r.id}')">Refresh</button>
+            <button class="btn btn-danger btn-sm" onclick="removeRepo('${r.id}')">Remove</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderAvailablePlugins(availablePlugins) {
+      const list = document.getElementById('available-plugins');
+      if (availablePlugins.length === 0) {
+        list.innerHTML = '<div class="empty-state"><p>No plugins available from repositories</p></div>';
+        return;
+      }
+
+      // Filter out already installed plugins
+      const installedIds = plugins.map(p => p.id);
+      const notInstalled = availablePlugins.filter(p => !installedIds.includes(p.id));
+
+      if (notInstalled.length === 0) {
+        list.innerHTML = '<div class="empty-state"><p>All available plugins are already installed</p></div>';
+        return;
+      }
+
+      list.innerHTML = notInstalled.map(p => `
+        <div class="plugin-item">
+          <div class="plugin-info">
+            <div class="plugin-icon" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9);">📥</div>
+            <div>
+              <div class="plugin-name">${escapeHtml(p.name)}</div>
+              <div class="plugin-meta">v${p.version} • ${escapeHtml(p.description || 'No description')}</div>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="installPlugin('${escapeHtml(p.downloadUrl)}')">Install</button>
+        </div>
+      `).join('');
+    }
+
+    async function addRepo() {
+      const url = document.getElementById('repo-url').value.trim();
+      if (!url) {
+        showToast('Please enter a repository URL');
+        return;
+      }
+
+      const result = await fetchApi('/api/plugins/repositories', { method: 'POST', body: { url } });
+      if (result?.success) {
+        document.getElementById('repo-url').value = '';
+        showToast('Repository added');
+        loadRepositories();
+      } else {
+        showToast(result?.error || 'Failed to add repository');
+      }
+    }
+
+    async function removeRepo(repoId) {
+      if (!confirm('Remove this repository?')) return;
+      await fetchApi(`/api/plugins/repositories/${repoId}`, { method: 'DELETE' });
+      showToast('Repository removed');
+      loadRepositories();
+    }
+
+    async function refreshRepo(repoId) {
+      const result = await fetchApi(`/api/plugins/repositories/${repoId}/refresh`, { method: 'POST' });
+      if (result?.success) {
+        showToast('Repository refreshed');
+        loadRepositories();
+      } else {
+        showToast(result?.error || 'Failed to refresh');
+      }
+    }
+
+    async function installPlugin(downloadUrl) {
+      showToast('Installing plugin...');
+      const result = await fetchApi('/api/plugins/install', { method: 'POST', body: { downloadUrl } });
+      if (result?.success) {
+        showToast('Plugin installed');
+        loadServerInfo();
+      } else {
+        showToast(result?.error || 'Installation failed');
+      }
+    }
+
+    // Load devices
+    async function loadDevices() {
+      const data = await fetchApi('/api/auth/devices');
+      devices = data?.devices || [];
+      document.getElementById('stat-devices').textContent = devices.length;
+
+      // Update tutorial step
+      if (devices.length > 0) {
+        document.getElementById('step-devices').textContent = '✓';
+        document.getElementById('step-devices').classList.add('done');
+      }
+
+      renderDevices();
+    }
+
+    // Render devices
+    function renderDevices() {
+      const list = document.getElementById('device-list');
+      if (devices.length === 0) {
+        list.innerHTML = '<div class="empty-state"><p>No devices paired yet</p><p style="font-size: 12px; margin-top: 8px;">Scan the QR code on Overview to pair a device</p></div>';
+        return;
+      }
+
+      list.innerHTML = devices.map(d => `
+        <div class="device-item">
+          <div class="device-info">
+            <div class="device-icon">${d.deviceType === 'mobile' ? '📱' : '💻'}</div>
+            <div>
+              <div class="device-name">${escapeHtml(d.deviceName)}</div>
+              <div class="device-meta">Last seen: ${formatDate(d.lastSeen)} • ID: ${d.deviceId}</div>
+            </div>
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="revokeDevice('${d.deviceId}')">Revoke</button>
+        </div>
+      `).join('');
+    }
+
+    // Render plugins
+    function renderPlugins() {
+      const list = document.getElementById('plugin-list');
+      if (plugins.length === 0) {
+        list.innerHTML = '<div class="empty-state"><p>No plugins installed</p></div>';
+        return;
+      }
+
+      list.innerHTML = plugins.map(p => `
+        <div class="plugin-item">
+          <div class="plugin-info">
+            <div class="plugin-icon ${p.enabled === false ? 'disabled' : ''}">🔌</div>
+            <div>
+              <div class="plugin-name">${escapeHtml(p.name)}</div>
+              <div class="plugin-meta">v${p.version} • ${p.id}</div>
+              <div class="plugin-roles">
+                ${(p.roles || []).map(r => `<span class="role-badge">${r}</span>`).join('')}
+              </div>
+            </div>
+          </div>
+          <div class="toggle ${p.enabled !== false ? 'active' : ''}" onclick="togglePlugin('${p.id}')"></div>
+        </div>
+      `).join('');
+    }
+
+    // Toggle plugin
+    async function togglePlugin(pluginId) {
+      const plugin = plugins.find(p => p.id === pluginId);
+      if (!plugin) return;
+
+      const newState = plugin.enabled === false;
+      await fetchApi(`/api/addons/${pluginId}/enabled`, { method: 'POST', body: { enabled: newState } });
+      plugin.enabled = newState;
+      renderPlugins();
+      showToast(`Plugin ${newState ? 'enabled' : 'disabled'}`);
+    }
+
+    // Load QR code
+    async function loadQrCode() {
+      const qrDiv = document.getElementById('qr-code');
+      qrDiv.innerHTML = 'Generating...';
+      qrDiv.classList.add('loading');
+
+      const data = await fetchApi('/api/auth/pairing-token', { method: 'POST', body: {} });
+      if (data?.qrData) {
+        const qrString = encodeURIComponent(JSON.stringify(data.qrData));
+        qrDiv.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${qrString}" alt="QR Code">`;
+        qrDiv.classList.remove('loading');
+      } else {
+        qrDiv.innerHTML = 'Failed to generate';
+      }
+    }
+
+    // Revoke device
+    async function revokeDevice(deviceId) {
+      if (!confirm('Are you sure you want to revoke this device?')) return;
+
+      await fetchApi(`/api/auth/devices/${deviceId}`, { method: 'DELETE' });
+      showToast('Device revoked');
+      loadDevices();
+    }
+
+    // Generate pairing QR
+    async function generatePairingQr() {
+      const qrDiv = document.getElementById('pairing-qr');
+      qrDiv.innerHTML = 'Generating...';
+      qrDiv.classList.add('loading');
+
+      const data = await fetchApi('/api/auth/pairing-token', { method: 'POST', body: {} });
+      if (data?.qrData) {
+        const qrString = encodeURIComponent(JSON.stringify(data.qrData));
+        qrDiv.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${qrString}" alt="QR Code">`;
+        qrDiv.classList.remove('loading');
+      }
+    }
+
+    // Save settings
+    async function saveSettings() {
+      const name = document.getElementById('setting-name').value.trim();
+      if (!name) {
+        showToast('Please enter a server name');
+        return;
+      }
+
+      const result = await fetchApi('/api/settings/server', {
+        method: 'POST',
+        body: { name }
+      });
+
+      if (result?.success) {
+        document.getElementById('info-name').textContent = name;
+        showToast('Settings saved');
+      } else {
+        showToast(result?.error || 'Failed to save settings');
+      }
+    }
+
+    // ========== Library Functions ==========
+
+    async function loadLibraryData() {
+      // Check if local-library plugin is enabled
+      const localLib = plugins.find(p => p.id === 'local-library');
+      const statusEl = document.getElementById('library-plugin-status');
+      const toggleEl = document.getElementById('library-plugin-toggle');
+
+      if (localLib) {
+        statusEl.textContent = localLib.enabled !== false ? 'Enabled' : 'Disabled';
+        statusEl.style.color = localLib.enabled !== false ? 'var(--success)' : 'var(--text-secondary)';
+        toggleEl.classList.toggle('active', localLib.enabled !== false);
+      } else {
+        statusEl.textContent = 'Not Installed';
+        statusEl.style.color = 'var(--warning)';
+      }
+
+      // Load folders
+      const data = await fetchApi('/api/plugins/local-library/folders');
+      if (data?.folders) {
+        folders = data.folders;
+        renderFolders();
+
+        // Update library stats
+        let totalTracks = 0, totalVideos = 0, totalSize = 0;
+        folders.forEach(f => {
+          totalTracks += f.stats?.trackCount || 0;
+          totalVideos += f.stats?.videoCount || 0;
+          totalSize += f.stats?.totalSize || 0;
+        });
+
+        document.getElementById('lib-tracks').textContent = totalTracks;
+        document.getElementById('lib-videos').textContent = totalVideos;
+        document.getElementById('lib-size').textContent = formatSize(totalSize);
+
+        // Update tutorial step
+        if (folders.length > 0) {
+          document.getElementById('step-libraries').textContent = '✓';
+          document.getElementById('step-libraries').classList.add('done');
+        }
+      }
+
+      // Check scan status
+      const scanData = await fetchApi('/api/plugins/local-library/scan/status');
+      if (scanData) {
+        scanStatus = scanData;
+        updateScanUI();
+      }
+    }
+
+    function renderFolders() {
+      const list = document.getElementById('folder-list');
+      if (folders.length === 0) {
+        list.innerHTML = '<div class="empty-state"><p>No folders configured</p><p style="font-size: 12px; margin-top: 8px;">Add a folder to start scanning for local media</p></div>';
+        return;
+      }
+
+      list.innerHTML = folders.map(f => `
+        <div class="folder-item">
+          <div class="folder-info">
+            <div class="folder-icon">📁</div>
+            <div style="flex: 1;">
+              <div class="folder-name">${escapeHtml(f.name)}</div>
+              <div class="folder-path">${escapeHtml(f.path)}</div>
+              <div class="folder-stats">
+                <span>🎵 ${f.stats?.trackCount || 0} tracks</span>
+                <span>🎬 ${f.stats?.videoCount || 0} videos</span>
+                <span>📦 ${formatSize(f.stats?.totalSize || 0)}</span>
+                <span>⏱️ ${f.lastScanned ? formatDate(f.lastScanned) : 'Never scanned'}</span>
+              </div>
+            </div>
+          </div>
+          <div class="folder-actions">
+            <button class="btn btn-secondary btn-sm" onclick="scanFolder('${f.id}')">Scan</button>
+            <button class="btn btn-danger btn-sm" onclick="removeFolder('${f.id}')">Remove</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function updateScanUI() {
+      const card = document.getElementById('scan-progress-card');
+      if (scanStatus.scanning) {
+        card.style.display = 'block';
+        if (scanStatus.progress) {
+          const pct = (scanStatus.progress.scanned / scanStatus.progress.total) * 100;
+          document.getElementById('scan-progress').style.width = pct + '%';
+          document.getElementById('scan-current').textContent =
+            `Scanning: ${scanStatus.progress.current} (${scanStatus.progress.scanned}/${scanStatus.progress.total})`;
+        }
+      } else {
+        card.style.display = 'none';
+      }
+    }
+
+    async function scanFolder(folderId) {
+      await fetchApi(`/api/plugins/local-library/scan/${folderId}`, { method: 'POST' });
+      showToast('Scan started');
+      pollScanStatus();
+    }
+
+    async function scanAllFolders() {
+      await fetchApi('/api/plugins/local-library/scan', { method: 'POST' });
+      showToast('Scan started');
+      pollScanStatus();
+    }
+
+    async function removeFolder(folderId) {
+      if (!confirm('Remove this folder from the library?')) return;
+      await fetchApi(`/api/plugins/local-library/folders/${folderId}`, { method: 'DELETE' });
+      showToast('Folder removed');
+      loadLibraryData();
+    }
+
+    function pollScanStatus() {
+      const poll = async () => {
+        const data = await fetchApi('/api/plugins/local-library/scan/status');
+        if (data) {
+          scanStatus = data;
+          updateScanUI();
+          if (data.scanning) {
+            setTimeout(poll, 1000);
+          } else {
+            loadLibraryData();
+          }
+        }
+      };
+      poll();
+    }
+
+    // Add folder modal
+    function showAddFolderModal() {
+      document.getElementById('add-folder-modal').classList.add('show');
+    }
+
+    function hideAddFolderModal() {
+      document.getElementById('add-folder-modal').classList.remove('show');
+      document.getElementById('folder-path').value = '';
+      document.getElementById('folder-name').value = '';
+    }
+
+    async function saveFolder() {
+      const path = document.getElementById('folder-path').value.trim();
+      const name = document.getElementById('folder-name').value.trim();
+      const includeAudio = document.getElementById('content-audio').checked;
+      const includeVideo = document.getElementById('content-video').checked;
+
+      if (!path) {
+        showToast('Please enter a folder path');
+        return;
+      }
+
+      const contentTypes = [];
+      if (includeAudio && includeVideo) contentTypes.push('mixed');
+      else if (includeAudio) contentTypes.push('audio');
+      else if (includeVideo) contentTypes.push('video');
+
+      const result = await fetchApi('/api/plugins/local-library/folders', {
+        method: 'POST',
+        body: { path, name: name || undefined, contentTypes }
+      });
+
+      if (result?.error) {
+        showToast(result.error);
+      } else {
+        hideAddFolderModal();
+        showToast('Folder added');
+        loadLibraryData();
+      }
+    }
+
+    // ========== Statistics Functions ==========
+
+    async function loadStatsData() {
+      // Load overview stats
+      const overview = await fetchApi('/api/stats/overview');
+      if (overview) {
+        document.getElementById('stats-total-plays').textContent = overview.totalPlays || 0;
+        document.getElementById('stats-listening-time').textContent = formatDuration(overview.totalDuration || 0);
+        document.getElementById('stats-unique-tracks').textContent = overview.uniqueTracks || 0;
+      }
+
+      // Load streaks
+      const streaks = await fetchApi('/api/stats/streaks');
+      if (streaks) {
+        document.getElementById('stats-streak').textContent = streaks.currentStreak || 0;
+      }
+
+      // Load top artists
+      const topArtists = await fetchApi('/api/stats/top/artists?limit=5');
+      renderTopList('top-artists', topArtists?.artists || [], 'playCount', 'plays');
+
+      // Load top tracks
+      const topTracks = await fetchApi('/api/stats/top/tracks?limit=5');
+      renderTopList('top-tracks', topTracks?.tracks || [], 'playCount', 'plays');
+
+      // Load top genres
+      const topGenres = await fetchApi('/api/stats/top/genres?limit=5');
+      renderTopList('top-genres', topGenres?.genres || [], 'playCount', 'plays');
+
+      // Load listening patterns for chart
+      const patterns = await fetchApi('/api/stats/patterns');
+      if (patterns?.daily) {
+        renderListeningChart(patterns.daily);
+      }
+
+      // Load ML training status
+      const mlStatus = await fetchApi('/api/algo/training/status');
+      if (mlStatus) {
+        document.getElementById('ml-last-training').textContent =
+          mlStatus.lastTrainingTime ? formatDate(mlStatus.lastTrainingTime) : 'Never';
+        document.getElementById('ml-events-count').textContent = mlStatus.eventsSinceLastTraining || 0;
+        document.getElementById('ml-next-training').textContent =
+          `After ${100 - (mlStatus.eventsSinceLastTraining || 0)} more events`;
+      }
+    }
+
+    function renderTopList(elementId, items, valueKey, valueSuffix) {
+      const list = document.getElementById(elementId);
+      if (items.length === 0) {
+        list.innerHTML = '<div class="empty-state"><p>No data yet</p></div>';
+        return;
+      }
+
+      list.innerHTML = items.slice(0, 5).map((item, i) => `
+        <div class="top-item">
+          <div class="top-rank ${i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}">${i + 1}</div>
+          <div class="top-info">
+            <div class="top-name">${escapeHtml(item.name || item.title || item.genre || 'Unknown')}</div>
+            ${item.artist ? `<div class="top-meta">${escapeHtml(item.artist)}</div>` : ''}
+          </div>
+          <div class="top-value">${item[valueKey] || 0} ${valueSuffix}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderListeningChart(dailyData) {
+      const container = document.getElementById('listening-chart');
+      const labels = document.getElementById('chart-labels');
+
+      // Get last 7 days
+      const days = [];
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        days.push({
+          date: d.toISOString().split('T')[0],
+          name: dayNames[d.getDay()]
+        });
+      }
+
+      // Find max value for scaling
+      const values = days.map(d => dailyData[d.date]?.playCount || 0);
+      const max = Math.max(...values, 1);
+
+      container.innerHTML = values.map(v =>
+        `<div class="chart-bar" style="height: ${(v / max) * 100}%;"></div>`
+      ).join('');
+
+      labels.innerHTML = days.map(d => `<span>${d.name}</span>`).join('');
+    }
+
+    async function forceTrain() {
+      const result = await fetchApi('/api/algo/train', { method: 'POST', body: { trigger: 'manual' } });
+      if (result?.success) {
+        showToast('Training started');
+        setTimeout(loadStatsData, 2000);
+      } else {
+        showToast(result?.error || 'Training failed');
+      }
+    }
+
+    // ========== Utils ==========
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function formatDate(ts) {
+      if (!ts) return 'Unknown';
+      return new Date(ts).toLocaleDateString();
+    }
+
+    function formatSize(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function formatDuration(ms) {
+      const hours = Math.floor(ms / 3600000);
+      const minutes = Math.floor((ms % 3600000) / 60000);
+      if (hours > 0) return `${hours}h ${minutes}m`;
+      return `${minutes}m`;
+    }
+
+    // ========== Event Listeners ==========
+
+    document.getElementById('refresh-qr').addEventListener('click', loadQrCode);
+    document.getElementById('generate-pairing').addEventListener('click', generatePairingQr);
+    document.getElementById('save-settings').addEventListener('click', saveSettings);
+    document.getElementById('add-folder-btn').addEventListener('click', showAddFolderModal);
+    document.getElementById('scan-all-btn').addEventListener('click', scanAllFolders);
+    document.getElementById('close-folder-modal').addEventListener('click', hideAddFolderModal);
+    document.getElementById('cancel-folder').addEventListener('click', hideAddFolderModal);
+    document.getElementById('save-folder').addEventListener('click', saveFolder);
+    document.getElementById('force-train').addEventListener('click', forceTrain);
+
+    document.getElementById('library-plugin-toggle').addEventListener('click', () => {
+      togglePlugin('local-library');
+      setTimeout(loadLibraryData, 500);
+    });
+
+    document.getElementById('add-repo').addEventListener('click', addRepo);
+
+    // ========== Initialize ==========
+
+    loadServerInfo();
+    loadDevices();
+    loadQrCode();
+  </script>
+</body>
+</html>

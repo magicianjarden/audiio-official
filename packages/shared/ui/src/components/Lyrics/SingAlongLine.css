@@ -1,0 +1,641 @@
+/**
+ * Modern Sing-Along Lyrics Styles
+ *
+ * Design principles:
+ * - GPU-accelerated animations (transform, opacity, clip-path)
+ * - Clean, modern aesthetic inspired by Apple Music
+ * - Smooth 60fps animations with CSS keyframes
+ * - Minimal repaints - no text-shadow spam
+ * - Theme-aware colors (light/dark mode support)
+ *
+ * Key improvements:
+ * - Gradient fill animation for smooth highlighting
+ * - Held note pulsing for sustained words
+ * - Spring physics easing for natural motion
+ * - Line-level entrance animations
+ */
+
+/* ============================================
+   Theme Variables
+   ============================================ */
+
+:root {
+  /* Default: white text for dark backgrounds (fullscreen always uses this) */
+  --sal-text-dim: rgba(255, 255, 255, 0.35);
+  --sal-text-mid: rgba(255, 255, 255, 0.5);
+  --sal-text-lit: #fff;
+  --sal-text-sung: #fff;
+  --sal-glow-color: rgba(255, 255, 255, 0.3);
+  --sal-glow-strong: rgba(255, 255, 255, 0.5);
+
+  /* Gradient colors for fill animation */
+  --sal-gradient-start: rgba(255, 255, 255, 1);
+  --sal-gradient-mid: rgba(255, 255, 255, 0.95);
+  --sal-gradient-glow: rgba(200, 220, 255, 0.3);
+
+  /* Spring physics timing function - more natural bounce */
+  --sal-spring-ease: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --sal-spring-soft: cubic-bezier(0.16, 1, 0.3, 1);
+  --sal-spring-snap: cubic-bezier(0.68, -0.6, 0.32, 1.6);
+}
+
+/* ============================================
+   Container & Scrolling
+   ============================================ */
+
+.sal-container {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+
+  /* Hide scrollbar */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  /* Fade edges */
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 15%,
+    black 85%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 15%,
+    black 85%,
+    transparent 100%
+  );
+}
+
+.sal-container::-webkit-scrollbar {
+  display: none;
+}
+
+.sal-lyrics {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 40vh 2rem;
+  min-height: 100%;
+}
+
+/* ============================================
+   Line Styles - With entrance animations
+   ============================================ */
+
+.sal-lyrics__line {
+  width: 100%;
+  max-width: 800px;
+  text-align: center;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  cursor: pointer;
+  user-select: none;
+
+  /* GPU layer for smooth transitions */
+  will-change: transform, opacity;
+  transform: scale(0.92) translateY(0) translateZ(0);
+  opacity: 0.35;
+
+  /* Spring physics transitions */
+  transition:
+    transform 0.5s var(--sal-spring-soft),
+    opacity 0.4s var(--sal-spring-soft);
+}
+
+.sal-lyrics__line:hover {
+  opacity: 0.5;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Past lines - sung, slide up slightly */
+.sal-lyrics__line--past {
+  transform: scale(0.88) translateY(-2px) translateZ(0);
+  opacity: 0.4;
+}
+
+/* Active line - currently singing, spring in */
+.sal-lyrics__line--active {
+  transform: scale(1) translateY(0) translateZ(0);
+  opacity: 1;
+  animation: line-activate 0.4s var(--sal-spring-ease);
+}
+
+@keyframes line-activate {
+  0% {
+    transform: scale(0.94) translateY(8px) translateZ(0);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.02) translateY(-2px) translateZ(0);
+  }
+  100% {
+    transform: scale(1) translateY(0) translateZ(0);
+    opacity: 1;
+  }
+}
+
+/* Upcoming lines - fade in from below */
+.sal-lyrics__line--upcoming {
+  opacity: 0.3;
+  transform: scale(0.92) translateY(4px) translateZ(0);
+}
+
+/* Line immediately after active gets boost and entrance */
+.sal-lyrics__line--active + .sal-lyrics__line--upcoming {
+  opacity: 0.45;
+  transform: scale(0.94) translateY(2px) translateZ(0);
+  animation: next-line-ready 0.5s var(--sal-spring-soft);
+}
+
+@keyframes next-line-ready {
+  0% {
+    opacity: 0.3;
+    transform: scale(0.90) translateY(10px) translateZ(0);
+  }
+  100% {
+    opacity: 0.45;
+    transform: scale(0.94) translateY(2px) translateZ(0);
+  }
+}
+
+/* Instrumental marker */
+.sal-lyrics__instrumental {
+  display: inline-block;
+  font-size: 1.5rem;
+  opacity: 0.4;
+  animation: instrumental-pulse 2s ease-in-out infinite;
+}
+
+@keyframes instrumental-pulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+    text-shadow: 0 0 4px var(--sal-glow-color);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+    text-shadow: 0 0 12px var(--sal-glow-strong);
+  }
+}
+
+/* Translation line */
+.sal-lyrics__translation {
+  margin-top: 0.5rem;
+  font-size: 0.85em;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition:
+    opacity 0.4s var(--sal-spring-soft),
+    transform 0.4s var(--sal-spring-soft);
+}
+
+.sal-lyrics__line--active .sal-lyrics__translation {
+  opacity: 0.7;
+  transform: translateY(0);
+}
+
+/* ============================================
+   Line Content
+   ============================================ */
+
+.sal-line {
+  display: inline;
+  /* Inherit font properties from parent container */
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+}
+
+/* Only apply custom sizing when used standalone (in sal-container) */
+.sal-container .sal-line {
+  font-size: 1.4rem;
+  font-weight: 500;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+}
+
+.sal-container .sal-line--active {
+  font-size: 1.75rem;
+  font-weight: 600;
+}
+
+/* ============================================
+   Word Styles - The Magic
+   ============================================ */
+
+.sal-word {
+  position: relative;
+  display: inline-block;
+  white-space: pre;
+
+  /* Spring physics for state transitions - text-shadow is GPU-composited */
+  transition:
+    text-shadow 0.3s var(--sal-spring-soft),
+    transform 0.3s var(--sal-spring-soft);
+}
+
+/* Base text layer */
+.sal-word__text {
+  position: relative;
+  z-index: 1;
+  color: var(--sal-text-dim, rgba(255, 255, 255, 0.4));
+
+  /* Smooth color transition with spring */
+  transition: color 0.35s var(--sal-spring-soft);
+}
+
+/* Fill layer - gradient overlay with clip animation */
+.sal-word__fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  pointer-events: none;
+
+  /* Gradient fill for richer highlight effect */
+  background: linear-gradient(
+    90deg,
+    var(--sal-gradient-start) 0%,
+    var(--sal-gradient-mid) 70%,
+    var(--sal-gradient-start) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+
+  /* Default: fully visible (for sung words) */
+  clip-path: inset(0 0% 0 0);
+  opacity: 1;
+}
+
+/* Active word: animate the fill from left to right with gradient */
+.sal-word--active .sal-word__fill {
+  clip-path: inset(0 100% 0 0);
+  will-change: clip-path;
+  /* CRITICAL: Fill uses LINEAR timing for accurate word-to-visual sync */
+  animation:
+    word-fill-linear var(--word-duration, 500ms) linear forwards,
+    word-glow-in 0.2s var(--sal-spring-ease) forwards;
+}
+
+/* Sung word: fill stays complete, no animation */
+.sal-word--sung .sal-word__fill {
+  clip-path: inset(0 0% 0 0);
+  animation: none;
+}
+
+/* Linear fill animation - accurate timing that matches word duration */
+@keyframes word-fill-linear {
+  0% {
+    clip-path: inset(0 100% 0 0);
+  }
+  100% {
+    clip-path: inset(0 0% 0 0);
+  }
+}
+
+/* Glow effect on word activation */
+@keyframes word-glow-in {
+  0% {
+    opacity: 0.5;
+    filter: blur(2px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* ============================================
+   Word States
+   ============================================ */
+
+/* Upcoming words - dimmed, ready to be sung */
+.sal-word--upcoming .sal-word__text {
+  color: var(--sal-text-dim);
+}
+
+/* Next word anticipation - subtle brightening before it starts */
+.sal-word--next .sal-word__text {
+  color: var(--sal-text-mid);
+  transition: color 0.2s var(--sal-spring-soft);
+}
+
+.sal-word--next {
+  /* Subtle pre-glow and micro scale - text-shadow is GPU-composited */
+  text-shadow: 0 0 6px var(--sal-glow-color);
+  transform: scale(1.02);
+}
+
+/* Active word - being sung */
+.sal-word--active {
+  /* Soft glow while singing - text-shadow is GPU-composited */
+  text-shadow: 0 0 14px var(--sal-glow-color);
+  transform: scale(1.04);
+  animation: active-word-pulse 0.3s var(--sal-spring-snap);
+}
+
+@keyframes active-word-pulse {
+  0% {
+    text-shadow: 0 0 0px transparent;
+    transform: scale(0.98);
+  }
+  40% {
+    text-shadow: 0 0 20px var(--sal-glow-strong);
+    transform: scale(1.06);
+  }
+  100% {
+    text-shadow: 0 0 14px var(--sal-glow-color);
+    transform: scale(1.04);
+  }
+}
+
+.sal-word--active .sal-word__text {
+  color: var(--sal-text-mid);
+}
+
+/* Sung words - completed, stays lit */
+.sal-word--sung .sal-word__text {
+  color: var(--sal-text-sung);
+}
+
+/* Smooth exit - word just finished singing */
+.sal-word--sung {
+  /* Gentle glow fadeout - text-shadow is GPU-composited */
+  text-shadow: 0 0 8px var(--sal-glow-color);
+  transform: scale(1);
+  animation: word-sung-exit 0.4s var(--sal-spring-soft);
+}
+
+@keyframes word-sung-exit {
+  0% {
+    text-shadow: 0 0 14px var(--sal-glow-color);
+    transform: scale(1.04);
+  }
+  100% {
+    text-shadow: 0 0 8px var(--sal-glow-color);
+    transform: scale(1);
+  }
+}
+
+/* ============================================
+   Held Note Animation
+   Words that are sustained get a breathing effect
+   ============================================ */
+
+.sal-word--held.sal-word--active {
+  animation:
+    active-word-pulse 0.3s var(--sal-spring-snap),
+    held-note-breathe 1.2s ease-in-out 0.3s infinite;
+}
+
+@keyframes held-note-breathe {
+  0%, 100% {
+    text-shadow: 0 0 12px var(--sal-glow-color);
+    transform: scale(1.03);
+  }
+  50% {
+    text-shadow: 0 0 20px var(--sal-glow-strong);
+    transform: scale(1.06);
+  }
+}
+
+/* Long held notes get more dramatic pulsing */
+.sal-word--held-long.sal-word--active {
+  animation:
+    active-word-pulse 0.3s var(--sal-spring-snap),
+    held-note-undulate 1.5s ease-in-out 0.3s infinite;
+}
+
+@keyframes held-note-undulate {
+  0%, 100% {
+    text-shadow:
+      0 0 10px var(--sal-glow-color),
+      0 0 20px var(--sal-gradient-glow);
+    transform: scale(1.03) translateY(0);
+  }
+  25% {
+    text-shadow:
+      0 0 18px var(--sal-glow-strong),
+      0 0 30px var(--sal-gradient-glow);
+    transform: scale(1.07) translateY(-1px);
+  }
+  50% {
+    text-shadow:
+      0 0 14px var(--sal-glow-color),
+      0 0 25px var(--sal-gradient-glow);
+    transform: scale(1.05) translateY(0);
+  }
+  75% {
+    text-shadow:
+      0 0 20px var(--sal-glow-strong),
+      0 0 32px var(--sal-gradient-glow);
+    transform: scale(1.08) translateY(-1px);
+  }
+}
+
+/* ============================================
+   Context: Embedded in lyrics-panel (sidebar)
+   Sidebar background changes with theme, so use theme-aware colors
+   ============================================ */
+
+/* Override with theme-aware colors for sidebar */
+.lyrics-panel-line .sal-word__text {
+  color: var(--text-muted);
+}
+
+.lyrics-panel-line .sal-word__fill {
+  /* Use solid color in sidebar for clarity */
+  background: var(--text-primary);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.lyrics-panel-line .sal-word--upcoming .sal-word__text {
+  color: var(--text-muted);
+}
+
+.lyrics-panel-line .sal-word--next .sal-word__text {
+  color: var(--text-secondary);
+}
+
+.lyrics-panel-line .sal-word--active .sal-word__text {
+  color: var(--text-secondary);
+}
+
+.lyrics-panel-line .sal-word--sung .sal-word__text {
+  color: var(--text-primary);
+}
+
+/* Subtle glow effects for sidebar - text-shadow is GPU-composited */
+.lyrics-panel-line .sal-word--active {
+  text-shadow: 0 0 6px var(--accent-glow);
+  transform: scale(1.02);
+}
+
+.lyrics-panel-line .sal-word--sung {
+  text-shadow: 0 0 3px var(--accent-soft);
+  transform: scale(1);
+}
+
+.lyrics-panel-line .sal-word--next {
+  text-shadow: none;
+  transform: scale(1.01);
+}
+
+/* Reduce held note animation in sidebar */
+.lyrics-panel-line .sal-word--held.sal-word--active {
+  animation:
+    active-word-pulse 0.3s var(--sal-spring-snap),
+    sidebar-held-breathe 1.5s ease-in-out 0.3s infinite;
+}
+
+@keyframes sidebar-held-breathe {
+  0%, 100% {
+    text-shadow: 0 0 4px var(--accent-soft);
+    transform: scale(1.02);
+  }
+  50% {
+    text-shadow: 0 0 8px var(--accent-glow);
+    transform: scale(1.04);
+  }
+}
+
+/* Active line in sidebar */
+.lyrics-panel-line.active .sal-word--active {
+  text-shadow: 0 0 8px var(--accent-glow);
+}
+
+.lyrics-panel-line.active .sal-word--sung {
+  text-shadow: 0 0 4px var(--accent-soft);
+}
+
+/* ============================================
+   Active Line Enhanced Styling
+   ============================================ */
+
+.sal-lyrics__line--active .sal-word--upcoming .sal-word__text {
+  color: var(--sal-text-mid);
+}
+
+.sal-lyrics__line--active .sal-word--sung .sal-word__text {
+  color: var(--sal-text-sung);
+  text-shadow: 0 0 20px var(--sal-glow-color);
+}
+
+/* ============================================
+   Past Line Words - All Sung
+   ============================================ */
+
+.sal-lyrics__line--past .sal-word__text {
+  color: var(--sal-text-mid);
+}
+
+/* ============================================
+   Responsive Adjustments
+   ============================================ */
+
+@media (max-width: 640px) {
+  .sal-lyrics {
+    padding: 35vh 1rem;
+    gap: 0.75rem;
+  }
+
+  .sal-line {
+    font-size: 1.2rem;
+  }
+
+  .sal-line--active {
+    font-size: 1.4rem;
+  }
+
+  .sal-lyrics__line {
+    padding: 0.5rem 0.75rem;
+  }
+
+  /* Reduce animation intensity on mobile */
+  .sal-word--active {
+    transform: scale(1.02);
+  }
+
+  .sal-word--next {
+    transform: scale(1.01);
+  }
+}
+
+/* ============================================
+   Reduced Motion - Accessibility
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --sal-spring-ease: ease;
+    --sal-spring-soft: ease;
+    --sal-spring-snap: ease;
+  }
+
+  .sal-lyrics__line {
+    transition: opacity 0.2s ease;
+    transform: none !important;
+    animation: none !important;
+  }
+
+  .sal-word {
+    transform: none !important;
+    animation: none !important;
+  }
+
+  .sal-word__fill {
+    animation: none !important;
+    clip-path: inset(0 0 0 0);
+  }
+
+  .sal-lyrics__instrumental {
+    animation: none !important;
+  }
+
+  .sal-word--held,
+  .sal-word--held-long {
+    animation: none !important;
+  }
+}
+
+/* ============================================
+   High Contrast Mode
+   ============================================ */
+
+@media (prefers-contrast: high) {
+  .sal-word--upcoming .sal-word__text {
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  .sal-word--sung .sal-word__text {
+    color: #fff;
+  }
+
+  .sal-lyrics__line--past {
+    opacity: 0.6;
+  }
+
+  .sal-lyrics__line--upcoming {
+    opacity: 0.5;
+  }
+
+  /* Remove gradient in high contrast */
+  .sal-word__fill {
+    background: #fff;
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "lrclib",
+  "name": "LRCLib Lyrics",
+  "version": "1.0.0",
+  "main": "./dist/index.js",
+  "description": "Synced and plain lyrics from LRCLib",
+  "roles": ["lyrics-provider"],
+  "author": "Audiio"
+}

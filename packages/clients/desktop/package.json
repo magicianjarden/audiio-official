@@ -1,0 +1,59 @@
+{
+  "name": "@audiio/client",
+  "version": "0.1.0",
+  "description": "Audiio Client - Connect to your Audiio server",
+  "author": "Audiio Team",
+  "private": true,
+  "main": "./dist/main.js",
+  "scripts": {
+    "dev": "tsc && electron dist/main.js --dev",
+    "build": "tsc",
+    "start": "electron dist/main.js",
+    "package": "electron-builder",
+    "clean": "rm -rf dist out"
+  },
+  "dependencies": {
+    "@audiio/core": "*",
+    "@audiio/icons": "*",
+    "bonjour-service": "^1.3.0",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13",
+    "electron": "33.2.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2"
+  },
+  "build": {
+    "appId": "com.audiio.client",
+    "productName": "Audiio Client",
+    "directories": {
+      "output": "out"
+    },
+    "files": [
+      "dist/**/*",
+      "!node_modules/@audiio/*/src",
+      "!node_modules/@audiio/*/node_modules"
+    ],
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "../icons/icon.ico"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "icon": "../icons/icon.icns",
+      "category": "public.app-category.music"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "../icons/icon.png",
+      "category": "Audio"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

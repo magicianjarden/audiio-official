@@ -5,6 +5,33 @@ A modern, privacy-first music streaming platform that runs on your desktop and s
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/magicianjarden/audiio-official)](https://github.com/magicianjarden/audiio-official/releases)
 
+> **Note:** This project is undergoing a major restructuring. The codebase is being rebuilt from the ground up. Documentation may not reflect the current state of the application and will be updated as the restructuring progresses.
+
+---
+
+### AI-Generated Code Disclaimer
+
+This is a **vibecoded project** - the majority of this codebase was written with AI assistance (primarily Claude). We believe in transparency, so here's what you should know:
+
+**What this means:**
+- Code was generated through AI prompts and iterative refinement
+- Human oversight varied - some sections were carefully reviewed, others less so
+- The project prioritized rapid development over traditional code review processes
+
+**Potential concerns:**
+- **Security vulnerabilities** - AI-generated code may contain security flaws that weren't caught during development. Do not use in production environments without a thorough security audit.
+- **Unexpected behaviors** - Edge cases and error handling may be incomplete or incorrect
+- **Code quality** - Some patterns may be inconsistent, over-engineered, or non-idiomatic
+- **Dependencies** - AI may have suggested packages without fully vetting their security or maintenance status
+
+**Our recommendation:**
+- Treat this as experimental/educational software
+- Review any code you plan to use in your own projects
+- Report security issues via our security policy
+- Contributions that improve code quality are especially welcome
+
+---
+
 ## Features
 
 - **Multi-Source Streaming** - Aggregate music from various sources through addons

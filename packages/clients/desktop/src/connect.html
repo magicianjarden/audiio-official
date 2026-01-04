@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connect to Audiio Server</title>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --bg-secondary: #141414;
+      --bg-tertiary: #1a1a1a;
+      --text: #ffffff;
+      --text-secondary: #a0a0a0;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --success: #22c55e;
+      --border: #2a2a2a;
+      --radius: 12px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Title bar drag region */
+    .titlebar {
+      height: 32px;
+      -webkit-app-region: drag;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .titlebar-title {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .window-controls {
+      position: absolute;
+      right: 0;
+      top: 0;
+      height: 32px;
+      display: flex;
+      -webkit-app-region: no-drag;
+    }
+
+    .window-btn {
+      width: 46px;
+      height: 32px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+    }
+
+    .window-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .window-btn.close:hover {
+      background: #c42b1c;
+      color: white;
+    }
+
+    /* Main content */
+    .container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+    }
+
+    .logo {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, var(--accent), #a855f7);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      margin-bottom: 40px;
+    }
+
+    /* Server list */
+    .server-section {
+      width: 100%;
+      max-width: 400px;
+      margin-bottom: 32px;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .server-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .server-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .server-item:hover {
+      border-color: var(--accent);
+      background: var(--bg-tertiary);
+    }
+
+    .server-item.connecting {
+      opacity: 0.7;
+      pointer-events: none;
+    }
+
+    .server-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--accent);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .server-info {
+      flex: 1;
+    }
+
+    .server-name {
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+
+    .server-url {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    .server-status {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-secondary);
+    }
+
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Manual input */
+    .manual-section {
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .input-group {
+      display: flex;
+      gap: 8px;
+    }
+
+    .input {
+      flex: 1;
+      padding: 12px 16px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Error */
+    .error {
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 8px;
+      color: #ef4444;
+      font-size: 14px;
+      display: none;
+    }
+
+    .error.show {
+      display: block;
+    }
+
+    /* Connected state */
+    .connected-state {
+      display: none;
+      text-align: center;
+    }
+
+    .connected-state.show {
+      display: block;
+    }
+
+    .connected-icon {
+      width: 64px;
+      height: 64px;
+      background: var(--success);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      margin: 0 auto 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="titlebar">
+    <span class="titlebar-title">Audiio</span>
+    <div class="window-controls">
+      <button class="window-btn" id="minimize">&#8722;</button>
+      <button class="window-btn" id="maximize">&#9723;</button>
+      <button class="window-btn close" id="close">&#10005;</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="logo">&#127925;</div>
+    <h1>Audiio</h1>
+    <p class="subtitle">Connect to a server to start listening</p>
+
+    <!-- Discovered servers -->
+    <div class="server-section" id="discover-section">
+      <div class="section-title">Discovered Servers</div>
+      <div class="server-list" id="server-list">
+        <div class="empty-state" id="discovering">
+          <div class="spinner"></div>
+          <p>Looking for servers on your network...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Manual input -->
+    <div class="manual-section" id="manual-section">
+      <div class="section-title">Or enter server address</div>
+      <div class="input-group">
+        <input type="text" class="input" id="server-url" placeholder="http://192.168.1.100:8484">
+        <button class="btn btn-primary" id="connect-btn">Connect</button>
+      </div>
+      <div class="error" id="error"></div>
+    </div>
+
+    <!-- Connected state -->
+    <div class="connected-state" id="connected-state">
+      <div class="connected-icon">&#10003;</div>
+      <h2>Connected!</h2>
+      <p class="subtitle">Loading Audiio...</p>
+    </div>
+  </div>
+
+  <script>
+    // Window controls
+    document.getElementById('minimize').addEventListener('click', () => {
+      if (window.api?.windowMinimize) window.api.windowMinimize();
+    });
+    document.getElementById('maximize').addEventListener('click', () => {
+      if (window.api?.windowMaximize) window.api.windowMaximize();
+    });
+    document.getElementById('close').addEventListener('click', () => {
+      if (window.api?.windowClose) window.api.windowClose();
+      else window.close();
+    });
+
+    // State
+    let discoveredServers = [];
+    let isConnecting = false;
+
+    // Connect to server
+    async function connectToServer(url) {
+      if (isConnecting) return;
+      isConnecting = true;
+
+      const errorEl = document.getElementById('error');
+      const connectBtn = document.getElementById('connect-btn');
+
+      errorEl.classList.remove('show');
+      connectBtn.disabled = true;
+      connectBtn.textContent = 'Connecting...';
+
+      try {
+        // Use the preload API to connect
+        let success = false;
+        if (window.api?.connection?.connect) {
+          success = await window.api.connection.connect(url);
+        } else {
+          // Fallback: try direct fetch to check if server is reachable
+          const res = await fetch(url + '/health');
+          success = res.ok;
+        }
+
+        if (success) {
+          // Show connected state
+          document.getElementById('discover-section').style.display = 'none';
+          document.getElementById('manual-section').style.display = 'none';
+          document.getElementById('connected-state').classList.add('show');
+
+          // Reload to show the main UI after a moment
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+        } else {
+          throw new Error('Connection failed');
+        }
+      } catch (err) {
+        errorEl.textContent = err.message || 'Failed to connect to server';
+        errorEl.classList.add('show');
+        connectBtn.disabled = false;
+        connectBtn.textContent = 'Connect';
+        isConnecting = false;
+      }
+    }
+
+    // Render server list
+    function renderServers() {
+      const list = document.getElementById('server-list');
+
+      if (discoveredServers.length === 0) {
+        list.innerHTML = `
+          <div class="empty-state">
+            <p>No servers found on your network</p>
+            <p style="font-size: 12px; margin-top: 4px;">Make sure your Audiio server is running</p>
+          </div>
+        `;
+        return;
+      }
+
+      list.innerHTML = discoveredServers.map(server => `
+        <div class="server-item" data-url="${escapeHtml(server.url)}">
+          <div class="server-icon">&#127925;</div>
+          <div class="server-info">
+            <div class="server-name">${escapeHtml(server.name)}</div>
+            <div class="server-url">${escapeHtml(server.url)}</div>
+          </div>
+          <div class="server-status"></div>
+        </div>
+      `).join('');
+
+      // Add click handlers
+      list.querySelectorAll('.server-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const url = item.dataset.url;
+          document.getElementById('server-url').value = url;
+          connectToServer(url);
+        });
+      });
+    }
+
+    // Escape HTML
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    }
+
+    // Discover servers
+    async function discoverServers() {
+      try {
+        // Try to get discovered servers from the main process
+        if (window.api?.discovery?.getServers) {
+          const servers = await window.api.discovery.getServers();
+          discoveredServers = servers || [];
+          renderServers();
+        } else {
+          // Fallback: hide discovering message
+          setTimeout(() => {
+            document.getElementById('discovering').innerHTML = `
+              <p>Automatic discovery not available</p>
+              <p style="font-size: 12px; margin-top: 4px;">Enter your server address below</p>
+            `;
+          }, 2000);
+        }
+      } catch (err) {
+        console.error('Discovery error:', err);
+      }
+    }
+
+    // Check for saved server
+    async function checkSavedServer() {
+      try {
+        if (window.api?.connection?.getSavedServer) {
+          const saved = await window.api.connection.getSavedServer();
+          if (saved?.url) {
+            document.getElementById('server-url').value = saved.url;
+          }
+        }
+      } catch (err) {
+        console.error('Error getting saved server:', err);
+      }
+    }
+
+    // Event listeners
+    document.getElementById('connect-btn').addEventListener('click', () => {
+      const url = document.getElementById('server-url').value.trim();
+      if (url) {
+        connectToServer(url);
+      }
+    });
+
+    document.getElementById('server-url').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const url = e.target.value.trim();
+        if (url) {
+          connectToServer(url);
+        }
+      }
+    });
+
+    // Initialize
+    checkSavedServer();
+    discoverServers();
+
+    // Refresh discovery periodically
+    setInterval(discoverServers, 5000);
+  </script>
+</body>
+</html>

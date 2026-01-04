@@ -1,0 +1,44 @@
+# Audiio Standalone Server - Docker Compose
+#
+# Quick start:
+#   docker-compose up -d
+#
+# With custom config:
+#   docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
+
+version: '3.8'
+
+services:
+  audiio-server:
+    build:
+      context: ../..
+      dockerfile: packages/server/Dockerfile
+    image: audiio/server:latest
+    container_name: audiio-server
+    restart: unless-stopped
+    ports:
+      - "8484:8484"
+    volumes:
+      # Persistent data volume
+      - audiio-data:/data
+      # Optional: mount plugins from host
+      # - ./plugins:/data/plugins:ro
+      # Optional: mount custom config
+      # - ./config.yml:/app/config.yml:ro
+    environment:
+      - NODE_ENV=production
+      - AUDIIO_PORT=8484
+      - AUDIIO_HOST=0.0.0.0
+      - AUDIIO_LOG_LEVEL=info
+      # Optional: Custom relay server
+      # - AUDIIO_RELAY_URL=wss://your-relay.example.com
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8484/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  audiio-data:
+    name: audiio-data

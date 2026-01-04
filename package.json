@@ -4,17 +4,24 @@
   "private": true,
   "description": "Unified modular music platform",
   "workspaces": [
-    "packages/*"
+    "packages/server",
+    "packages/server/plugins/*",
+    "packages/shared/*",
+    "packages/clients/*",
+    "packages/infra/*"
   ],
   "scripts": {
+    "dev:desktop": "concurrently \"npm run dev --workspace=@audiio/server\" \"npm run dev --workspace=@audiio/ui\" \"npm run dev --workspace=@audiio/client\"",
     "dev": "turbo run dev --concurrency=20",
     "dev:ui": "npm run dev --workspace=@audiio/ui",
-    "dev:desktop": "npm run dev --workspace=@audiio/desktop",
+    "dev:client": "npm run dev --workspace=@audiio/client",
+    "dev:mobile": "npm run dev --workspace=@audiio/mobile",
+    "dev:server": "npm run dev --workspace=@audiio/server",
     "dev:landing": "npm run dev --workspace=@audiio/landing",
     "build": "turbo run build",
     "build:core": "npm run build --workspace=@audiio/core",
     "build:sdk": "npm run build --workspace=@audiio/sdk",
-    "build:ml": "npm run build --workspace=@audiio/ml-sdk && npm run build --workspace=@audiio/ml-core",
+    "build:ml": "cd packages/server/ml-sdk && npm run build && cd ../ml-core && npm run build",
     "build:all": "npm run build:core && npm run build:sdk && npm run build:ml && turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",
@@ -30,6 +37,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "better-sqlite3": "^12.5.0"
+    "better-sqlite3": "^12.5.0",
+    "concurrently": "^9.2.1"
   }
 }

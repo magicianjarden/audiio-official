@@ -1,0 +1,9 @@
+{
+  "id": "deezer",
+  "name": "Deezer Metadata",
+  "version": "1.0.0",
+  "main": "./dist/index.js",
+  "description": "High-quality metadata from Deezer including album art, track info, and artist details",
+  "roles": ["metadata-provider"],
+  "author": "Audiio"
+}

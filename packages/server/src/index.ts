@@ -1,13 +1,26 @@
 /**
- * @audiio/server - Fastify API Server (Post-MVP)
+ * Audiio Server - Library Entry Point
  *
- * This module will provide:
- * - REST API for external clients
- * - Library persistence with SQLite
- * - Stream proxying
+ * This module exports the server components for programmatic use.
+ * For CLI usage, see ./cli.ts
  */
 
-export async function createServer() {
-  // TODO: Implement Fastify server
-  throw new Error('Server not yet implemented');
-}
+// Core exports
+export { StandaloneServer } from './standalone-server';
+export { loadConfig, generateExampleConfig } from './config';
+
+// Services
+export { LibraryDatabase } from './services/library-db';
+export { PluginLoader } from './services/plugin-loader';
+export { pluginRepositoryService } from './services/plugin-repository';
+export { pluginInstaller } from './services/plugin-installer';
+export { mlService } from './services/ml-service';
+
+// Paths
+export { paths, appPaths } from './paths';
+
+// Types
+export type { ServerConfig } from './config';
+export type { ServerInfo, StandaloneServerOptions } from './standalone-server';
+export type { PluginManifest, LoadedPlugin, PluginLoadResult, PluginLoaderOptions } from './services/plugin-loader';
+export type { PluginRepository, RepositoryPlugin, UpdateInfo } from './services/plugin-repository';

@@ -1,0 +1,22 @@
+{
+  "id": "local-library",
+  "name": "Local Library",
+  "version": "1.0.0",
+  "description": "Access local music and video files from configured folders",
+  "roles": ["metadata-provider", "stream-provider"],
+  "main": "index.js",
+  "author": "Audiio Team",
+  "defaultEnabled": false,
+  "capabilities": {
+    "filesystem": {
+      "read": true,
+      "allowedPaths": []
+    },
+    "network": {
+      "outbound": false
+    },
+    "apis": {
+      "library": true
+    }
+  }
+}
