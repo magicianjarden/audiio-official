@@ -217,7 +217,7 @@ export const FullPlayer: React.FC = () => {
   if (playerMode !== 'full' || !currentTrack) return null;
 
   const progressPercent = duration > 0 ? (position / duration) * 100 : 0;
-  const artistNames = currentTrack.artists.map(a => a.name).join(', ');
+  const artistNames = currentTrack.artists?.map(a => a.name).join(', ') || 'Unknown Artist';
   const hasAnimatedArtwork = !!animatedVideoUrl;
   const showArtwork = artworkUrl && !artworkError;
 
@@ -320,9 +320,9 @@ export const FullPlayer: React.FC = () => {
             {currentTrack.title}
           </h2>
           <p
-            className={`full-player-artist ${currentTrack.artists.length > 0 ? 'clickable' : ''}`}
-            onClick={currentTrack.artists.length > 0 ? handleGoToArtist : undefined}
-            title={currentTrack.artists.length > 0 ? `Go to ${currentTrack.artists[0].name}` : undefined}
+            className={`full-player-artist ${currentTrack.artists?.length ? 'clickable' : ''}`}
+            onClick={currentTrack.artists?.length ? handleGoToArtist : undefined}
+            title={currentTrack.artists?.[0] ? `Go to ${currentTrack.artists[0].name}` : undefined}
           >
             {artistNames}
           </p>

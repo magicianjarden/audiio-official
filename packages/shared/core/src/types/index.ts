@@ -84,6 +84,8 @@ export interface LyricsLine {
 export interface LyricsResult {
   plain?: string;
   synced?: LyricsLine[];
+  /** Raw synced lyrics string (LRC format) for client-side parsing */
+  _rawSynced?: string;
   source: string;
 }
 

@@ -10,7 +10,7 @@ import { EmbeddingEngine, type TrackData } from './embedding-engine';
 import { VectorIndex } from './vector-index';
 import { TasteProfileManager } from './taste-profile';
 import { CoOccurrenceMatrix } from './cooccurrence';
-import { MOOD_VECTORS } from './types';
+import { normalizeVector, averageVectors as avgVectorsUtil, blendVectors as blendVectorsUtil } from '../utils/vector-utils';
 
 /**
  * Playlist generation options
@@ -186,12 +186,12 @@ export class PlaylistGenerator {
     if (this.tasteProfile && opts.explorationFactor !== 1) {
       const tasteVector = this.tasteProfile.getTasteVector();
       if (tasteVector) {
-        queryVector = this.blendVectors(
+        queryVector = normalizeVector(blendVectorsUtil(
           queryVector,
           tasteVector,
           0.7, // Genre weight
           0.3 // Taste weight
-        );
+        ));
       }
     }
 
@@ -238,13 +238,13 @@ export class PlaylistGenerator {
     }
 
     // Average seed embeddings
-    let queryVector = this.averageVectors(seedEmbeddings);
+    let queryVector = normalizeVector(avgVectorsUtil(seedEmbeddings));
 
     // Light blend with user taste
     if (this.tasteProfile) {
       const tasteVector = this.tasteProfile.getTasteVector();
       if (tasteVector) {
-        queryVector = this.blendVectors(queryVector, tasteVector, 0.8, 0.2);
+        queryVector = normalizeVector(blendVectorsUtil(queryVector, tasteVector, 0.8, 0.2));
       }
     }
 
@@ -302,12 +302,12 @@ export class PlaylistGenerator {
       if (opts.explorationFactor && opts.explorationFactor > 0) {
         const explorationVector = this.tasteProfile.getExplorationVector();
         if (explorationVector) {
-          queryVector = this.blendVectors(
+          queryVector = normalizeVector(blendVectorsUtil(
             queryVector,
             explorationVector,
             1 - opts.explorationFactor,
             opts.explorationFactor
-          );
+          ));
           method = 'discovery';
         }
       }
@@ -368,13 +368,13 @@ export class PlaylistGenerator {
     }
 
     // Create artist "sound" vector
-    let queryVector = this.averageVectors(artistEmbeddings);
+    let queryVector = normalizeVector(avgVectorsUtil(artistEmbeddings));
 
     // Light personalization
     if (this.tasteProfile) {
       const tasteVector = this.tasteProfile.getTasteVector();
       if (tasteVector) {
-        queryVector = this.blendVectors(queryVector, tasteVector, 0.85, 0.15);
+        queryVector = normalizeVector(blendVectorsUtil(queryVector, tasteVector, 0.85, 0.15));
       }
     }
 
@@ -610,69 +610,6 @@ export class PlaylistGenerator {
     return Array.from(merged.entries())
       .map(([trackId, score]) => ({ trackId, score, distance: 1 - score }))
       .sort((a, b) => b.score - a.score);
-  }
-
-  /**
-   * Average multiple vectors
-   */
-  private averageVectors(vectors: Float32Array[]): Float32Array {
-    if (vectors.length === 0) {
-      return new Float32Array(128);
-    }
-
-    const dims = vectors[0].length;
-    const result = new Float32Array(dims);
-
-    for (const vec of vectors) {
-      for (let i = 0; i < dims; i++) {
-        result[i] += vec[i];
-      }
-    }
-
-    for (let i = 0; i < dims; i++) {
-      result[i] /= vectors.length;
-    }
-
-    return this.normalizeVector(result);
-  }
-
-  /**
-   * Blend two vectors with weights
-   */
-  private blendVectors(
-    a: Float32Array,
-    b: Float32Array,
-    weightA: number,
-    weightB: number
-  ): Float32Array {
-    const dims = a.length;
-    const result = new Float32Array(dims);
-
-    for (let i = 0; i < dims; i++) {
-      result[i] = a[i] * weightA + b[i] * weightB;
-    }
-
-    return this.normalizeVector(result);
-  }
-
-  /**
-   * Normalize vector to unit length
-   */
-  private normalizeVector(vector: Float32Array): Float32Array {
-    let magnitude = 0;
-    for (let i = 0; i < vector.length; i++) {
-      magnitude += vector[i] * vector[i];
-    }
-    magnitude = Math.sqrt(magnitude);
-
-    if (magnitude === 0) return vector;
-
-    const normalized = new Float32Array(vector.length);
-    for (let i = 0; i < vector.length; i++) {
-      normalized[i] = vector[i] / magnitude;
-    }
-
-    return normalized;
   }
 
   /**

@@ -23,10 +23,8 @@ export class TrackResolver {
   ): Promise<StreamInfo | null> {
     const providers = this.registry.getStreamProviders();
 
-    console.log('[TrackResolver] Available stream providers:', providers.map(p => p.id));
-
     if (providers.length === 0) {
-      console.warn('[TrackResolver] No stream provider available - cannot resolve stream');
+      console.warn('[TrackResolver] No stream providers available');
       return null;
     }
 
@@ -45,7 +43,6 @@ export class TrackResolver {
 
     // Try each provider in order
     for (const provider of providers) {
-      console.log(`[TrackResolver] Trying provider: ${provider.id}`);
       try {
         // First, try to find the track on this provider
         let streamTrackId: string | null = null;
@@ -56,11 +53,9 @@ export class TrackResolver {
         );
 
         if (existingSource) {
-          console.log(`[TrackResolver] Found existing source: ${existingSource.trackId}`);
           streamTrackId = existingSource.trackId;
         } else if (provider.searchByMetadata) {
           // Search by metadata for best match
-          console.log(`[TrackResolver] Searching by metadata: ${track.artists?.[0]?.name} - ${track.title}`);
           const match = await provider.searchByMetadata({
             title: track.title,
             artist: track.artists?.[0]?.name ?? '',
@@ -68,8 +63,6 @@ export class TrackResolver {
             duration: track.duration,
             isrc: track._meta?.externalIds?.isrc
           });
-
-          console.log(`[TrackResolver] searchByMetadata result:`, match ? match.id : 'no match');
 
           if (match) {
             streamTrackId = match.id;
@@ -117,25 +110,20 @@ export class TrackResolver {
 
         // If we found the track, get the stream
         if (streamTrackId) {
-          console.log(`[TrackResolver] Getting stream for trackId: ${streamTrackId}`);
           const streamInfo = await provider.getStream(streamTrackId, preferredQuality);
-          console.log(`[TrackResolver] Got stream info:`, streamInfo ? 'success' : 'null');
 
           // Update track with stream info
           track.streamInfo = streamInfo;
           track._meta.lastUpdated = new Date();
 
           return streamInfo;
-        } else {
-          console.log(`[TrackResolver] No stream track ID found for provider ${provider.id}`);
         }
       } catch (error) {
-        console.error(`[TrackResolver] Stream resolution failed for provider ${provider.id}:`, error);
+        console.error(`[TrackResolver] Provider ${provider.id} failed:`, error instanceof Error ? error.message : error);
         continue;
       }
     }
 
-    console.log('[TrackResolver] All providers exhausted, no stream found');
     return null;
   }
 

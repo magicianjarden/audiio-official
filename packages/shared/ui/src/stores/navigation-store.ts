@@ -11,6 +11,10 @@ export type View =
   | 'likes'
   | 'dislikes'
   | 'playlists'
+  | 'collections'
+  | 'collection-detail'
+  | 'tags'
+  | 'tag-detail'
   | 'downloads'
   | 'playlist-detail'
   | 'plugins'
@@ -35,20 +39,28 @@ export interface SectionDetailData {
 interface NavigationState {
   currentView: View;
   selectedPlaylistId: string | null;
+  selectedCollectionId: string | null;
   selectedPluginId: string | null;
   selectedArtistId: string | null;
   selectedAlbumId: string | null;
+  selectedTagName: string | null;
   selectedSectionData: SectionDetailData | null;
   // Cache artist/album data for detail views
   selectedArtistData: SearchArtist | null;
   selectedAlbumData: SearchAlbum | null;
   searchQuery: string;
   isSearchActive: boolean;
+  // Playlist rules editor modal state
+  isPlaylistRulesEditorOpen: boolean;
 
   // Actions
   navigate: (view: View) => void;
-  navigateTo: (view: View, params?: { playlistId?: string; pluginId?: string; artistId?: string; albumId?: string }) => void;
+  navigateTo: (view: View, params?: { playlistId?: string; collectionId?: string; selectedCollectionId?: string; pluginId?: string; artistId?: string; albumId?: string }) => void;
   openPlaylist: (playlistId: string) => void;
+  openPlaylistRulesEditor: () => void;
+  closePlaylistRulesEditor: () => void;
+  openCollection: (collectionId: string) => void;
+  openTagDetail: (tagName: string) => void;
   openPlugin: (pluginId: string) => void;
   openArtist: (artistId: string, artistData?: SearchArtist) => void;
   openAlbum: (albumId: string, albumData?: SearchAlbum) => void;
@@ -62,22 +74,27 @@ interface NavigationState {
 export const useNavigationStore = create<NavigationState>((set, get) => ({
   currentView: 'home',
   selectedPlaylistId: null,
+  selectedCollectionId: null,
   selectedPluginId: null,
   selectedArtistId: null,
   selectedAlbumId: null,
+  selectedTagName: null,
   selectedSectionData: null,
   selectedArtistData: null,
   selectedAlbumData: null,
   searchQuery: '',
   isSearchActive: false,
+  isPlaylistRulesEditorOpen: false,
 
   navigate: (view) => {
     set({
       currentView: view,
       selectedPlaylistId: null,
+      selectedCollectionId: null,
       selectedPluginId: null,
       selectedArtistId: null,
       selectedAlbumId: null,
+      selectedTagName: null,
       selectedSectionData: null,
       selectedArtistData: null,
       selectedAlbumData: null,
@@ -86,6 +103,22 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
 
   openPlaylist: (playlistId) => {
     set({ currentView: 'playlist-detail', selectedPlaylistId: playlistId });
+  },
+
+  openPlaylistRulesEditor: () => {
+    set({ isPlaylistRulesEditorOpen: true });
+  },
+
+  closePlaylistRulesEditor: () => {
+    set({ isPlaylistRulesEditorOpen: false });
+  },
+
+  openCollection: (collectionId) => {
+    set({ currentView: 'collection-detail', selectedCollectionId: collectionId });
+  },
+
+  openTagDetail: (tagName) => {
+    set({ currentView: 'tag-detail', selectedTagName: tagName });
   },
 
   openPlugin: (pluginId) => {
@@ -135,6 +168,10 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
 
     if (currentView === 'playlist-detail') {
       set({ ...clearSearch, currentView: 'playlists', selectedPlaylistId: null });
+    } else if (currentView === 'collection-detail') {
+      set({ ...clearSearch, currentView: 'collections', selectedCollectionId: null });
+    } else if (currentView === 'tag-detail') {
+      set({ ...clearSearch, currentView: 'tags', selectedTagName: null });
     } else if (currentView === 'plugin-detail') {
       set({ ...clearSearch, currentView: 'plugins', selectedPluginId: null });
     } else if (currentView === 'artist-detail') {
@@ -154,9 +191,11 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
   },
 
   // Alias for navigate with optional params (for detail views)
-  navigateTo: (view: View, params?: { playlistId?: string; pluginId?: string; artistId?: string; albumId?: string }) => {
+  navigateTo: (view: View, params?: { playlistId?: string; collectionId?: string; selectedCollectionId?: string; pluginId?: string; artistId?: string; albumId?: string }) => {
     if (params?.playlistId && view === 'playlist-detail') {
       set({ currentView: view, selectedPlaylistId: params.playlistId });
+    } else if ((params?.collectionId || params?.selectedCollectionId) && view === 'collection-detail') {
+      set({ currentView: view, selectedCollectionId: params.collectionId || params.selectedCollectionId });
     } else if (params?.pluginId && view === 'plugin-detail') {
       set({ currentView: view, selectedPluginId: params.pluginId });
     } else if (params?.artistId && view === 'artist-detail') {
@@ -167,6 +206,7 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
       set({
         currentView: view,
         selectedPlaylistId: null,
+        selectedCollectionId: null,
         selectedPluginId: null,
         selectedArtistId: null,
         selectedAlbumId: null,

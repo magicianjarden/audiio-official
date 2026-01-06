@@ -1,0 +1,115 @@
+/* TagBadge Styles */
+
+.tag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: color-mix(in srgb, var(--tag-color) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tag-color) 30%, transparent);
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--tag-color);
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.tag-badge-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--tag-color);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tag-badge-name {
+  line-height: 1;
+}
+
+/* Size variants */
+.tag-badge-sm {
+  padding: 2px 8px;
+  font-size: 11px;
+  gap: 4px;
+}
+
+.tag-badge-sm .tag-badge-dot {
+  width: 5px;
+  height: 5px;
+}
+
+.tag-badge-lg {
+  padding: 6px 14px;
+  font-size: 13px;
+  gap: 8px;
+}
+
+.tag-badge-lg .tag-badge-dot {
+  width: 8px;
+  height: 8px;
+}
+
+/* Clickable variant */
+.tag-badge-clickable {
+  cursor: pointer;
+}
+
+.tag-badge-clickable:hover {
+  background: color-mix(in srgb, var(--tag-color) 25%, transparent);
+  border-color: color-mix(in srgb, var(--tag-color) 50%, transparent);
+}
+
+.tag-badge-clickable:focus-visible {
+  outline: 2px solid var(--tag-color);
+  outline-offset: 2px;
+}
+
+/* Remove button */
+.tag-badge-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  margin-left: 2px;
+  margin-right: -4px;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--tag-color);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.tag-badge-remove:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--tag-color) 30%, transparent);
+}
+
+/* Compact version (just the dot) */
+.tag-badge-compact {
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.tag-badge-compact .tag-badge-dot {
+  width: 8px;
+  height: 8px;
+}
+
+/* Tag list container */
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.tag-list-overflow {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding: 2px 6px;
+}

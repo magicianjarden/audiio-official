@@ -1,25 +1,18 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useLibraryStore } from '../../stores/library-store';
 import { useNavigationStore } from '../../stores/navigation-store';
 import { usePlayerStore } from '../../stores/player-store';
 import { useUIStore } from '../../stores/ui-store';
 import { PlaylistCover } from '../common/PlaylistCover';
 import { InputModal } from '../Modals/InputModal';
-import { LibraryActionBar, SortOption } from './LibraryActionBar';
+import { FloatingSearch, SearchAction } from '../Search/FloatingSearch';
 import {
   PlaylistIcon,
   PlayIcon,
-  AddIcon,
   CloseIcon,
+  AddIcon,
+  SortIcon,
 } from '@audiio/icons';
-
-const SORT_OPTIONS: SortOption[] = [
-  { value: 'recent', label: 'Recently Created' },
-  { value: 'name', label: 'Name A-Z' },
-  { value: 'name-desc', label: 'Name Z-A' },
-  { value: 'tracks', label: 'Most Songs' },
-  { value: 'tracks-asc', label: 'Fewest Songs' },
-];
 
 export const PlaylistsView: React.FC = () => {
   const { playlists, createPlaylist, deletePlaylist } = useLibraryStore();
@@ -38,7 +31,7 @@ export const PlaylistsView: React.FC = () => {
     let filtered = [...playlists];
 
     // Filter by search query
-    if (searchQuery.trim()) {
+    if (searchQuery?.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(playlist =>
         playlist.name.toLowerCase().includes(query)
@@ -50,18 +43,11 @@ export const PlaylistsView: React.FC = () => {
       case 'name':
         filtered.sort((a, b) => a.name.localeCompare(b.name));
         break;
-      case 'name-desc':
-        filtered.sort((a, b) => b.name.localeCompare(a.name));
-        break;
       case 'tracks':
         filtered.sort((a, b) => b.tracks.length - a.tracks.length);
         break;
-      case 'tracks-asc':
-        filtered.sort((a, b) => a.tracks.length - b.tracks.length);
-        break;
       case 'recent':
       default:
-        // Keep original order (most recent first)
         break;
     }
 
@@ -94,29 +80,65 @@ export const PlaylistsView: React.FC = () => {
     }
   };
 
-  return (
-    <div className="library-view">
-      <header className="library-header">
-        <div className="library-header-icon playlists-icon"><PlaylistIcon size={64} /></div>
-        <div className="library-header-info">
-          <span className="library-header-type">Library</span>
-          <h1 className="library-header-title">Playlists</h1>
-          <span className="library-header-count">{playlists.length} playlists</span>
-        </div>
-      </header>
+  // Build actions for the search bar
+  const actions: SearchAction[] = useMemo(() => {
+    const result: SearchAction[] = [];
 
-      {playlists.length > 0 && (
-        <LibraryActionBar
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          searchPlaceholder="Search playlists..."
-          sortOptions={SORT_OPTIONS}
-          currentSort={sortBy}
-          onSortChange={setSortBy}
-          totalCount={playlists.length}
-          filteredCount={filteredAndSortedPlaylists.length}
-        />
-      )}
+    // Create action
+    result.push({
+      id: 'create',
+      label: 'New Playlist',
+      icon: <AddIcon size={14} />,
+      shortcut: 'N',
+      primary: true,
+      onClick: openCreatePlaylistModal,
+    });
+
+    // Sort options
+    result.push({
+      id: 'sort-recent',
+      label: 'Recent',
+      icon: <SortIcon size={14} />,
+      active: sortBy === 'recent',
+      onClick: () => setSortBy('recent'),
+    });
+    result.push({
+      id: 'sort-name',
+      label: 'Name',
+      icon: <SortIcon size={14} />,
+      active: sortBy === 'name',
+      onClick: () => setSortBy('name'),
+    });
+    result.push({
+      id: 'sort-tracks',
+      label: 'Most Songs',
+      icon: <SortIcon size={14} />,
+      active: sortBy === 'tracks',
+      onClick: () => setSortBy('tracks'),
+    });
+
+    return result;
+  }, [sortBy, openCreatePlaylistModal]);
+
+  const isSearching = searchQuery.trim().length > 0;
+
+  const handleClose = useCallback(() => {
+    setSearchQuery('');
+  }, []);
+
+  return (
+    <div className={`library-view playlists-view ${isSearching ? 'searching' : ''}`}>
+      <FloatingSearch
+        onSearch={setSearchQuery}
+        onClose={handleClose}
+        isSearchActive={isSearching}
+        actions={actions}
+        pageContext={{
+          type: 'playlists',
+          label: 'Playlists',
+          icon: <PlaylistIcon size={14} />,
+        }}
+      />
 
       <div className="library-content playlists-grid">
         {playlists.length === 0 ? (

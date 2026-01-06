@@ -5,7 +5,7 @@
 
 import type { UnifiedTrack } from '@audiio/core';
 import type { StructuredSectionQuery } from './types';
-import type { UserProfile } from '../../stores/recommendation-store';
+import type { RecommendationProfile } from '../../stores/recommendation-store';
 
 // Re-export types for convenience
 export type { StructuredSectionQuery };
@@ -17,7 +17,7 @@ export interface SeeAllContext {
   /** The structured query being executed */
   query: StructuredSectionQuery;
   /** User's profile for personalization */
-  userProfile: UserProfile;
+  userProfile: RecommendationProfile;
   /** Current results (for transformers) */
   currentResults: UnifiedTrack[];
   /** Hour of day (0-23) */

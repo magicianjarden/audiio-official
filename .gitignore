@@ -42,10 +42,19 @@ packages/desktop/release/
 
 # Database
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 database/
 audiiodb/
 audiio-musicbrainz/
+
+# Server runtime data
+packages/server/data/
+cache/
+
+# Plugins (moved to audiio-official-plugins repo)
+packages/server/plugins/
 
 # Large ML model files (should be downloaded separately)
 *.bin
@@ -58,6 +67,7 @@ audiio-musicbrainz/
 # Accidental/junk files
 /C
 /tsc
+nul
 
 # Claude Code
 .claude/

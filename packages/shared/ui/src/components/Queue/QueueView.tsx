@@ -97,7 +97,7 @@ export const QueueView: React.FC<QueueViewProps> = ({ onClose }) => {
               <div className="queue-now-playing-info">
                 <div className="queue-now-playing-title">{currentTrack.title}</div>
                 <div className="queue-now-playing-artist">
-                  {currentTrack.artists.map(a => a.name).join(', ')}
+                  {currentTrack.artists?.map(a => a.name).join(', ') || 'Unknown Artist'}
                 </div>
               </div>
             </div>

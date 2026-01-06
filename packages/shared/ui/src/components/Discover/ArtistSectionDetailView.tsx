@@ -1,13 +1,13 @@
 /**
  * ArtistSectionDetailView - Full page view for artist-based "See All" sections
- * Fetches and displays artists in a grid layout
+ * Uses the server's ML/trending API for real artist data
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useNavigationStore } from '../../stores/navigation-store';
 import { useArtistContextMenu } from '../../contexts/ContextMenuContext';
+import { useTrending } from '../../hooks/useRecommendations';
 import { BackIcon, MusicNoteIcon } from '@audiio/icons';
-import { debugError } from '../../utils/debug';
 
 interface Artist {
   id: string;
@@ -19,66 +19,38 @@ interface Artist {
 export const ArtistSectionDetailView: React.FC = () => {
   const { selectedSectionData, goBack, openArtist } = useNavigationStore();
   const { showContextMenu } = useArtistContextMenu();
-  const [artists, setArtists] = useState<Artist[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    let mounted = true;
+  // Use ML-powered trending API for artist data
+  const { data, isLoading } = useTrending();
 
-    const fetchArtists = async () => {
-      setIsLoading(true);
-      try {
-        // Try getTrending API first (same as TrendingArtistsSection)
-        if (window.api?.getTrending) {
-          const trending = await window.api.getTrending();
-          if (mounted && trending?.artists?.length > 0) {
-            const mappedArtists = trending.artists.map(a => ({
-              id: a.id,
-              name: a.name,
-              image: a.artwork?.medium || a.artwork?.small || a.artwork?.large,
-              source: 'trending'
-            }));
-            setArtists(mappedArtists);
-            setIsLoading(false);
-            return;
-          }
-        }
+  // Extract unique artists from trending data
+  const artists = useMemo((): Artist[] => {
+    // First use artists directly from trending if available
+    if (data.artists.length > 0) {
+      return data.artists.map(artist => ({
+        id: artist.id,
+        name: artist.name,
+        image: artist.artwork?.medium || artist.artwork?.small || artist.artwork?.large,
+        source: 'trending'
+      }));
+    }
 
-        // Fallback: Extract artists from popular tracks
-        if (window.api?.search) {
-          const results = await window.api.search({ query: 'top hits 2024 popular', type: 'track' });
-          if (mounted && results?.length > 0) {
-            const artistMap = new Map<string, Artist>();
-            for (const track of results) {
-              for (const artist of track.artists) {
-                if (!artistMap.has(artist.id)) {
-                  artistMap.set(artist.id, {
-                    id: artist.id,
-                    name: artist.name,
-                    image: artist.artwork?.medium || artist.artwork?.small || artist.artwork?.large,
-                    source: track._meta?.metadataProvider || 'search'
-                  });
-                }
-              }
-            }
-            setArtists(Array.from(artistMap.values()));
-          }
-        }
-      } catch (error) {
-        debugError('[ArtistSectionDetailView]', 'Failed to fetch artists:', error);
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
+    // Fallback: extract unique artists from tracks
+    const artistMap = new Map<string, Artist>();
+    for (const track of data.tracks) {
+      for (const artist of track.artists) {
+        if (!artistMap.has(artist.id)) {
+          artistMap.set(artist.id, {
+            id: artist.id,
+            name: artist.name,
+            image: artist.artwork?.medium || artist.artwork?.small || artist.artwork?.large,
+            source: track._meta?.metadataProvider || 'trending'
+          });
         }
       }
-    };
-
-    fetchArtists();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    }
+    return Array.from(artistMap.values());
+  }, [data.artists, data.tracks]);
 
   const handleArtistClick = (artist: Artist) => {
     openArtist(artist.id, {

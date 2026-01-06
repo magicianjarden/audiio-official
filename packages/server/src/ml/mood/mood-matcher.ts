@@ -10,27 +10,14 @@ import type {
   MoodProfile,
   MoodMatchResult,
   FeatureRange,
+  AudioFeatures,
 } from '../types';
 import { MOOD_PROFILES } from '../utils';
 
 /**
- * Audio features that can be used for mood matching
- */
-export interface AudioFeatures {
-  energy?: number;
-  valence?: number;
-  danceability?: number;
-  bpm?: number;
-  acousticness?: number;
-  instrumentalness?: number;
-  loudness?: number;
-  speechiness?: number;
-}
-
-/**
  * Track with features for mood matching
  */
-export interface TrackWithFeatures {
+export interface MoodTrack {
   id: string;
   title: string;
   artist: string;
@@ -95,7 +82,7 @@ export class MoodMatcher {
   /**
    * Score a single track against a mood profile
    */
-  matchTrack(track: TrackWithFeatures, moodId: MoodType): MoodMatchResult {
+  matchTrack(track: MoodTrack, moodId: MoodType): MoodMatchResult {
     const profile = this.profiles[moodId];
     if (!profile) {
       return {
@@ -176,7 +163,7 @@ export class MoodMatcher {
   /**
    * Find the best matching mood for a track
    */
-  findBestMood(track: TrackWithFeatures): MoodMatchResult {
+  findBestMood(track: MoodTrack): MoodMatchResult {
     let bestResult: MoodMatchResult = {
       mood: 'chill',
       score: 0,
@@ -198,13 +185,13 @@ export class MoodMatcher {
    * Filter and sort tracks by mood match score
    */
   filterByMood(
-    tracks: TrackWithFeatures[],
+    tracks: MoodTrack[],
     moodId: MoodType,
     options?: {
       minScore?: number;
       limit?: number;
     }
-  ): Array<TrackWithFeatures & { moodScore: number }> {
+  ): Array<MoodTrack & { moodScore: number }> {
     const { minScore = 0.3, limit } = options || {};
 
     const scored = tracks

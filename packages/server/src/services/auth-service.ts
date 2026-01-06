@@ -24,6 +24,7 @@ export interface ServerIdentity {
   secretKey: string;      // Base64
   serverId: string;       // First 8 chars of hash
   serverName: string;
+  setupCompleted?: boolean;  // True after first-run wizard
 }
 
 export interface TrustedDevice {
@@ -140,8 +141,25 @@ export class AuthService {
     return {
       serverId: this.identity.serverId,
       serverName: this.identity.serverName,
-      publicKey: this.identity.publicKey
+      publicKey: this.identity.publicKey,
+      setupCompleted: this.identity.setupCompleted || false
     };
+  }
+
+  /**
+   * Mark setup wizard as complete
+   */
+  markSetupComplete(): void {
+    this.identity.setupCompleted = true;
+    this.saveIdentityToDisk();
+    console.log('[Auth] Setup marked as complete');
+  }
+
+  /**
+   * Check if setup is complete
+   */
+  isSetupComplete(): boolean {
+    return this.identity.setupCompleted === true;
   }
 
   /**

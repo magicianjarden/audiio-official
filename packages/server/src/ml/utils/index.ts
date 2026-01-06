@@ -6,6 +6,8 @@ export * from './feature-utils';
 export * from './scoring-utils';
 export * from './ml-utils';
 export * from './cache-utils';
+export * from './vector-utils';
+export * from './audio-processor';
 
 // Re-export event utilities and constants
 export {

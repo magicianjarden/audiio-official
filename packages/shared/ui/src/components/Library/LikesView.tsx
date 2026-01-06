@@ -1,33 +1,22 @@
-import React, { useState, useMemo } from 'react';
-import { useLibraryStore, LibraryTrack } from '../../stores/library-store';
+import React, { useState, useMemo, useCallback } from 'react';
+import { useLibraryStore } from '../../stores/library-store';
 import { usePlayerStore } from '../../stores/player-store';
 import { useTrackContextMenu } from '../../contexts/ContextMenuContext';
 import { TrackRow } from '../TrackRow/TrackRow';
-import { LibraryActionBar, SortOption } from './LibraryActionBar';
-import { HeartIcon, HeartOutlineIcon } from '@audiio/icons';
+import { FloatingSearch, SearchAction } from '../Search/FloatingSearch';
+import {
+  HeartIcon,
+  HeartOutlineIcon,
+  PlayIcon,
+  ShuffleIcon,
+  SortIcon,
+  ClockIcon,
+} from '@audiio/icons';
 import type { Track } from '@audiio/core';
-
-const SORT_OPTIONS: SortOption[] = [
-  { value: 'recent', label: 'Recently Added' },
-  { value: 'oldest', label: 'Oldest First' },
-  { value: 'title', label: 'Title A-Z' },
-  { value: 'title-desc', label: 'Title Z-A' },
-  { value: 'artist', label: 'Artist A-Z' },
-  { value: 'artist-desc', label: 'Artist Z-A' },
-];
-
-const shuffleArray = <T,>(array: T[]): T[] => {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
-  }
-  return shuffled;
-};
 
 export const LikesView: React.FC = () => {
   const { likedTracks } = useLibraryStore();
-  const { play, setQueue, currentTrack } = usePlayerStore();
+  const { play, setQueue, shuffle, currentTrack } = usePlayerStore();
   const { showContextMenu } = useTrackContextMenu();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -36,7 +25,8 @@ export const LikesView: React.FC = () => {
   const filteredAndSortedTracks = useMemo(() => {
     let libraryTracks = [...likedTracks];
 
-    if (searchQuery.trim()) {
+    // Filter by search query
+    if (searchQuery?.trim()) {
       const query = searchQuery.toLowerCase();
       libraryTracks = libraryTracks.filter(lt =>
         lt.track.title.toLowerCase().includes(query) ||
@@ -45,6 +35,7 @@ export const LikesView: React.FC = () => {
       );
     }
 
+    // Sort
     switch (sortBy) {
       case 'recent':
         libraryTracks.sort((a, b) => b.addedAt - a.addedAt);
@@ -55,21 +46,11 @@ export const LikesView: React.FC = () => {
       case 'title':
         libraryTracks.sort((a, b) => a.track.title.localeCompare(b.track.title));
         break;
-      case 'title-desc':
-        libraryTracks.sort((a, b) => b.track.title.localeCompare(a.track.title));
-        break;
       case 'artist':
         libraryTracks.sort((a, b) => {
           const artistA = a.track.artists[0]?.name || '';
           const artistB = b.track.artists[0]?.name || '';
           return artistA.localeCompare(artistB);
-        });
-        break;
-      case 'artist-desc':
-        libraryTracks.sort((a, b) => {
-          const artistA = a.track.artists[0]?.name || '';
-          const artistB = b.track.artists[0]?.name || '';
-          return artistB.localeCompare(artistA);
         });
         break;
     }
@@ -84,49 +65,91 @@ export const LikesView: React.FC = () => {
     play(track);
   };
 
-  const handlePlayAll = () => {
+  const handlePlayAll = useCallback(() => {
     if (tracks.length > 0) {
       setQueue(tracks, 0);
-      play(tracks[0]!);
+      play(tracks[0]);
     }
-  };
+  }, [tracks, setQueue, play]);
 
-  const handleShuffle = () => {
+  const handleShuffle = useCallback(() => {
     if (tracks.length > 0) {
-      const shuffled = shuffleArray(tracks);
+      shuffle();
+      const shuffled = [...tracks].sort(() => Math.random() - 0.5);
       setQueue(shuffled, 0);
-      play(shuffled[0]!);
+      play(shuffled[0]);
     }
-  };
+  }, [tracks, setQueue, play, shuffle]);
+
+  // Build actions for the search bar
+  const actions: SearchAction[] = useMemo(() => {
+    const result: SearchAction[] = [];
+
+    if (tracks.length > 0) {
+      result.push({
+        id: 'play',
+        label: 'Play All',
+        icon: <PlayIcon size={14} />,
+        shortcut: 'P',
+        primary: true,
+        onClick: handlePlayAll,
+      });
+      result.push({
+        id: 'shuffle',
+        label: 'Shuffle',
+        icon: <ShuffleIcon size={14} />,
+        shortcut: 'S',
+        primary: true,
+        onClick: handleShuffle,
+      });
+    }
+
+    // Sort options
+    result.push({
+      id: 'sort-recent',
+      label: 'Recent',
+      icon: <ClockIcon size={14} />,
+      active: sortBy === 'recent',
+      onClick: () => setSortBy('recent'),
+    });
+    result.push({
+      id: 'sort-title',
+      label: 'Title',
+      icon: <SortIcon size={14} />,
+      active: sortBy === 'title',
+      onClick: () => setSortBy('title'),
+    });
+    result.push({
+      id: 'sort-artist',
+      label: 'Artist',
+      icon: <SortIcon size={14} />,
+      active: sortBy === 'artist',
+      onClick: () => setSortBy('artist'),
+    });
+
+    return result;
+  }, [tracks.length, sortBy, handlePlayAll, handleShuffle]);
+
+  const isSearching = searchQuery.trim().length > 0;
+
+  const handleClose = useCallback(() => {
+    setSearchQuery('');
+  }, []);
 
   return (
-    <div className="library-view">
-      <header className="library-header">
-        <div className="library-header-icon likes-icon">
-          <HeartIcon size={64} />
-        </div>
-        <div className="library-header-info">
-          <span className="library-header-type">Collection</span>
-          <h1 className="library-header-title">Liked Songs</h1>
-          <span className="library-header-count">{likedTracks.length} songs</span>
-        </div>
-      </header>
-
-      {likedTracks.length > 0 && (
-        <LibraryActionBar
-          onPlay={handlePlayAll}
-          onShuffle={handleShuffle}
-          disablePlay={tracks.length === 0}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          searchPlaceholder="Search liked songs..."
-          sortOptions={SORT_OPTIONS}
-          currentSort={sortBy}
-          onSortChange={setSortBy}
-          totalCount={likedTracks.length}
-          filteredCount={filteredAndSortedTracks.length}
-        />
-      )}
+    <div className={`library-view likes-view ${isSearching ? 'searching' : ''}`}>
+      {/* Floating search bar - same design as Discover */}
+      <FloatingSearch
+        onSearch={setSearchQuery}
+        onClose={handleClose}
+        isSearchActive={isSearching}
+        actions={actions}
+        pageContext={{
+          type: 'likes',
+          label: 'Liked Songs',
+          icon: <HeartIcon size={14} />,
+        }}
+      />
 
       <div className="library-content">
         {likedTracks.length === 0 ? (

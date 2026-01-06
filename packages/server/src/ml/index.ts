@@ -26,17 +26,18 @@ export * from './types';
 export * from './utils';
 
 // ============================================
-// Base Classes
-// ============================================
-export * from './base';
-
-// ============================================
 // Core Algorithm
 // ============================================
 export { HybridScorer } from './algorithm/hybrid-scorer';
 export { NeuralScorer } from './algorithm/neural-scorer';
 export { Trainer } from './algorithm/trainer';
 export { RadioGenerator } from './algorithm/radio-generator';
+export {
+  SequentialScorer,
+  type SequentialTrack,
+  type SequentialContext,
+  type SequentialScoreResult,
+} from './algorithm/sequential-scorer';
 
 // ============================================
 // Engine
@@ -52,37 +53,10 @@ export type { ExtendedFeatureProvider, ExtendedAggregationConfig } from './engin
 // ============================================
 export { EmotionProvider } from './providers/emotion-provider';
 export { EmbeddingProvider } from './providers/embedding-provider';
-export { LyricsProvider } from './providers/lyrics-provider';
+export { LyricsSentimentProvider } from './providers/lyrics-provider';
 export { EssentiaProvider } from './providers/essentia-provider';
 export { FingerprintProvider } from './providers/fingerprint-provider';
-
-// ============================================
-// Features
-// ============================================
-export {
-  extractTrackFeatures,
-  extractContextFeatures,
-  extractAllFeatures,
-  extractBatchFeatures,
-  initializeScalers,
-  getDefaultScalers,
-  getDefaultUserInteraction,
-  encodeGenres,
-  normalizeValue,
-  calculateTrackMood,
-  PRIMARY_GENRES,
-  TRACK_FEATURE_DIM,
-  CONTEXT_FEATURE_DIM,
-  TOTAL_FEATURE_DIM,
-  GENRE_ENERGY_MAP,
-} from './features/feature-extractor';
-export type {
-  FeatureScalers,
-  TrackFeatures,
-  ExtractedFeatures,
-  UserInteractionData,
-  PrimaryGenre,
-} from './features/feature-extractor';
+export { GenreProvider } from './providers/genre-provider';
 
 // ============================================
 // Learning
@@ -97,10 +71,11 @@ export { TrainingScheduler } from './learning/training-scheduler';
 export {
   BrowserStorage,
   MemoryStorage,
-  createStorage,
   type StorageAdapter,
 } from './storage/browser-storage';
 export { NodeStorage } from './storage/node-storage';
+export { FeatureStore } from './storage/feature-store';
+export type { StoredFeatures, FeatureStoreAdapter } from './storage/feature-store';
 
 // ============================================
 // Queue

@@ -130,17 +130,39 @@ export interface SessionSummary {
 }
 
 // ========================================
+// Active Playback Session (for admin streams view)
+// ========================================
+
+export interface ActivePlaybackSession {
+  sessionId: string;
+  deviceId?: string;
+  deviceName?: string;
+  deviceType?: string;
+  currentTrack: TrackData | null;
+  startedAt: number;
+  position: number;
+  duration: number;
+  isPlaying: boolean;
+  lastUpdate: number;
+}
+
+// ========================================
 // Tracking Service
 // ========================================
 
 export class TrackingService extends EventEmitter {
   private db: Database.Database;
   private currentSessions: Map<string, TrackingSession> = new Map();
+  private activePlayback: Map<string, ActivePlaybackSession> = new Map();
+  private staleSessionTimeout = 5 * 60 * 1000; // 5 minutes
 
   constructor(db: Database.Database) {
     super();
     this.db = db;
     this.initializeTables();
+
+    // Cleanup stale sessions every minute
+    setInterval(() => this.cleanupStaleSessions(), 60 * 1000);
   }
 
   private initializeTables(): void {
@@ -433,6 +455,9 @@ export class TrackingService extends EventEmitter {
 
     // Emit for ML training
     this.emit('event', { ...event, id, timestamp });
+
+    // Update active playback state for streams view
+    this.updateActivePlayback(event);
 
     // Update daily aggregates periodically (every 10 events)
     const count = this.db.prepare('SELECT COUNT(*) as c FROM tracking_events WHERE date(timestamp/1000, "unixepoch") = date("now")').get() as { c: number };
@@ -887,5 +912,230 @@ export class TrackingService extends EventEmitter {
         metadata: d.metadata ? JSON.parse(d.metadata) : undefined
       }))
     };
+  }
+
+  // ========================================
+  // Active Playback Sessions (for admin streams view)
+  // ========================================
+
+  /**
+   * Update active playback state from a tracking event
+   */
+  private updateActivePlayback(event: TrackingEvent): void {
+    const sessionId = event.sessionId;
+
+    switch (event.type) {
+      case 'play_start': {
+        const session = this.currentSessions.get(sessionId);
+        const playback: ActivePlaybackSession = {
+          sessionId,
+          deviceId: event.deviceId || session?.deviceId,
+          deviceName: session?.deviceName,
+          deviceType: session?.deviceType,
+          currentTrack: event.trackData || null,
+          startedAt: Date.now(),
+          position: 0,
+          duration: event.duration || event.trackData?.duration || 0,
+          isPlaying: true,
+          lastUpdate: Date.now()
+        };
+        this.activePlayback.set(sessionId, playback);
+        this.emit('playback_update', playback);
+        break;
+      }
+
+      case 'play_pause': {
+        const playback = this.activePlayback.get(sessionId);
+        if (playback) {
+          playback.isPlaying = false;
+          playback.position = event.position || playback.position;
+          playback.lastUpdate = Date.now();
+          this.emit('playback_update', playback);
+        }
+        break;
+      }
+
+      case 'play_resume': {
+        const playback = this.activePlayback.get(sessionId);
+        if (playback) {
+          playback.isPlaying = true;
+          playback.position = event.position || playback.position;
+          playback.lastUpdate = Date.now();
+          this.emit('playback_update', playback);
+        }
+        break;
+      }
+
+      case 'seek': {
+        const playback = this.activePlayback.get(sessionId);
+        if (playback) {
+          playback.position = event.position || 0;
+          playback.lastUpdate = Date.now();
+          this.emit('playback_update', playback);
+        }
+        break;
+      }
+
+      case 'play_complete':
+      case 'skip': {
+        // Track ended - remove from active
+        const playback = this.activePlayback.get(sessionId);
+        if (playback) {
+          playback.isPlaying = false;
+          playback.currentTrack = null;
+          playback.lastUpdate = Date.now();
+          this.emit('playback_update', playback);
+          // Keep session but clear track for a bit
+          setTimeout(() => {
+            const current = this.activePlayback.get(sessionId);
+            if (current && !current.currentTrack) {
+              this.activePlayback.delete(sessionId);
+              this.emit('playback_end', { sessionId });
+            }
+          }, 2000);
+        }
+        break;
+      }
+
+      case 'session_end': {
+        this.activePlayback.delete(sessionId);
+        this.emit('playback_end', { sessionId });
+        break;
+      }
+    }
+  }
+
+  /**
+   * Cleanup stale sessions (no update in 5 minutes)
+   */
+  private cleanupStaleSessions(): void {
+    const now = Date.now();
+    const stale: string[] = [];
+
+    for (const [sessionId, playback] of this.activePlayback) {
+      if (now - playback.lastUpdate > this.staleSessionTimeout) {
+        stale.push(sessionId);
+      }
+    }
+
+    for (const sessionId of stale) {
+      this.activePlayback.delete(sessionId);
+      this.emit('playback_end', { sessionId, reason: 'stale' });
+    }
+
+    if (stale.length > 0) {
+      console.log(`[TrackingService] Cleaned up ${stale.length} stale sessions`);
+    }
+  }
+
+  /**
+   * Get all active playback sessions
+   */
+  getActivePlaybackSessions(): ActivePlaybackSession[] {
+    return Array.from(this.activePlayback.values());
+  }
+
+  /**
+   * Get a specific active playback session
+   */
+  getActivePlayback(sessionId: string): ActivePlaybackSession | null {
+    return this.activePlayback.get(sessionId) || null;
+  }
+
+  /**
+   * Update playback position (called from client heartbeat)
+   */
+  updatePlaybackPosition(sessionId: string, position: number, isPlaying?: boolean): void {
+    const playback = this.activePlayback.get(sessionId);
+    if (playback) {
+      playback.position = position;
+      if (isPlaying !== undefined) {
+        playback.isPlaying = isPlaying;
+      }
+      playback.lastUpdate = Date.now();
+      this.emit('playback_update', playback);
+    }
+  }
+
+  /**
+   * Get listen history for the stats page
+   */
+  getListenHistory(limit: number = 50): {
+    trackId: string;
+    trackTitle: string;
+    artistId: string;
+    artistName: string;
+    albumId?: string;
+    albumTitle?: string;
+    artwork?: string;
+    genre: string;
+    duration: number;
+    totalDuration: number;
+    timestamp: number;
+    completed: boolean;
+    skipped: boolean;
+  }[] {
+    const rows = this.db.prepare(`
+      SELECT
+        track_id,
+        track_data,
+        type,
+        position,
+        duration,
+        timestamp
+      FROM tracking_events
+      WHERE type IN ('play_complete', 'skip', 'play_start')
+      AND track_data IS NOT NULL
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `).all(limit) as any[];
+
+    return rows.map(row => {
+      const trackData = JSON.parse(row.track_data || '{}');
+      return {
+        trackId: row.track_id || trackData.id || '',
+        trackTitle: trackData.title || 'Unknown Track',
+        artistId: trackData.artistId || trackData.artist?.toLowerCase().replace(/\s+/g, '-') || '',
+        artistName: trackData.artist || trackData.artists?.[0] || 'Unknown Artist',
+        albumId: trackData.albumId,
+        albumTitle: trackData.album,
+        artwork: trackData.artwork,
+        genre: trackData.genres?.[0] || '',
+        duration: row.position || 0,
+        totalDuration: trackData.duration || row.duration || 0,
+        timestamp: row.timestamp,
+        completed: row.type === 'play_complete',
+        skipped: row.type === 'skip',
+      };
+    });
+  }
+
+  /**
+   * Get the last known playback state from the database
+   * Used for restoring player state on app launch
+   */
+  getLastPlaybackState(): { track: TrackData, position: number } | null {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT track_data, position 
+        FROM tracking_events 
+        WHERE type IN ('play_start', 'play_pause', 'play_resume', 'seek') 
+        AND track_data IS NOT NULL
+        ORDER BY timestamp DESC 
+        LIMIT 1
+      `);
+
+      const result = stmt.get() as { track_data: string, position: number } | undefined;
+
+      if (!result || !result.track_data) return null;
+
+      return {
+        track: JSON.parse(result.track_data),
+        position: result.position || 0
+      };
+    } catch (error) {
+      console.error('[TrackingService] Failed to get last playback state:', error);
+      return null;
+    }
   }
 }

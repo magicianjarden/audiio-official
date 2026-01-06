@@ -136,10 +136,17 @@ export class PluginLoader {
   async loadAllPlugins(): Promise<PluginLoadResult[]> {
     const results: PluginLoadResult[] = [];
 
-    // Discover and load npm plugins
+    // 1. Load bundled plugins first (from packages/server/plugins/)
+    const bundledResults = await this.loadBundledPlugins();
+    results.push(...bundledResults);
+
+    // 2. Load npm plugins (only if not already loaded as bundled)
     const npmPlugins = await this.discoverNpmPlugins();
     for (const manifest of npmPlugins) {
-      // Try to find the package name for this plugin
+      // Skip if already loaded as bundled plugin
+      if (this.loadedPlugins.has(manifest.id)) {
+        continue;
+      }
       const packageName = this.findPackageNameForPlugin(manifest.id);
       if (packageName) {
         const result = await this.loadNpmPlugin(packageName);
@@ -147,9 +154,127 @@ export class PluginLoader {
       }
     }
 
-    // Load user plugins from plugins directory
+    // 3. Load user plugins from plugins directory
     const userResults = await this.loadUserPlugins();
     results.push(...userResults);
+
+    return results;
+  }
+
+  /**
+   * Load bundled plugins from packages/server/plugins/
+   */
+  private async loadBundledPlugins(): Promise<PluginLoadResult[]> {
+    const results: PluginLoadResult[] = [];
+
+    // Find the bundled plugins directory relative to this file
+    const bundledPluginsDir = path.join(__dirname, '..', '..', 'plugins');
+
+    if (!fs.existsSync(bundledPluginsDir)) {
+      console.log('[PluginLoader] Bundled plugins directory not found:', bundledPluginsDir);
+      return results;
+    }
+
+    console.log(`[PluginLoader] Loading bundled plugins from: ${bundledPluginsDir}`);
+
+    try {
+      const entries = fs.readdirSync(bundledPluginsDir);
+
+      for (const entry of entries) {
+        const pluginDir = path.join(bundledPluginsDir, entry);
+        const stat = fs.statSync(pluginDir);
+
+        if (!stat.isDirectory()) continue;
+
+        // Check for package.json
+        const packageJsonPath = path.join(pluginDir, 'package.json');
+        if (!fs.existsSync(packageJsonPath)) {
+          console.log(`[PluginLoader] Skipping ${entry}: no package.json`);
+          continue;
+        }
+
+        try {
+          const pkgJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+          const mainFile = pkgJson.main || 'dist/index.js';
+          const entryPath = path.join(pluginDir, mainFile);
+
+          if (!fs.existsSync(entryPath)) {
+            console.log(`[PluginLoader] Skipping ${entry}: entry point not found at ${mainFile}`);
+            continue;
+          }
+
+          // Load the plugin
+          console.log(`[PluginLoader] Loading bundled plugin: ${pkgJson.name}`);
+
+          // Clear require cache for reloading
+          try {
+            delete require.cache[require.resolve(entryPath)];
+          } catch {
+            // Not cached yet
+          }
+
+          const module = require(entryPath);
+          const moduleKeys = Object.keys(module);
+          const firstKey = moduleKeys[0];
+          const ProviderClass = module.default || (firstKey ? module[firstKey] : undefined);
+
+          if (!ProviderClass || typeof ProviderClass !== 'function') {
+            console.log(`[PluginLoader] Skipping ${entry}: no valid export`);
+            continue;
+          }
+
+          const instance = new ProviderClass() as BaseAddon;
+
+          const manifest: PluginManifest = {
+            id: instance.manifest.id,
+            name: instance.manifest.name,
+            version: instance.manifest.version,
+            description: instance.manifest.description,
+            roles: instance.manifest.roles,
+            capabilities: (instance.manifest as any).capabilities
+          };
+
+          // Register with sandbox and get init options
+          const initOptions = await this.createSandboxContext(manifest);
+
+          // Initialize the plugin with sandbox context
+          if (initOptions && typeof (instance as any).initialize === 'function') {
+            await (instance as any).initialize(initOptions);
+          } else {
+            await instance.initialize();
+          }
+
+          // Register with the addon registry
+          this.registry.register(instance);
+
+          this.loadedPlugins.set(manifest.id, {
+            manifest,
+            instance,
+            source: 'local',
+            packageName: pkgJson.name
+          });
+
+          // Register plugin routes if available
+          this.registerPluginRoutes(manifest.id, instance);
+
+          console.log(`[PluginLoader] Loaded bundled plugin: ${manifest.name} (${manifest.id})`);
+
+          results.push({
+            success: true,
+            pluginId: manifest.id
+          });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.warn(`[PluginLoader] Failed to load bundled plugin ${entry}:`, errorMessage);
+          results.push({
+            success: false,
+            error: errorMessage
+          });
+        }
+      }
+    } catch (error) {
+      console.error('[PluginLoader] Error scanning bundled plugins:', error);
+    }
 
     return results;
   }
@@ -244,26 +369,56 @@ export class PluginLoader {
   }
 
   /**
-   * Load a plugin from a local .audiio-plugin file
+   * Load a plugin from a local directory or .audiio-plugin file
    */
   async loadLocalPlugin(pluginPath: string): Promise<PluginLoadResult> {
     try {
       console.log(`[PluginLoader] Loading local plugin: ${pluginPath}`);
 
-      // Read and parse the plugin manifest
-      const manifestPath = pluginPath.endsWith('.audiio-plugin')
-        ? pluginPath
-        : path.join(pluginPath, 'audiio-plugin.json');
+      let manifest: PluginManifest | null = null;
+      let pluginDir: string;
 
-      if (!fs.existsSync(manifestPath)) {
-        return {
-          success: false,
-          error: 'Plugin manifest not found'
-        };
+      // Check for .audiio-plugin file
+      if (pluginPath.endsWith('.audiio-plugin')) {
+        if (!fs.existsSync(pluginPath)) {
+          return { success: false, error: 'Plugin file not found' };
+        }
+        const manifestContent = fs.readFileSync(pluginPath, 'utf-8');
+        manifest = JSON.parse(manifestContent);
+        pluginDir = path.dirname(pluginPath);
+      } else {
+        pluginDir = pluginPath;
+
+        // Try audiio-plugin.json first
+        const audiioManifestPath = path.join(pluginDir, 'audiio-plugin.json');
+        if (fs.existsSync(audiioManifestPath)) {
+          const manifestContent = fs.readFileSync(audiioManifestPath, 'utf-8');
+          manifest = JSON.parse(manifestContent);
+        } else {
+          // Fall back to package.json with audiio metadata
+          const pkgJsonPath = path.join(pluginDir, 'package.json');
+          if (fs.existsSync(pkgJsonPath)) {
+            const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
+            const audiioMeta = pkgJson.audiio || {};
+
+            if (audiioMeta.id || pkgJson.name) {
+              manifest = {
+                id: audiioMeta.id || pkgJson.name?.replace('@audiio/plugin-', ''),
+                name: audiioMeta.name || pkgJson.name,
+                version: pkgJson.version || '1.0.0',
+                description: pkgJson.description,
+                roles: audiioMeta.roles || [],
+                main: pkgJson.main || './dist/index.js',
+                author: pkgJson.author,
+              };
+            }
+          }
+        }
       }
 
-      const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
-      const manifest: PluginManifest = JSON.parse(manifestContent);
+      if (!manifest) {
+        return { success: false, error: 'Plugin manifest not found' };
+      }
 
       if (!manifest.id || !manifest.name) {
         return {
@@ -274,6 +429,7 @@ export class PluginLoader {
 
       // Check if already loaded
       if (this.loadedPlugins.has(manifest.id)) {
+        console.log(`[PluginLoader] Plugin ${manifest.id} already loaded, skipping`);
         return {
           success: true,
           pluginId: manifest.id
@@ -281,58 +437,64 @@ export class PluginLoader {
       }
 
       // For local plugins, try to load from the main entry point
-      if (manifest.main) {
-        const pluginDir = path.dirname(manifestPath);
-        const entryPath = path.join(pluginDir, manifest.main);
+      const mainEntry = manifest.main || './dist/index.js';
+      const entryPath = path.join(pluginDir, mainEntry);
 
-        // Use require for CommonJS plugins to ensure module resolution hooks work
-        // Clear cache first to allow reloading
-        try {
-          delete require.cache[require.resolve(entryPath)];
-        } catch {
-          // Module not in cache yet, that's fine
-        }
-        const module = require(entryPath);
-        const localModuleKeys = Object.keys(module);
-        const localFirstKey = localModuleKeys[0];
-        const ProviderClass = module.default || (localFirstKey ? module[localFirstKey] : undefined);
-
-        if (ProviderClass && typeof ProviderClass === 'function') {
-          const instance = new ProviderClass() as BaseAddon;
-
-          // Register with sandbox and get init options
-          const initOptions = await this.createSandboxContext(manifest);
-
-          // Initialize the plugin with sandbox context
-          if (initOptions && typeof (instance as any).initialize === 'function') {
-            await (instance as any).initialize(initOptions);
-          } else {
-            await instance.initialize();
-          }
-
-          this.registry.register(instance);
-
-          this.loadedPlugins.set(manifest.id, {
-            manifest,
-            instance,
-            source: 'local'
-          });
-
-          // Register plugin routes if available
-          this.registerPluginRoutes(manifest.id, instance);
-
-          console.log(`[PluginLoader] Loaded local plugin: ${manifest.name}`);
-
-          return {
-            success: true,
-            pluginId: manifest.id
-          };
-        }
+      if (!fs.existsSync(entryPath)) {
+        return {
+          success: false,
+          error: `Entry point not found: ${mainEntry}`
+        };
       }
 
+      // Use require for CommonJS plugins to ensure module resolution hooks work
+      // Clear cache first to allow reloading
+      try {
+        delete require.cache[require.resolve(entryPath)];
+      } catch {
+        // Module not in cache yet, that's fine
+      }
+
+      const module = require(entryPath);
+      const moduleKeys = Object.keys(module);
+      const firstKey = moduleKeys[0];
+      const ProviderClass = module.default || (firstKey ? module[firstKey] : undefined);
+
+      if (!ProviderClass || typeof ProviderClass !== 'function') {
+        return {
+          success: false,
+          error: 'No valid export found in plugin'
+        };
+      }
+
+      const instance = new ProviderClass() as BaseAddon;
+
+      // Register with sandbox and get init options
+      const initOptions = await this.createSandboxContext(manifest);
+
+      // Initialize the plugin with sandbox context
+      if (initOptions && typeof (instance as any).initialize === 'function') {
+        await (instance as any).initialize(initOptions);
+      } else {
+        await instance.initialize();
+      }
+
+      this.registry.register(instance);
+
+      this.loadedPlugins.set(manifest.id, {
+        manifest,
+        instance,
+        source: 'local'
+      });
+
+      // Register plugin routes if available
+      this.registerPluginRoutes(manifest.id, instance);
+
+      console.log(`[PluginLoader] Loaded local plugin: ${manifest.name} (${manifest.id})`);
+
       return {
-        success: false,
-        error: 'Could not load plugin entry point'
+        success: true,
+        pluginId: manifest.id
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

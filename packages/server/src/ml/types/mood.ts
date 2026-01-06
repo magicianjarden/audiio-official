@@ -5,10 +5,10 @@
  * tracks to specific listening contexts.
  */
 
-/**
- * Predefined mood categories
- */
-export type MoodType = 'chill' | 'workout' | 'focus' | 'party' | 'sleep' | 'happy' | 'melancholy' | 'energetic';
+import type { MoodType } from '@audiio/core';
+
+// Re-export for backwards compatibility
+export type { MoodType };
 
 /**
  * Range definition for audio features

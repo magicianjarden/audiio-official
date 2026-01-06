@@ -1,7 +1,7 @@
 /**
  * useEmbeddingPlaylist Hook
  *
- * Provides playlist generation using the server's ML API.
+ * Provides playlist generation using the server's ML API via IPC.
  * All ML computation is done server-side - this hook just calls the APIs.
  */
 
@@ -64,56 +64,21 @@ export interface GeneratedPlaylist {
 }
 
 // ============================================================================
-// Server API Configuration
-// ============================================================================
-
-let serverBaseUrl = '';
-
-/**
- * Set the server base URL for API calls
- */
-export function setServerUrl(url: string) {
-  serverBaseUrl = url.replace(/\/$/, '');
-}
-
-/**
- * Get the current server URL
- */
-export function getServerUrl(): string {
-  return serverBaseUrl;
-}
-
-// ============================================================================
-// API Helpers
-// ============================================================================
-
-async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  if (!serverBaseUrl) {
-    throw new Error('Server URL not configured. Call setServerUrl() first.');
-  }
-
-  const response = await fetch(`${serverBaseUrl}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
-  }
-
-  return response.json();
-}
-
-// ============================================================================
 // Track Cache (for converting IDs to full tracks)
 // ============================================================================
 
+const MAX_CACHE_SIZE = 10000;
 const trackCache = new Map<string, UnifiedTrack>();
 
 function cacheTrack(track: UnifiedTrack) {
+  // Enforce max cache size with LRU-like eviction
+  if (trackCache.size >= MAX_CACHE_SIZE && !trackCache.has(track.id)) {
+    // Remove oldest entry (first key in Map)
+    const firstKey = trackCache.keys().next().value;
+    if (firstKey) {
+      trackCache.delete(firstKey);
+    }
+  }
   trackCache.set(track.id, track);
 }
 
@@ -127,6 +92,65 @@ function getTrackFromCache(id: string): UnifiedTrack | undefined {
   return trackCache.get(id);
 }
 
+/**
+ * Clear the track cache - call on server disconnect or memory pressure
+ */
+export function clearTrackCache(): void {
+  trackCache.clear();
+}
+
+/**
+ * Get current cache size
+ */
+export function getTrackCacheSize(): number {
+  return trackCache.size;
+}
+
+// ============================================================================
+// IPC API Helper
+// ============================================================================
+
+/**
+ * Check if window.api is available (running in Electron)
+ */
+function hasIpcApi(): boolean {
+  return typeof window !== 'undefined' && window.api !== undefined;
+}
+
+/**
+ * Safe IPC call with fallback
+ */
+async function safeIpcCall<T>(
+  fn: () => Promise<T>,
+  fallback: T,
+  context: string
+): Promise<T> {
+  if (!hasIpcApi()) {
+    console.warn(`[useEmbeddingPlaylist] IPC not available for ${context}`);
+    return fallback;
+  }
+  try {
+    return await fn();
+  } catch (error) {
+    console.error(`[useEmbeddingPlaylist] ${context} failed:`, error);
+    return fallback;
+  }
+}
+
+// ============================================================================
+// Legacy API Compatibility (deprecated)
+// ============================================================================
+
+/** @deprecated Server URL is now managed by IPC layer. This function is a no-op. */
+export function setServerUrl(_url: string) {
+  // No-op: IPC layer handles server connection
+}
+
+/** @deprecated Server URL is now managed by IPC layer. */
+export function getServerUrl(): string {
+  return '';
+}
+
 // ============================================================================
 // Main Hook
 // ============================================================================
@@ -138,14 +162,14 @@ export function useEmbeddingPlaylist() {
   // Check server readiness on mount
   useEffect(() => {
     async function checkReady() {
-      if (!serverBaseUrl) {
+      if (!hasIpcApi()) {
         setIsReady(false);
         return;
       }
 
       try {
-        const status = await fetchApi<{ initialized: boolean; algorithmLoaded: boolean }>('/api/algo/status');
-        setIsReady(status.initialized && status.algorithmLoaded);
+        const status = await window.api!.algoGetStatus();
+        setIsReady(status?.initialized && status?.algorithmLoaded);
       } catch {
         setIsReady(false);
       }
@@ -172,27 +196,26 @@ export function useEmbeddingPlaylist() {
   ) => {
     cacheTrack(track);
 
-    try {
-      await fetchApi('/api/algo/event', {
-        method: 'POST',
-        body: JSON.stringify({
-          type: 'listen',
-          track: {
-            id: track.id,
-            title: track.title,
-            artist: track.artists?.[0]?.name || 'Unknown',
-            artistId: track.artists?.[0]?.id,
-            duration: track.duration,
-            genres: track.genres,
-          },
-          duration,
-          completion: duration / (track.duration || duration),
-          completed,
-        }),
-      });
-    } catch (error) {
-      console.error('[useEmbeddingPlaylist] Failed to record play:', error);
-    }
+    if (!hasIpcApi()) return;
+
+    await safeIpcCall(
+      () => window.api!.algoRecordEvent({
+        type: 'listen',
+        track: {
+          id: track.id,
+          title: track.title,
+          artist: track.artists?.[0]?.name || 'Unknown',
+          artistId: track.artists?.[0]?.id,
+          duration: track.duration,
+          genres: track.genres,
+        },
+        duration,
+        completion: duration / (track.duration || duration),
+        completed,
+      }),
+      undefined,
+      'recordPlay'
+    );
   }, []);
 
   /**
@@ -201,25 +224,24 @@ export function useEmbeddingPlaylist() {
   const recordLike = useCallback(async (track: UnifiedTrack) => {
     cacheTrack(track);
 
-    try {
-      await fetchApi('/api/algo/event', {
-        method: 'POST',
-        body: JSON.stringify({
-          type: 'like',
-          track: {
-            id: track.id,
-            title: track.title,
-            artist: track.artists?.[0]?.name || 'Unknown',
-            artistId: track.artists?.[0]?.id,
-            duration: track.duration,
-            genres: track.genres,
-          },
-          strength: 1,
-        }),
-      });
-    } catch (error) {
-      console.error('[useEmbeddingPlaylist] Failed to record like:', error);
-    }
+    if (!hasIpcApi()) return;
+
+    await safeIpcCall(
+      () => window.api!.algoRecordEvent({
+        type: 'like',
+        track: {
+          id: track.id,
+          title: track.title,
+          artist: track.artists?.[0]?.name || 'Unknown',
+          artistId: track.artists?.[0]?.id,
+          duration: track.duration,
+          genres: track.genres,
+        },
+        strength: 1,
+      }),
+      undefined,
+      'recordLike'
+    );
   }, []);
 
   /**
@@ -236,26 +258,25 @@ export function useEmbeddingPlaylist() {
     mood: string,
     options: EmbeddingPlaylistOptions = {}
   ): Promise<GeneratedPlaylist | null> => {
-    if (!isReady) return null;
+    if (!isReady || !hasIpcApi()) return null;
 
-    try {
-      const result = await fetchApi<{ tracks: string[] }>(
-        `/api/algo/radio/mood/${encodeURIComponent(mood)}?count=${options.limit || 20}`
-      );
+    const result = await safeIpcCall(
+      () => window.api!.algoGetMoodRadio(mood, options.limit || 20),
+      { tracks: [] },
+      'generateMoodPlaylist'
+    );
 
-      return {
-        tracks: result.tracks.map(id => ({
-          trackId: id,
-          score: 1,
-          method: 'mood',
-        })),
-        method: `mood:${mood}`,
-        generatedAt: Date.now(),
-      };
-    } catch (error) {
-      console.error('[useEmbeddingPlaylist] Failed to generate mood playlist:', error);
-      return null;
-    }
+    if (!result.tracks?.length) return null;
+
+    return {
+      tracks: result.tracks.map((id: string) => ({
+        trackId: id,
+        score: 1,
+        method: 'mood',
+      })),
+      method: `mood:${mood}`,
+      generatedAt: Date.now(),
+    };
   }, [isReady]);
 
   /**
@@ -265,26 +286,25 @@ export function useEmbeddingPlaylist() {
     genre: string,
     options: EmbeddingPlaylistOptions = {}
   ): Promise<GeneratedPlaylist | null> => {
-    if (!isReady) return null;
+    if (!isReady || !hasIpcApi()) return null;
 
-    try {
-      const result = await fetchApi<{ tracks: string[] }>(
-        `/api/algo/radio/genre/${encodeURIComponent(genre)}?count=${options.limit || 20}`
-      );
+    const result = await safeIpcCall(
+      () => window.api!.algoGetGenreRadio(genre, options.limit || 20),
+      { tracks: [] },
+      'generateGenrePlaylist'
+    );
 
-      return {
-        tracks: result.tracks.map(id => ({
-          trackId: id,
-          score: 1,
-          method: 'genre',
-        })),
-        method: `genre:${genre}`,
-        generatedAt: Date.now(),
-      };
-    } catch (error) {
-      console.error('[useEmbeddingPlaylist] Failed to generate genre playlist:', error);
-      return null;
-    }
+    if (!result.tracks?.length) return null;
+
+    return {
+      tracks: result.tracks.map((id: string) => ({
+        trackId: id,
+        score: 1,
+        method: 'genre',
+      })),
+      method: `genre:${genre}`,
+      generatedAt: Date.now(),
+    };
   }, [isReady]);
 
   /**
@@ -294,27 +314,25 @@ export function useEmbeddingPlaylist() {
     seedTrackIds: string[],
     options: EmbeddingPlaylistOptions = {}
   ): Promise<GeneratedPlaylist | null> => {
-    if (!isReady || seedTrackIds.length === 0) return null;
+    if (!isReady || !hasIpcApi() || seedTrackIds.length === 0) return null;
 
-    try {
-      // Use the first seed track for radio generation
-      const result = await fetchApi<{ tracks: string[] }>(
-        `/api/algo/radio/track/${seedTrackIds[0]}?count=${options.limit || 20}`
-      );
+    const result = await safeIpcCall(
+      () => window.api!.algoGetRadio(seedTrackIds[0], options.limit || 20),
+      { tracks: [] },
+      'generateSeedPlaylist'
+    );
 
-      return {
-        tracks: result.tracks.map(id => ({
-          trackId: id,
-          score: 1,
-          method: 'seed',
-        })),
-        method: 'seed-playlist',
-        generatedAt: Date.now(),
-      };
-    } catch (error) {
-      console.error('[useEmbeddingPlaylist] Failed to generate seed playlist:', error);
-      return null;
-    }
+    if (!result.tracks?.length) return null;
+
+    return {
+      tracks: result.tracks.map((id: string) => ({
+        trackId: id,
+        score: 1,
+        method: 'seed',
+      })),
+      method: 'seed-playlist',
+      generatedAt: Date.now(),
+    };
   }, [isReady]);
 
   /**
@@ -323,26 +341,25 @@ export function useEmbeddingPlaylist() {
   const generatePersonalizedPlaylist = useCallback(async (
     options: EmbeddingPlaylistOptions = {}
   ): Promise<GeneratedPlaylist | null> => {
-    if (!isReady) return null;
+    if (!isReady || !hasIpcApi()) return null;
 
-    try {
-      const result = await fetchApi<{ recommendations: string[] }>(
-        `/api/algo/recommendations?count=${options.limit || 20}`
-      );
+    const result = await safeIpcCall(
+      () => window.api!.algoGetRecommendations(options.limit || 20),
+      { recommendations: [] },
+      'generatePersonalizedPlaylist'
+    );
 
-      return {
-        tracks: result.recommendations.map(id => ({
-          trackId: id,
-          score: 1,
-          method: 'personalized',
-        })),
+    if (!result.recommendations?.length) return null;
+
+    return {
+      tracks: result.recommendations.map((id: string) => ({
+        trackId: id,
+        score: 1,
         method: 'personalized',
-        generatedAt: Date.now(),
-      };
-    } catch (error) {
-      console.error('[useEmbeddingPlaylist] Failed to generate personalized playlist:', error);
-      return null;
-    }
+      })),
+      method: 'personalized',
+      generatedAt: Date.now(),
+    };
   }, [isReady]);
 
   /**
@@ -352,26 +369,25 @@ export function useEmbeddingPlaylist() {
     artistId: string,
     options: EmbeddingPlaylistOptions = {}
   ): Promise<GeneratedPlaylist | null> => {
-    if (!isReady) return null;
+    if (!isReady || !hasIpcApi()) return null;
 
-    try {
-      const result = await fetchApi<{ tracks: string[] }>(
-        `/api/algo/radio/artist/${encodeURIComponent(artistId)}?count=${options.limit || 20}`
-      );
+    const result = await safeIpcCall(
+      () => window.api!.algoGetArtistRadio(artistId, options.limit || 20),
+      { tracks: [] },
+      'generateArtistRadio'
+    );
 
-      return {
-        tracks: result.tracks.map(id => ({
-          trackId: id,
-          score: 1,
-          method: 'artist-radio',
-        })),
-        method: `artist-radio:${artistId}`,
-        generatedAt: Date.now(),
-      };
-    } catch (error) {
-      console.error('[useEmbeddingPlaylist] Failed to generate artist radio:', error);
-      return null;
-    }
+    if (!result.tracks?.length) return null;
+
+    return {
+      tracks: result.tracks.map((id: string) => ({
+        trackId: id,
+        score: 1,
+        method: 'artist-radio',
+      })),
+      method: `artist-radio:${artistId}`,
+      generatedAt: Date.now(),
+    };
   }, [isReady]);
 
   /**
@@ -380,27 +396,25 @@ export function useEmbeddingPlaylist() {
   const generateDiscoveryPlaylist = useCallback(async (
     options: EmbeddingPlaylistOptions = {}
   ): Promise<GeneratedPlaylist | null> => {
-    if (!isReady) return null;
+    if (!isReady || !hasIpcApi()) return null;
 
-    try {
-      // Use recommendations endpoint - discovery uses same backend
-      const result = await fetchApi<{ recommendations: string[] }>(
-        `/api/algo/recommendations?count=${options.limit || 20}&mode=discovery`
-      );
+    const result = await safeIpcCall(
+      () => window.api!.algoGetRecommendations(options.limit || 20, 'discovery'),
+      { recommendations: [] },
+      'generateDiscoveryPlaylist'
+    );
 
-      return {
-        tracks: result.recommendations.map(id => ({
-          trackId: id,
-          score: 1,
-          method: 'discovery',
-        })),
+    if (!result.recommendations?.length) return null;
+
+    return {
+      tracks: result.recommendations.map((id: string) => ({
+        trackId: id,
+        score: 1,
         method: 'discovery',
-        generatedAt: Date.now(),
-      };
-    } catch (error) {
-      console.error('[useEmbeddingPlaylist] Failed to generate discovery playlist:', error);
-      return null;
-    }
+      })),
+      method: 'discovery',
+      generatedAt: Date.now(),
+    };
   }, [isReady]);
 
   /**
@@ -410,22 +424,21 @@ export function useEmbeddingPlaylist() {
     trackId: string,
     limit = 20
   ): Promise<PlaylistTrack[]> => {
-    if (!isReady) return [];
+    if (!isReady || !hasIpcApi()) return [];
 
-    try {
-      const result = await fetchApi<{ tracks: string[] }>(
-        `/api/algo/similar/${trackId}?count=${limit}`
-      );
+    const result = await safeIpcCall(
+      () => window.api!.algoGetSimilar(trackId, limit),
+      { tracks: [] },
+      'findSimilarTracks'
+    );
 
-      return result.tracks.map(id => ({
-        trackId: id,
-        score: 1,
-        method: 'similar',
-      }));
-    } catch (error) {
-      console.error('[useEmbeddingPlaylist] Failed to find similar tracks:', error);
-      return [];
-    }
+    if (!result.tracks?.length) return [];
+
+    return result.tracks.map((id: string) => ({
+      trackId: id,
+      score: 1,
+      method: 'similar',
+    }));
   }, [isReady]);
 
   /**
@@ -455,24 +468,7 @@ export function useEmbeddingPlaylist() {
    * Get taste profile stats from server
    */
   const getTasteStats = useCallback(async () => {
-    try {
-      const profile = await fetchApi<{
-        artistPreferences: Record<string, number>;
-        genrePreferences: Record<string, number>;
-        topArtists: string[];
-        topGenres: string[];
-        totalListenTime: number;
-        trackCount: number;
-      }>('/api/algo/profile');
-
-      return {
-        isValid: true,
-        interactionCount: profile.trackCount,
-        topGenres: profile.topGenres.slice(0, 5),
-        topArtists: profile.topArtists.slice(0, 5),
-        totalListenTime: profile.totalListenTime,
-      };
-    } catch {
+    if (!hasIpcApi()) {
       return {
         isValid: false,
         interactionCount: 0,
@@ -480,6 +476,29 @@ export function useEmbeddingPlaylist() {
         topArtists: [],
       };
     }
+
+    const profile = await safeIpcCall(
+      () => window.api!.algoGetProfile(),
+      null,
+      'getTasteStats'
+    );
+
+    if (!profile) {
+      return {
+        isValid: false,
+        interactionCount: 0,
+        topGenres: [],
+        topArtists: [],
+      };
+    }
+
+    return {
+      isValid: true,
+      interactionCount: profile.trackCount || 0,
+      topGenres: (profile.topGenres || []).slice(0, 5),
+      topArtists: (profile.topArtists || []).slice(0, 5),
+      totalListenTime: profile.totalListenTime,
+    };
   }, []);
 
   /**
@@ -518,6 +537,9 @@ export function useEmbeddingPlaylist() {
     getTracksFromPlaylist,
     getTasteStats,
     getIndexStats,
+
+    // Cache management
+    clearCache: clearTrackCache,
   };
 }
 
@@ -661,7 +683,7 @@ export function getIndexedTrackCount(): number {
  * Check if embedding system is ready
  */
 export function isEmbeddingReady(): boolean {
-  return serverBaseUrl !== '' && trackCache.size > 0;
+  return hasIpcApi() && trackCache.size > 0;
 }
 
 /**
@@ -671,7 +693,7 @@ export function indexTracksStandalone(tracks: UnifiedTrack[]): number {
   let newlyIndexed = 0;
   for (const track of tracks) {
     if (!trackCache.has(track.id)) {
-      trackCache.set(track.id, track);
+      cacheTrack(track);
       newlyIndexed++;
     }
   }
@@ -693,40 +715,47 @@ export async function generateEmbeddingPlaylist(
     excludeTrackIds?: string[];
   } = {}
 ): Promise<UnifiedTrack[]> {
-  if (!serverBaseUrl) {
-    console.warn('[generateEmbeddingPlaylist] Server URL not configured');
+  if (!hasIpcApi()) {
+    console.warn('[generateEmbeddingPlaylist] IPC not available');
     return [];
   }
 
   try {
-    let endpoint = '';
     const limit = options.limit || 20;
+    let trackIds: string[] = [];
 
     switch (method) {
       case 'personalized':
-      case 'discovery':
-        endpoint = `/api/algo/recommendations?count=${limit}`;
+      case 'discovery': {
+        const result = await window.api!.algoGetRecommendations(limit, method === 'discovery' ? 'discovery' : undefined);
+        trackIds = result.recommendations || [];
         break;
-      case 'mood':
+      }
+      case 'mood': {
         if (!options.mood) return [];
-        endpoint = `/api/algo/radio/mood/${encodeURIComponent(options.mood)}?count=${limit}`;
+        const result = await window.api!.algoGetMoodRadio(options.mood, limit);
+        trackIds = result.tracks || [];
         break;
-      case 'genre':
+      }
+      case 'genre': {
         if (!options.genre) return [];
-        endpoint = `/api/algo/radio/genre/${encodeURIComponent(options.genre)}?count=${limit}`;
+        const result = await window.api!.algoGetGenreRadio(options.genre, limit);
+        trackIds = result.tracks || [];
         break;
-      case 'artist-radio':
+      }
+      case 'artist-radio': {
         if (!options.artistId) return [];
-        endpoint = `/api/algo/radio/artist/${encodeURIComponent(options.artistId)}?count=${limit}`;
+        const result = await window.api!.algoGetArtistRadio(options.artistId, limit);
+        trackIds = result.tracks || [];
         break;
-      case 'similar':
+      }
+      case 'similar': {
         if (!options.seedTrackIds?.length) return [];
-        endpoint = `/api/algo/radio/track/${options.seedTrackIds[0]}?count=${limit}`;
+        const result = await window.api!.algoGetRadio(options.seedTrackIds[0], limit);
+        trackIds = result.tracks || [];
         break;
+      }
     }
-
-    const result = await fetchApi<{ tracks?: string[]; recommendations?: string[] }>(endpoint);
-    const trackIds = result.tracks || result.recommendations || [];
 
     // Convert IDs to tracks from cache
     return trackIds

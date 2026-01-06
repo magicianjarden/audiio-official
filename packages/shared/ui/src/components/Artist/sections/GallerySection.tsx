@@ -154,62 +154,64 @@ export const GallerySection: React.FC<GallerySectionProps> = ({ gallery }) => {
           aria-modal="true"
           aria-label="Image viewer"
         >
-          {/* Close button */}
-          <button
-            className="gallery-lightbox-close"
-            onClick={handleClose}
-            aria-label="Close lightbox"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-            </svg>
-          </button>
-
-          {/* Image counter */}
-          <div className="gallery-lightbox-counter">
-            {lightboxIndex! + 1} / {displayedImages.length}
-          </div>
-
-          {/* Previous button */}
-          <button
-            className={`gallery-lightbox-nav gallery-lightbox-prev ${!canGoPrev ? 'disabled' : ''}`}
-            onClick={(e) => { e.stopPropagation(); handlePrev(); }}
-            disabled={!canGoPrev}
-            aria-label="Previous image"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
-            </svg>
-          </button>
-
-          {/* Image container */}
           <div className="gallery-lightbox-image-container">
+            {/* Image counter */}
+            <div className="gallery-lightbox-counter">
+              {lightboxIndex! + 1} / {displayedImages.length}
+            </div>
+
+            {/* Close button */}
+            <button
+              className="gallery-lightbox-close"
+              onClick={handleClose}
+              aria-label="Close lightbox"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+              </svg>
+            </button>
+
+            {/* Previous button */}
+            <button
+              className={`gallery-lightbox-nav gallery-lightbox-prev ${!canGoPrev ? 'disabled' : ''}`}
+              onClick={(e) => { e.stopPropagation(); handlePrev(); }}
+              disabled={!canGoPrev}
+              aria-label="Previous image"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+              </svg>
+            </button>
+
+            {/* Image */}
             <img
               src={currentImage.url}
               alt={`Gallery image ${lightboxIndex! + 1}`}
               className="gallery-lightbox-image"
             />
+
+            {/* Next button */}
+            <button
+              className={`gallery-lightbox-nav gallery-lightbox-next ${!canGoNext ? 'disabled' : ''}`}
+              onClick={(e) => { e.stopPropagation(); handleNext(); }}
+              disabled={!canGoNext}
+              aria-label="Next image"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+              </svg>
+            </button>
+
+            {/* Likes info */}
             {currentImage.likes !== undefined && currentImage.likes > 0 && (
               <div className="gallery-lightbox-info">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
                 </svg>
                 <span>{currentImage.likes} likes</span>
               </div>
             )}
           </div>
-
-          {/* Next button */}
-          <button
-            className={`gallery-lightbox-nav gallery-lightbox-next ${!canGoNext ? 'disabled' : ''}`}
-            onClick={(e) => { e.stopPropagation(); handleNext(); }}
-            disabled={!canGoNext}
-            aria-label="Next image"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
-            </svg>
-          </button>
         </div>
       )}
     </div>

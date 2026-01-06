@@ -11,7 +11,20 @@ import type {
   Scrobbler,
   Tool,
   ArtistEnrichmentProvider,
-  ArtistEnrichmentType
+  ArtistEnrichmentType,
+  SearchProvider,
+  SearchResultType,
+  // Library management providers
+  MetadataEnricher,
+  ArtworkProvider,
+  FingerprintProvider,
+  ISRCResolver,
+  AnalyticsProvider,
+  SmartPlaylistRulesProvider,
+  DuplicateDetector,
+  ImportProvider,
+  ExportProvider,
+  LibraryHook
 } from '../types/addon';
 
 interface RegisteredAddon {
@@ -31,6 +44,8 @@ export class AddonRegistry {
   register(addon: BaseAddon): void {
     const { id, roles } = addon.manifest;
 
+    console.log(`[Registry] Registering addon: ${id} with roles:`, roles);
+
     if (this.addons.has(id)) {
       throw new Error(`Addon "${id}" is already registered`);
     }
@@ -43,6 +58,7 @@ export class AddonRegistry {
         this.roleIndex.set(role, new Set());
       }
       this.roleIndex.get(role)!.add(id);
+      console.log(`[Registry] Indexed ${id} under role: ${role}`);
     }
   }
 
@@ -265,9 +281,16 @@ export class AddonRegistry {
    * Get available enrichment types from registered providers
    */
   getAvailableEnrichmentTypes(): ArtistEnrichmentType[] {
+    // Debug: log what's in the roleIndex
+    const artistEnrichmentIds = this.roleIndex.get('artist-enrichment');
+    console.log('[Registry] artist-enrichment roleIndex:', artistEnrichmentIds ? Array.from(artistEnrichmentIds) : 'none');
+
     const providers = this.getArtistEnrichmentProviders();
+    console.log('[Registry] getArtistEnrichmentProviders returned:', providers.length, 'providers');
+
     const types = new Set<ArtistEnrichmentType>();
     for (const provider of providers) {
+      console.log('[Registry] Provider:', provider.id, 'enrichmentType:', provider.enrichmentType);
       types.add(provider.enrichmentType);
     }
     return Array.from(types);
@@ -345,5 +368,242 @@ export class AddonRegistry {
         priority: registered.userPriority ?? (registered.addon as MetadataProvider).priority,
       };
     });
+  }
+
+  // ============================================
+  // Library Management Provider Getters
+  // ============================================
+
+  /**
+   * Get all metadata enrichers sorted by priority
+   */
+  getMetadataEnrichers(): MetadataEnricher[] {
+    const ids = this.roleIndex.get('metadata-enricher') || new Set();
+    return Array.from(ids)
+      .map(id => this.addons.get(id))
+      .filter((r): r is RegisteredAddon => r !== undefined && r.enabled)
+      .sort((a, b) => this.getEffectivePriority(b) - this.getEffectivePriority(a))
+      .map(r => r.addon as MetadataEnricher);
+  }
+
+  /**
+   * Get all artwork providers sorted by priority
+   */
+  getArtworkProviders(): ArtworkProvider[] {
+    const ids = this.roleIndex.get('artwork-provider') || new Set();
+    return Array.from(ids)
+      .map(id => this.addons.get(id))
+      .filter((r): r is RegisteredAddon => r !== undefined && r.enabled)
+      .sort((a, b) => this.getEffectivePriority(b) - this.getEffectivePriority(a))
+      .map(r => r.addon as ArtworkProvider);
+  }
+
+  /**
+   * Get all fingerprint providers
+   */
+  getFingerprintProviders(): FingerprintProvider[] {
+    const ids = this.roleIndex.get('fingerprint-provider') || new Set();
+    return Array.from(ids)
+      .map(id => this.addons.get(id))
+      .filter((r): r is RegisteredAddon => r !== undefined && r.enabled)
+      .map(r => r.addon as FingerprintProvider);
+  }
+
+  /**
+   * Get primary fingerprint provider (first available)
+   */
+  getFingerprintProvider(): FingerprintProvider | null {
+    const providers = this.getFingerprintProviders();
+    return providers[0] ?? null;
+  }
+
+  /**
+   * Get all ISRC resolvers sorted by priority
+   */
+  getISRCResolvers(): ISRCResolver[] {
+    const ids = this.roleIndex.get('isrc-resolver') || new Set();
+    return Array.from(ids)
+      .map(id => this.addons.get(id))
+      .filter((r): r is RegisteredAddon => r !== undefined && r.enabled)
+      .sort((a, b) => this.getEffectivePriority(b) - this.getEffectivePriority(a))
+      .map(r => r.addon as ISRCResolver);
+  }
+
+  /**
+   * Get all analytics providers
+   */
+  getAnalyticsProviders(): AnalyticsProvider[] {
+    const ids = this.roleIndex.get('analytics-provider') || new Set();
+    return Array.from(ids)
+      .map(id => this.addons.get(id))
+      .filter((r): r is RegisteredAddon => r !== undefined && r.enabled)
+      .map(r => r.addon as AnalyticsProvider);
+  }
+
+  /**
+   * Get all smart playlist rule providers
+   */
+  getSmartPlaylistRulesProviders(): SmartPlaylistRulesProvider[] {
+    const ids = this.roleIndex.get('smart-playlist-rules') || new Set();
+    return Array.from(ids)
+      .map(id => this.addons.get(id))
+      .filter((r): r is RegisteredAddon => r !== undefined && r.enabled)
+      .map(r => r.addon as SmartPlaylistRulesProvider);
+  }
+
+  /**
+   * Get all duplicate detectors
+   */
+  getDuplicateDetectors(): DuplicateDetector[] {
+    const ids = this.roleIndex.get('duplicate-detector') || new Set();
+    return Array.from(ids)
+      .map(id => this.addons.get(id))
+      .filter((r): r is RegisteredAddon => r !== undefined && r.enabled)
+      .map(r => r.addon as DuplicateDetector);
+  }
+
+  /**
+   * Get primary duplicate detector
+   */
+  getDuplicateDetector(): DuplicateDetector | null {
+    const detectors = this.getDuplicateDetectors();
+    return detectors[0] ?? null;
+  }
+
+  /**
+   * Get all import providers
+   */
+  getImportProviders(): ImportProvider[] {
+    const ids = this.roleIndex.get('import-provider') || new Set();
+    return Array.from(ids)
+      .map(id => this.addons.get(id))
+      .filter((r): r is RegisteredAddon => r !== undefined && r.enabled)
+      .map(r => r.addon as ImportProvider);
+  }
+
+  /**
+   * Get import providers by source type
+   */
+  getImportProvidersByType(type: 'file' | 'url' | 'service'): ImportProvider[] {
+    return this.getImportProviders().filter(p => p.source.type === type);
+  }
+
+  /**
+   * Get import provider by ID
+   */
+  getImportProvider(id: string): ImportProvider | null {
+    const provider = this.get<ImportProvider>(id);
+    if (provider && provider.manifest.roles.includes('import-provider')) {
+      return provider;
+    }
+    return null;
+  }
+
+  /**
+   * Get all export providers
+   */
+  getExportProviders(): ExportProvider[] {
+    const ids = this.roleIndex.get('export-provider') || new Set();
+    return Array.from(ids)
+      .map(id => this.addons.get(id))
+      .filter((r): r is RegisteredAddon => r !== undefined && r.enabled)
+      .map(r => r.addon as ExportProvider);
+  }
+
+  /**
+   * Get export provider by ID
+   */
+  getExportProvider(id: string): ExportProvider | null {
+    const provider = this.get<ExportProvider>(id);
+    if (provider && provider.manifest.roles.includes('export-provider')) {
+      return provider;
+    }
+    return null;
+  }
+
+  /**
+   * Get all available export formats from all providers
+   */
+  getAvailableExportFormats(): Array<{ providerId: string; format: string; extension: string }> {
+    const formats: Array<{ providerId: string; format: string; extension: string }> = [];
+    for (const provider of this.getExportProviders()) {
+      for (const format of provider.formats) {
+        formats.push({
+          providerId: provider.id,
+          format: format.id,
+          extension: format.extension
+        });
+      }
+    }
+    return formats;
+  }
+
+  /**
+   * Get all library hooks
+   */
+  getLibraryHooks(): LibraryHook[] {
+    const ids = this.roleIndex.get('library-hook') || new Set();
+    return Array.from(ids)
+      .map(id => this.addons.get(id))
+      .filter((r): r is RegisteredAddon => r !== undefined && r.enabled)
+      .map(r => r.addon as LibraryHook);
+  }
+
+  /**
+   * Get library hooks subscribed to a specific event
+   */
+  getLibraryHooksForEvent(eventType: string): LibraryHook[] {
+    return this.getLibraryHooks().filter(h =>
+      h.subscribedEvents.includes(eventType as any)
+    );
+  }
+
+  // ============================================
+  // Search Provider Getters
+  // ============================================
+
+  /**
+   * Get all search providers
+   */
+  getSearchProviders(): SearchProvider[] {
+    const ids = this.roleIndex.get('search-provider') || new Set();
+    return Array.from(ids)
+      .map(id => this.addons.get(id))
+      .filter((r): r is RegisteredAddon => r !== undefined && r.enabled)
+      .map(r => r.addon as SearchProvider);
+  }
+
+  /**
+   * Get search providers that support a specific result type
+   */
+  getSearchProvidersByType(type: SearchResultType): SearchProvider[] {
+    return this.getSearchProviders().filter(p =>
+      p.supportedSearchTypes.includes(type)
+    );
+  }
+
+  /**
+   * Get search provider by ID
+   */
+  getSearchProvider(id: string): SearchProvider | null {
+    const provider = this.get<SearchProvider>(id);
+    if (provider && provider.manifest.roles.includes('search-provider')) {
+      return provider;
+    }
+    return null;
+  }
+
+  /**
+   * Get all available search result types from registered providers
+   */
+  getAvailableSearchTypes(): SearchResultType[] {
+    const providers = this.getSearchProviders();
+    const types = new Set<SearchResultType>();
+    for (const provider of providers) {
+      for (const type of provider.supportedSearchTypes) {
+        types.add(type);
+      }
+    }
+    return Array.from(types);
   }
 }

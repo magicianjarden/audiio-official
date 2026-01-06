@@ -1,22 +1,45 @@
 /**
  * Plugin Audio Feature Provider
  *
- * Example implementation showing how plugins can contribute audio features
- * to the recommendation system. Plugins can register as feature providers
- * to supply BPM, key, energy, and other audio analysis data.
- *
- * Usage by plugins:
- * 1. Implement the PluginFeatureProvider interface
- * 2. Call registerFeatureProvider() when plugin initializes
- * 3. Call unregisterFeatureProvider() when plugin is disabled
+ * Plugins can register as feature providers to supply BPM, key, energy,
+ * and other audio analysis data to the recommendation system.
  */
 
-import {
-  registerFeatureProvider,
-  unregisterFeatureProvider,
-  type AudioFeatures,
-  type PluginFeatureProvider
-} from './advanced-scoring';
+import type { AudioFeatures } from '@audiio/core';
+
+// ============================================
+// Types
+// ============================================
+
+export interface PluginFeatureProvider {
+  pluginId: string;
+  priority: number;
+  getAudioFeatures: (trackId: string) => Promise<AudioFeatures | null>;
+  getSimilarTracks?: (trackId: string, limit: number) => Promise<string[]>;
+  getArtistSimilarity?: (artistId1: string, artistId2: string) => Promise<number>;
+}
+
+// ============================================
+// Provider Registry
+// ============================================
+
+const featureProviders: PluginFeatureProvider[] = [];
+
+function registerFeatureProvider(provider: PluginFeatureProvider): void {
+  const existingIndex = featureProviders.findIndex(p => p.pluginId === provider.pluginId);
+  if (existingIndex >= 0) {
+    featureProviders.splice(existingIndex, 1);
+  }
+  featureProviders.push(provider);
+  featureProviders.sort((a, b) => b.priority - a.priority);
+}
+
+function unregisterFeatureProvider(pluginId: string): void {
+  const index = featureProviders.findIndex(p => p.pluginId === pluginId);
+  if (index >= 0) {
+    featureProviders.splice(index, 1);
+  }
+}
 
 // ============================================
 // Plugin Integration Helpers

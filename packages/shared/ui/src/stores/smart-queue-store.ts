@@ -10,19 +10,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
-import type { UnifiedTrack } from '@audiio/core';
+import type { UnifiedTrack, AudioFeatures } from '@audiio/core';
 import { usePlayerStore } from './player-store';
 import { useRecommendationStore } from './recommendation-store';
 import { useLibraryStore } from './library-store';
 import { useSearchStore } from './search-store';
-
-// Audio features type for radio seed
-interface AudioFeatures {
-  bpm?: number;
-  key?: string;
-  energy?: number;
-  valence?: number;
-}
 
 // ============================================
 // Types
@@ -239,7 +231,7 @@ function applyDiversityFilter(
   for (const track of tracks) {
     if (result.length >= limit) break;
 
-    const mainArtist = track.artists[0]?.name?.toLowerCase() || 'unknown';
+    const mainArtist = track.artists?.[0]?.name?.toLowerCase() || 'unknown';
     const artistCount = artistCounts.get(mainArtist) || 0;
 
     if (artistCount < maxPerArtist) {
@@ -304,7 +296,7 @@ function calculateSeedRelevance(track: UnifiedTrack, seed: RadioSeed): number {
     case 'track':
       // Check artist match
       if (seed.artistIds?.some(id =>
-        track.artists.some(a => a.id === id || a.name.toLowerCase() === id.toLowerCase())
+        track.artists?.some(a => a.id === id || a.name.toLowerCase() === id.toLowerCase())
       )) {
         relevance += 30; // Reduced from 40 to leave room for audio features
       }
@@ -318,7 +310,7 @@ function calculateSeedRelevance(track: UnifiedTrack, seed: RadioSeed): number {
 
     case 'artist':
       // Direct artist match = high relevance
-      if (track.artists.some(a =>
+      if (track.artists?.some(a =>
         a.id === seed.id || a.name.toLowerCase() === seed.name.toLowerCase()
       )) {
         relevance += 50; // Reduced from 60
@@ -697,9 +689,9 @@ export const useSmartQueueStore = create<SmartQueueState>()(
         if (availableTracks.length > 0) {
           console.log(`[SmartQueue] Using ${availableTracks.length} available tracks as fallback`);
 
-          // Filter out excluded tracks
+          // Filter out excluded tracks and malformed entries
           let candidates = availableTracks.filter(t =>
-            t?.id && !excludeIds.has(t.id)
+            t?.id && t?.title && !excludeIds.has(t.id)
           );
 
           // Deduplicate by title similarity
@@ -760,7 +752,7 @@ export const useSmartQueueStore = create<SmartQueueState>()(
           const newPlayedTrackIds = [...state.sessionHistory.playedTrackIds, track.id];
           const newPlayedArtistIds = [
             ...state.sessionHistory.playedArtistIds,
-            ...track.artists.map(a => a.id || a.name)
+            ...(track.artists || []).map(a => a.id || a.name)
           ];
 
           // Limit history size
@@ -792,7 +784,7 @@ export const useSmartQueueStore = create<SmartQueueState>()(
         // Radio mode - check seed type
         if (mode === 'radio' && radioSeed) {
           // Check if track is from seed artist
-          if (radioSeed.type === 'artist' && track.artists.some(a =>
+          if (radioSeed.type === 'artist' && track.artists?.some(a =>
             a.id === radioSeed.id || a.name.toLowerCase() === radioSeed.name.toLowerCase()
           )) {
             return {
@@ -845,8 +837,8 @@ export const useSmartQueueStore = create<SmartQueueState>()(
 
         // Check artist match with current track
         if (currentTrack) {
-          const matchingArtist = track.artists.find(a =>
-            currentTrack.artists.some(ca =>
+          const matchingArtist = track.artists?.find(a =>
+            currentTrack.artists?.some(ca =>
               ca.name.toLowerCase() === a.name.toLowerCase() || ca.id === a.id
             )
           );

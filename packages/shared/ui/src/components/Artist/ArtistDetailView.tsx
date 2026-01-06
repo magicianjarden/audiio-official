@@ -5,15 +5,17 @@
  * Now includes adaptive enrichment sections from installed plugins
  */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useNavigationStore } from '../../stores/navigation-store';
 import { usePlayerStore } from '../../stores/player-store';
 import { useArtistStore } from '../../stores/artist-store';
 import { useLibraryStore } from '../../stores/library-store';
 import { useSmartQueueStore, type RadioSeed } from '../../stores/smart-queue-store';
+import { useSearchStore } from '../../stores/search-store';
 import { useTrackContextMenu, useAlbumContextMenu } from '../../contexts/ContextMenuContext';
 import { showSuccessToast } from '../../stores/toast-store';
-import { MusicNoteIcon, PlayIcon, ShuffleIcon, ChevronLeftIcon, RadioIcon } from '@audiio/icons';
+import { FloatingSearch, type SearchAction } from '../Search/FloatingSearch';
+import { MusicNoteIcon, PlayIcon, ShuffleIcon, RadioIcon } from '@audiio/icons';
 import { getColorsForArtwork, getDefaultColors, type ExtractedColors } from '../../utils/color-extraction';
 import { useArtistEnrichment } from '../../hooks/useArtistEnrichment';
 import { CollapsibleSection } from './CollapsibleSection';
@@ -131,13 +133,23 @@ const SimilarArtistCard: React.FC<{
 );
 
 export const ArtistDetailView: React.FC = () => {
-  const { selectedArtistId, selectedArtistData, goBack, openAlbum, openArtist } = useNavigationStore();
+  const { selectedArtistId, selectedArtistData, goBack, openAlbum, openArtist, setSearchQuery, setSearchActive } = useNavigationStore();
   const { play, setQueue, currentTrack, playVideo } = usePlayerStore();
   const { likedTracks } = useLibraryStore();
   const { startRadio } = useSmartQueueStore();
   const { fetchArtist, getArtist, loadingArtistId, error } = useArtistStore();
   const { showContextMenu: showTrackContextMenu } = useTrackContextMenu();
   const { showContextMenu: showAlbumContextMenu } = useAlbumContextMenu();
+  const { search } = useSearchStore();
+
+  // Global search redirect
+  const handleSearch = useCallback((query: string) => {
+    if (query.trim()) {
+      setSearchQuery(query);
+      setSearchActive(true);
+      search(query);
+    }
+  }, [search, setSearchQuery, setSearchActive]);
 
   const [colors, setColors] = useState<ExtractedColors>(getDefaultColors());
   const [activeTab, setActiveTab] = useState<DiscographyTab>('albums');
@@ -189,24 +201,24 @@ export const ArtistDetailView: React.FC = () => {
     );
   }
 
-  const handlePlayAll = () => {
+  const handlePlayAll = useCallback(() => {
     if (artistDetail?.topTracks && artistDetail.topTracks.length > 0) {
       const firstTrack = artistDetail.topTracks[0];
       setQueue(artistDetail.topTracks, 0);
       if (firstTrack) play(firstTrack);
     }
-  };
+  }, [artistDetail?.topTracks, setQueue, play]);
 
-  const handleShufflePlay = () => {
+  const handleShufflePlay = useCallback(() => {
     if (artistDetail?.topTracks && artistDetail.topTracks.length > 0) {
       const shuffled = [...artistDetail.topTracks].sort(() => Math.random() - 0.5);
       const firstTrack = shuffled[0];
       setQueue(shuffled, 0);
       if (firstTrack) play(firstTrack);
     }
-  };
+  }, [artistDetail?.topTracks, setQueue, play]);
 
-  const handleStartRadio = async () => {
+  const handleStartRadio = useCallback(async () => {
     const artistName = artistDetail?.name || selectedArtistData?.name || 'Artist';
     const artistId = artistDetail?.id || selectedArtistId || '';
     const seed: RadioSeed = {
@@ -219,7 +231,38 @@ export const ArtistDetailView: React.FC = () => {
     };
     await startRadio(seed, [...likedTracks, ...(artistDetail?.topTracks || [])]);
     showSuccessToast(`Started ${artistName} Radio`);
-  };
+  }, [artistDetail, selectedArtistData, selectedArtistId, startRadio, likedTracks]);
+
+  // Build actions for FloatingSearch
+  const actions: SearchAction[] = useMemo(() => {
+    const result: SearchAction[] = [];
+    if (artistDetail?.topTracks?.length) {
+      result.push({
+        id: 'play',
+        label: 'Play',
+        icon: <PlayIcon size={14} />,
+        shortcut: 'P',
+        primary: true,
+        onClick: handlePlayAll,
+      });
+      result.push({
+        id: 'shuffle',
+        label: 'Shuffle',
+        icon: <ShuffleIcon size={14} />,
+        shortcut: 'S',
+        primary: true,
+        onClick: handleShufflePlay,
+      });
+    }
+    result.push({
+      id: 'radio',
+      label: 'Radio',
+      icon: <RadioIcon size={14} />,
+      shortcut: 'R',
+      onClick: handleStartRadio,
+    });
+    return result;
+  }, [artistDetail?.topTracks?.length, handlePlayAll, handleShufflePlay, handleStartRadio]);
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     if (artistDetail?.topTracks) {
@@ -291,19 +334,24 @@ export const ArtistDetailView: React.FC = () => {
         '--ambient-vibrant': colors.vibrant
       } as React.CSSProperties}
     >
+      {/* Floating Search Bar with Detail Info */}
+      <FloatingSearch
+        onSearch={handleSearch}
+        onClose={() => {}}
+        isSearchActive={false}
+        actions={actions}
+        detailInfo={{
+          title: artist?.name || 'Artist',
+          subtitle: artistDetail?.genres?.slice(0, 2).join(', '),
+          artwork: artist?.image,
+          onBack: goBack,
+        }}
+      />
+
       {/* ===== SPLIT MAGAZINE HEADER ===== */}
       <div className="artist-header-magazine">
         {/* Ambient Background */}
         <div className="artist-header-ambient" />
-
-        {/* Back Button */}
-        <button
-          className="back-btn-round artist-back-btn-pos"
-          onClick={goBack}
-          aria-label="Go back"
-        >
-          <ChevronLeftIcon size={20} />
-        </button>
 
         {/* Split Content */}
         <div className="artist-header-split">
@@ -386,37 +434,6 @@ export const ArtistDetailView: React.FC = () => {
               )}
             </div>
 
-            {/* Action Buttons */}
-            <div className="artist-actions-magazine">
-              <button
-                className="artist-play-btn-magazine"
-                onClick={handlePlayAll}
-                disabled={!artistDetail?.topTracks?.length}
-                aria-label="Play all tracks"
-              >
-                <PlayIcon size={18} />
-                <span>Play</span>
-              </button>
-
-              <button
-                className="artist-shuffle-btn-magazine"
-                onClick={handleShufflePlay}
-                disabled={!artistDetail?.topTracks?.length}
-                aria-label="Shuffle play"
-              >
-                <ShuffleIcon size={16} />
-                <span>Shuffle</span>
-              </button>
-
-              <button
-                className="artist-radio-btn-magazine"
-                onClick={handleStartRadio}
-                aria-label="Start artist radio"
-              >
-                <RadioIcon size={16} />
-                <span>Radio</span>
-              </button>
-            </div>
           </div>
         </div>
       </div>

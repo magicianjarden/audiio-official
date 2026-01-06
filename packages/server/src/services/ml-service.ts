@@ -65,7 +65,8 @@ export interface LibraryDataProvider {
   getDislikedTrackIds(): string[];
 }
 
-export interface UserProfile {
+/** ML-specific user profile for server-side recommendations */
+export interface MLUserProfile {
   artistPreferences: Record<string, number>;   // artist -> affinity (-100 to 100)
   genrePreferences: Record<string, number>;    // genre -> affinity
   temporalPatterns: {
@@ -240,7 +241,7 @@ class MLService {
   ];
 
   // User profile cache
-  private userProfileCache: UserProfile | null = null;
+  private userProfileCache: MLUserProfile | null = null;
   private profileCacheExpiry = 0;
 
   /**
@@ -273,6 +274,7 @@ class MLService {
 
       // Create storage adapter
       const storagePath = config.storagePath || path.join(paths.data, 'ml-data');
+      console.log('[MLService] Using storage path:', storagePath);
       this.storage = new NodeStorageClass(storagePath);
 
       // Get or create engine
@@ -283,6 +285,33 @@ class MLService {
 
       // Initialize the engine
       await this.engine.initialize();
+
+      // Set up SmartQueue providers
+      const smartQueue = this.engine.getSmartQueue();
+
+      // Library provider - returns all tracks from the library
+      smartQueue.setLibraryProvider(async () => {
+        if (!this.libraryProvider) return [];
+        const tracks = this.libraryProvider.getAllTracks();
+        // Convert to ML Track format
+        return tracks.map(t => convertToMLTrack(t)).filter((t): t is Track => t !== null);
+      });
+
+      // Similar tracks provider - finds similar tracks based on current track
+      smartQueue.setSimilarProvider(async (trackId: string, limit: number) => {
+        try {
+          const similarIds = await this.getSimilarTracks(trackId, limit);
+          // Resolve track IDs to actual track objects
+          const similarTracks = similarIds
+            .map(id => this.libraryProvider?.getTrack(id))
+            .filter((t): t is UnifiedTrack => t !== null);
+          return similarTracks.map(t => convertToMLTrack(t)).filter((t): t is Track => t !== null);
+        } catch {
+          return [];
+        }
+      });
+
+      console.log('[MLService] SmartQueue providers configured');
 
       // Load last training time
       try {
@@ -300,7 +329,49 @@ class MLService {
     } catch (error) {
       this.initializing = false;
       console.error('[MLService] Initialization failed:', error);
-      throw error;
+      // We don't throw here to prevent server crash, but service remains uninitialized
+      // and subsequent calls will fail or return defaults
+    }
+  }
+
+  /**
+   * Verify that storage is working correctly
+   */
+  async verifyStorage(): Promise<{ success: boolean; path: string; error?: string }> {
+    if (!this.storage) {
+      return { success: false, path: 'Not initialized', error: 'Storage not initialized' };
+    }
+
+    try {
+      const testKey = 'storage-test-' + Date.now();
+      const testValue = { timestamp: Date.now(), test: true };
+
+      // Test Write
+      await this.storage.set(testKey, testValue);
+
+      // Test Read
+      const readValue = await this.storage.get<{ timestamp: number; test: boolean }>(testKey);
+
+      if (!readValue || readValue.timestamp !== testValue.timestamp) {
+        return { success: false, path: (this.storage as any).filePath, error: 'Read verification failed' };
+      }
+
+      // Test Delete
+      await this.storage.removeItem(testKey);
+
+      // Confirm Delete
+      const deletedValue = await this.storage.get(testKey);
+      if (deletedValue) {
+        return { success: false, path: (this.storage as any).filePath, error: 'Delete verification failed' };
+      }
+
+      return { success: true, path: (this.storage as any).filePath };
+    } catch (error) {
+      return {
+        success: false,
+        path: (this.storage as any).filePath || 'Unknown',
+        error: String(error)
+      };
     }
   }
 
@@ -602,7 +673,7 @@ class MLService {
   // User Profile
   // ============================================================================
 
-  async getUserProfile(): Promise<UserProfile> {
+  async getUserProfile(): Promise<MLUserProfile> {
     // Return cached if valid
     if (this.userProfileCache && Date.now() < this.profileCacheExpiry) {
       return this.userProfileCache;
@@ -617,7 +688,7 @@ class MLService {
       const preferences = await endpoints.user.getPreferences();
       const stats = await endpoints.user.getStats();
 
-      const profile: UserProfile = {
+      const profile: MLUserProfile = {
         artistPreferences: preferences?.artistPreferences || {},
         genrePreferences: preferences?.genrePreferences || {},
         temporalPatterns: {
@@ -652,7 +723,7 @@ class MLService {
     }
   }
 
-  private getDefaultProfile(): UserProfile {
+  private getDefaultProfile(): MLUserProfile {
     return {
       artistPreferences: {},
       genrePreferences: {},

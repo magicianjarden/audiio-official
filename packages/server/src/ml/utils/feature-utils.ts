@@ -68,7 +68,7 @@ export function normalizeYear(year: number): number {
 // ============================================================================
 
 /**
- * Normalize audio features for ML input
+ * Normalize audio features for ML input (min-max normalization)
  */
 export function normalizeAudioFeatures(
   features: AudioFeatures | undefined
@@ -81,6 +81,45 @@ export function normalizeAudioFeatures(
     acousticness: features?.acousticness ?? 0.5,
     instrumentalness: features?.instrumentalness ?? 0.5,
     loudness: features?.loudness ? normalizeLoudness(features.loudness) : 0.5,
+    duration: 0.5, // Will be set separately if available
+    speechiness: features?.speechiness ?? 0,
+    liveness: features?.liveness ?? 0.3,
+    key: features?.key ? normalizeKey(features.key) : 0,
+    mode: features?.mode === 'major' ? 1 : 0,
+  };
+}
+
+// Typical statistics for z-score normalization (derived from large music datasets)
+const AUDIO_FEATURE_STATS = {
+  bpm: { mean: 120, std: 30 },
+  loudness: { mean: -10, std: 5 },
+  duration: { mean: 210, std: 60 }, // ~3.5 minutes average
+};
+
+/**
+ * Z-score normalize audio features (alternative to min-max)
+ * Better for features with outliers, centers values around 0
+ */
+export function zNormalizeAudioFeatures(
+  features: AudioFeatures | undefined
+): NormalizedAudioFeatures {
+  // Z-score normalize BPM and loudness, clip to reasonable range, then scale to 0-1
+  const zBpm = features?.bpm
+    ? (zNormalize(features.bpm, AUDIO_FEATURE_STATS.bpm.mean, AUDIO_FEATURE_STATS.bpm.std) + 2) / 4
+    : 0.5;
+
+  const zLoudness = features?.loudness
+    ? (zNormalize(features.loudness, AUDIO_FEATURE_STATS.loudness.mean, AUDIO_FEATURE_STATS.loudness.std) + 2) / 4
+    : 0.5;
+
+  return {
+    bpm: Math.max(0, Math.min(1, zBpm)),
+    energy: features?.energy ?? 0.5,
+    valence: features?.valence ?? 0.5,
+    danceability: features?.danceability ?? 0.5,
+    acousticness: features?.acousticness ?? 0.5,
+    instrumentalness: features?.instrumentalness ?? 0.5,
+    loudness: Math.max(0, Math.min(1, zLoudness)),
     duration: 0.5, // Will be set separately if available
     speechiness: features?.speechiness ?? 0,
     liveness: features?.liveness ?? 0.3,
@@ -188,32 +227,7 @@ const PRIMARY_GENRES = [
 ];
 
 /**
- * One-hot encode a genre
- */
-export function encodeGenre(genre: string | undefined): number[] {
-  const encoding = new Array(PRIMARY_GENRES.length).fill(0);
-
-  if (!genre) {
-    encoding[encoding.length - 1] = 1; // 'other'
-    return encoding;
-  }
-
-  const normalizedGenre = genre.toLowerCase();
-  const index = PRIMARY_GENRES.findIndex(g =>
-    normalizedGenre.includes(g) || g.includes(normalizedGenre)
-  );
-
-  if (index >= 0) {
-    encoding[index] = 1;
-  } else {
-    encoding[encoding.length - 1] = 1; // 'other'
-  }
-
-  return encoding;
-}
-
-/**
- * Multi-hot encode multiple genres
+ * Multi-hot encode genres (supports multiple genre tags)
  */
 export function encodeGenres(genres: string[] | undefined): number[] {
   const encoding = new Array(PRIMARY_GENRES.length).fill(0);

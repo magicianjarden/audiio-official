@@ -1,161 +1,126 @@
 # Audiio Documentation
 
-Welcome to the Audiio documentation. Audiio is a modern, privacy-first music streaming platform that runs on your desktop and streams to your mobile devices.
+Audiio is a self-hosted music streaming server with multi-device support. Run your own music server and connect from desktop, mobile, or web.
+
+> **Note:** This project is under active development. Documentation is being updated to reflect the new server-first architecture.
+
+## Architecture Overview
+
+Audiio uses a **server-client architecture**:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Audiio Server                            │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │   Plugins    │  │  ML Engine   │  │    Library DB        │  │
+│  │  (dynamic)   │  │ (TensorFlow) │  │    (SQLite)          │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │ Orchestrators│  │    Auth      │  │   REST API (100+)    │  │
+│  │ search/play  │  │  (NaCl/QR)   │  │   + WebSocket        │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+         │                                          │
+         │ HTTP/WS                                  │ HTTP/WS
+         ▼                                          ▼
+┌─────────────┐                            ┌─────────────────────┐
+│   Desktop   │                            │    Web Browser      │
+│   Client    │                            │    (direct API)     │
+│  (Electron) │                            │                     │
+└─────────────┘                            └─────────────────────┘
+         │
+         │ (optional)
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Audiio Relay                               │
+│              (for remote access outside LAN)                    │
+│         wss://audiio-relay.fly.dev (E2E encrypted)              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Quick Start
+
+### Run the Server
+
+```bash
+# Clone and install
+git clone https://github.com/magicianjarden/audiio-official.git
+cd audiio-official
+npm install
+
+# Build and run server
+npm run build -w @audiio/server
+npm run start -w @audiio/server
+```
+
+The server starts at `http://localhost:8484`.
+
+### Connect a Client
+
+1. Open the desktop client or navigate to `http://localhost:8484` in a browser
+2. Scan the QR code or enter the pairing code
+3. Start streaming
 
 ## Documentation
 
-### For Users
-
-Everything you need to use Audiio effectively.
+### Server
 
 | Guide | Description |
 |-------|-------------|
-| [Getting Started](./user-guide/getting-started.md) | First-time setup and basics |
-| [Installation](./user-guide/installation.md) | Install on macOS, Windows, Linux |
-| [Features](./user-guide/features/README.md) | All features explained |
-| [Mobile Remote](./user-guide/mobile/README.md) | Control Audiio from your phone |
-| [Addons](./user-guide/addons/README.md) | Extend Audiio with plugins |
-| [Keyboard Shortcuts](./user-guide/keyboard-shortcuts.md) | Master the keyboard |
-| [Settings](./user-guide/settings.md) | All settings explained |
-| [Troubleshooting](./user-guide/troubleshooting.md) | Fix common issues |
-| [FAQ](./user-guide/faq.md) | Frequently asked questions |
+| [Server Overview](./server/README.md) | What the server does |
+| [Installation](./server/installation.md) | Docker, standalone, NAS deployment |
+| [Configuration](./server/configuration.md) | Config file and environment variables |
+| [Authentication](./server/authentication.md) | Device pairing and security |
+| [API Reference](./server/api-reference.md) | REST API endpoints |
 
-### For Developers
-
-Build addons, contribute to Audiio, or understand the internals.
+### Clients
 
 | Guide | Description |
 |-------|-------------|
-| [Development Setup](./development/setup.md) | Set up your dev environment |
-| [Building](./development/building.md) | Build from source |
-| [Architecture](./development/architecture.md) | System design overview |
-| [Packages](./development/packages.md) | Monorepo structure (14 packages) |
-| [Plugin Development](./development/plugins/README.md) | Create your own plugins |
-| [Addon Development](./development/addons/README.md) | Build addon extensions |
-| [Stores](./development/stores.md) | Zustand state patterns (21 stores) |
-| [IPC Reference](./development/ipc-reference.md) | Desktop IPC handlers (131+) |
-| [Mobile Server](./development/mobile-server.md) | Mobile server internals |
-| [ML System](./development/ml-system.md) | Recommendation engine |
-| [Testing](./development/testing.md) | Run and write tests |
+| [Clients Overview](./clients/README.md) | Available clients |
+| [Desktop Client](./clients/desktop.md) | Electron desktop app |
+
+### Plugins
+
+| Guide | Description |
+|-------|-------------|
+| [Plugin System](./plugins/README.md) | How plugins work |
+| [Getting Started](./plugins/getting-started.md) | Create your first plugin |
+| [Provider Types](./plugins/providers.md) | Metadata, stream, lyrics, etc. |
+| [Sandbox & Security](./plugins/sandbox.md) | Plugin capabilities |
 
 ### Reference
 
 | Guide | Description |
 |-------|-------------|
-| [SDK](./sdk/README.md) | Addon SDK API reference |
-| [Relay](./relay/README.md) | Self-host a relay server |
-| [API](./api/README.md) | REST API reference (60+ endpoints) |
-| [Theming](./theming/README.md) | Theme system reference |
-
-## Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              Desktop App                                     │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
-│  │  UI (React) │  │    Core     │  │   Plugins   │  │   Mobile Server     │ │
-│  │  21 Stores  │  │ Orchestrat. │  │  (Dynamic)  │  │   (Fastify + P2P)   │ │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────────┘
-         │                                                        │
-         │ IPC (131+ handlers)                                   │ REST/WS/P2P
-         ▼                                                        ▼
-┌─────────────────┐                                    ┌─────────────────────┐
-│    Electron     │                                    │  Mobile Web App     │
-│  Main Process   │                                    │  (PWA + Local Play) │
-│                 │                                    │                     │
-│  • Plugin Loader│                                    │  Two Modes:         │
-│  • ML Service   │                                    │  • Remote Control   │
-│  • Karaoke Svc  │                                    │  • Local Playback   │
-│  • Library Brdg │                                    │    (Plex-like)      │
-└─────────────────┘                                    └─────────────────────┘
-         │                                                        │
-         │ WebSocket                                             │ WebSocket
-         ▼                                                        ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Audiio Relay Server                                  │
-│                      (wss://audiio-relay.fly.dev)                           │
-│                                                                             │
-│  • E2E Encrypted tunneling (NaCl X25519 + XSalsa20-Poly1305)               │
-│  • Static room model with persistent room IDs                               │
-│  • Password protection for rooms                                            │
-│  • Memorable connection codes (SWIFT-EAGLE-42)                              │
-│  • No data storage - pure relay                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+| [Architecture](./architecture.md) | System design deep-dive |
+| [ML System](./ml-system.md) | Recommendations and personalization |
 
 ## Packages
 
-| Package | Description |
-|---------|-------------|
-| `@audiio/core` | Core types, orchestrators, and services |
-| `@audiio/sdk` | SDK for building addons/plugins |
-| `@audiio/relay` | Relay server and client |
-| `@audiio/ui` | React UI components (21 Zustand stores) |
-| `@audiio/icons` | Icon library |
-| `@audiio/desktop` | Electron desktop app |
-| `@audiio/mobile` | Mobile server and web app |
-| `@audiio/server` | Standalone REST API server |
-| `@audiio/landing` | Landing page |
-| `@audiio/ml-core` | ML engine and orchestrator |
-| `@audiio/ml-sdk` | SDK for building ML algorithm plugins |
-| `@audiio/demucs-server` | Demucs AI vocal removal server |
-| `@audiio/plugin-musicbrainz` | MusicBrainz metadata provider plugin |
+```
+packages/
+├── server/          # Headless music server (Fastify + SQLite)
+├── clients/
+│   └── desktop/     # Electron thin client
+├── shared/
+│   ├── core/        # Types and orchestrators
+│   ├── sdk/         # Plugin development kit
+│   ├── ui/          # React components
+│   └── icons/       # Icon library
+└── infra/
+    ├── relay/       # P2P tunneling server
+    └── landing/     # Marketing website
+```
 
 ## Key Features
 
-### Privacy-First
-- No cloud accounts required
-- Your music stays on your machine
-- E2E encrypted remote access
-- Static room model with password protection
-
-### Extensible Plugin System
-- Dynamic plugin loading from npm, git, or local files
-- 7 addon roles: metadata, stream, lyrics, scrobbler, audio-processor, tool, artist-enrichment
-- Plugin repository system for discovery
-- Per-plugin settings and priorities
-
-### Modern Stack
-- TypeScript throughout
-- React 18 for UI with 21 Zustand stores
-- Fastify for API server
-- NaCl for encryption
-- TensorFlow.js for ML recommendations
-
-### Advanced Audio Features
-- Karaoke mode with AI vocal removal (Demucs)
-- Instant playback (~3-4 seconds to first chunk)
-- Smart queue with auto-queue and radio modes
-- Audio feature analysis (BPM, key, energy)
-- Local music support with ID3 tag reading/writing
-
-### Mobile Access
-- Two connection modes: Local network and P2P relay
-- Two playback modes: Remote control and local playback (Plex-like)
-- Device management with approval flow
-- Persistent device tokens
-
-## Quick Start
-
-```bash
-# Clone the repository
-git clone https://github.com/magicianjarden/audiio-official.git
-cd audiio-official
-
-# Install dependencies
-npm install
-
-# Build all packages
-npm run build:all
-
-# Run the desktop app
-npm run dev
-```
-
-## Contributing
-
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
+- **Self-Hosted** - Run on Docker, NAS, Raspberry Pi, or cloud
+- **Multi-Device** - Connect from desktop or web
+- **Plugin System** - Extend with metadata, streaming, lyrics providers
+- **ML Recommendations** - Personalized radio and smart queue
+- **Secure** - Device pairing with NaCl encryption
+- **Remote Access** - Optional relay for access outside your network
 
 ## License
 

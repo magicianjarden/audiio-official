@@ -22,9 +22,6 @@ interface AnimatedArtworkResult {
   albumId: string;
 }
 
-/** Known artwork provider IDs */
-const ARTWORK_PROVIDER_IDS = ['applemusic-artwork', 'spotify-metadata', 'deezer'];
-
 export class SearchOrchestrator {
   constructor(private registry: AddonRegistry) {}
 
@@ -67,19 +64,23 @@ export class SearchOrchestrator {
   }
 
   /**
-   * Get artwork providers in priority order
+   * Get artwork providers dynamically from registry
+   * Returns all providers that have getArtworkSet method
    */
   private getArtworkProviders(): ArtworkProvider[] {
     const providers: ArtworkProvider[] = [];
+    const allIds = this.registry.getAllAddonIds();
 
-    console.log(`[SearchOrchestrator] Looking for artwork providers, all addon IDs:`, this.registry.getAllAddonIds());
-
-    for (const id of ARTWORK_PROVIDER_IDS) {
-      const provider = this.registry.get<ArtworkProvider>(id);
-      console.log(`[SearchOrchestrator] Checking ${id}: provider=${!!provider}, hasGetArtworkSet=${!!provider?.getArtworkSet}`);
-      if (provider?.getArtworkSet) {
-        providers.push(provider);
+    for (const id of allIds) {
+      const addon = this.registry.get<ArtworkProvider>(id);
+      if (addon?.getArtworkSet) {
+        providers.push(addon);
       }
+    }
+
+    if (providers.length > 0) {
+      console.log(`[SearchOrchestrator] Found ${providers.length} artwork providers:`,
+        providers.map(p => p.manifest?.id));
     }
 
     return providers;

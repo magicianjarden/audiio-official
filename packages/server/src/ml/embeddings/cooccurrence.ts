@@ -6,7 +6,7 @@
  * we learn from the user's own patterns and can incorporate community data later.
  */
 
-import type { CoOccurrence, CoOccurrenceContext } from './types';
+// Note: CoOccurrence and CoOccurrenceContext types in ./types are unused - using internal types instead
 
 /**
  * Configuration for co-occurrence tracking

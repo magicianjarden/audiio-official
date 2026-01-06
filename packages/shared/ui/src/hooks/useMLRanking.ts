@@ -48,8 +48,6 @@ export interface UseMLRankingResult {
  * All scoring is done on the server
  */
 export function useMLRanking(): UseMLRankingResult {
-  const mlStore = useMLStore;
-
   // Subscribe to loading states
   const isMLReady = useMLStore((s) => s.isModelLoaded);
   const isTraining = useMLStore((s) => s.isTraining);

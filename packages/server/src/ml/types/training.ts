@@ -52,11 +52,18 @@ export interface FeatureVector {
   /** Audio features (normalized) */
   audio: NormalizedAudioFeatures;
 
-  /** Emotion features (if available) */
-  emotion?: NormalizedEmotionFeatures;
+  /** Emotion features (if available) - inline type */
+  emotion?: {
+    valence: number;
+    arousal: number;
+    dominance: number;
+  };
 
-  /** Lyrics features (if available) */
-  lyrics?: NormalizedLyricsFeatures;
+  /** Lyrics features (if available) - inline type */
+  lyrics?: {
+    sentiment: number;    // -1 to 1 -> 0 to 1
+    intensity: number;
+  };
 
   // === User-Track Features ===
 
@@ -107,16 +114,8 @@ export interface NormalizedAudioFeatures {
   mode: number;         // 0 or 1
 }
 
-export interface NormalizedEmotionFeatures {
-  valence: number;
-  arousal: number;
-  dominance: number;
-}
-
-export interface NormalizedLyricsFeatures {
-  sentiment: number;    // -1 to 1 -> 0 to 1
-  intensity: number;
-}
+// Note: NormalizedEmotionFeatures and NormalizedLyricsFeatures were removed as unused
+// The FeatureVector type still references them optionally - they can be inline if needed
 
 export interface DatasetMetadata {
   /** Total number of samples */

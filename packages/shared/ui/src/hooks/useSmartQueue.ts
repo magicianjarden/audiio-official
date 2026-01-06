@@ -101,14 +101,14 @@ export function useRadioMode({ availableTracks }: UseRadioModeOptions) {
       name: `${seedTrack.title} Radio`,
       artwork: seedTrack.artwork?.medium || seedTrack.artwork?.small,
       genres: seedTrack.genres,
-      artistIds: seedTrack.artists.map(a => a.id || a.name)
+      artistIds: (seedTrack.artists || []).map(a => a.id || a.name)
     };
 
     // Find similar tracks for initial queue
     const similarTracks = availableTracks.filter(t =>
       t.id !== seedTrack.id &&
       (
-        t.artists.some(a => seedTrack.artists.some(sa => sa.name === a.name)) ||
+        t.artists?.some(a => seedTrack.artists?.some(sa => sa.name === a.name)) ||
         t.genres?.some(g => seedTrack.genres?.includes(g))
       )
     );
@@ -131,7 +131,7 @@ export function useRadioMode({ availableTracks }: UseRadioModeOptions) {
 
     // Find tracks by this artist and similar
     const artistTracks = availableTracks.filter(t =>
-      t.artists.some(a => a.name.toLowerCase() === artistName.toLowerCase())
+      t.artists?.some(a => a.name.toLowerCase() === artistName.toLowerCase())
     );
 
     const similarTracks = availableTracks.filter(t =>

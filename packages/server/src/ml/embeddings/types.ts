@@ -73,25 +73,6 @@ export interface ContextualProfiles {
 }
 
 /**
- * Co-occurrence entry for collaborative filtering
- */
-export interface CoOccurrence {
-  trackA: string;
-  trackB: string;
-  count: number;
-  contexts: CoOccurrenceContext[];
-  lastSeen: number;
-}
-
-/**
- * Context where co-occurrence happened
- */
-export interface CoOccurrenceContext {
-  type: 'queue' | 'playlist' | 'session' | 'radio';
-  count: number;
-}
-
-/**
  * Vector search result
  */
 export interface SimilarityResult {

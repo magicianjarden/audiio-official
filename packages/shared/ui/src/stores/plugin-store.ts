@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { PrivacyManifest } from '@audiio/core';
 
 // Plugin roles that determine capabilities
 export type PluginRole =
@@ -37,12 +38,16 @@ export interface PluginPrivacyAccess {
 export interface PluginSettingDefinition {
   key: string;
   label: string;
-  description: string;
-  type: 'boolean' | 'select' | 'number';
-  default: boolean | string | number;
+  description?: string;
+  type: 'boolean' | 'select' | 'multiselect' | 'number' | 'string' | 'color';
+  default?: boolean | string | number;
+  required?: boolean;
+  secret?: boolean;
+  placeholder?: string;
   options?: { value: string; label: string }[];
   min?: number;
   max?: number;
+  step?: number;
 }
 
 export interface Plugin {
@@ -58,6 +63,9 @@ export interface Plugin {
   installed: boolean;
   homepage?: string;
   repository?: string;
+  /** Privacy transparency manifest (Apple-style privacy labels) */
+  privacy?: PrivacyManifest;
+  /** @deprecated Use privacy manifest instead */
   privacyAccess?: PluginPrivacyAccess[];
   settingsDefinitions?: PluginSettingDefinition[];
   settings?: Record<string, boolean | string | number>;
@@ -155,7 +163,7 @@ export const usePluginStore = create<PluginState>()(
 
         try {
           const loadedPlugins = await window.api.getLoadedPlugins();
-          console.log('[PluginStore] Loaded plugins from backend:', loadedPlugins.map((p: any) => p.id));
+          console.log('[PluginStore] Loaded', loadedPlugins.length, 'plugins from backend');
 
           const { pluginSettings, pluginEnabledStates } = get();
 
@@ -173,6 +181,7 @@ export const usePluginStore = create<PluginState>()(
             installed: true,
             homepage: p.homepage,
             repository: p.repository,
+            privacy: p.privacy,
             privacyAccess: p.privacyAccess,
             settingsDefinitions: p.settingsDefinitions,
             settings: pluginSettings[p.id] || p.settings || {},

@@ -1,0 +1,301 @@
+/* CollectionsView Styles */
+
+.collections-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  overflow: hidden;
+}
+
+.collections-view-header {
+  margin-bottom: 24px;
+}
+
+.collections-view-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.collections-view-title h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-hero);
+  margin: 0;
+}
+
+.collections-view-count {
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+/* Actions bar */
+.collections-view-actions {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.collections-view-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 200px;
+  max-width: 400px;
+  padding: 10px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-tertiary);
+  transition: border-color 0.15s;
+}
+
+.collections-view-search:focus-within {
+  border-color: var(--accent);
+}
+
+.collections-view-search input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+}
+
+.collections-view-search input::placeholder {
+  color: var(--text-muted);
+}
+
+.collections-view-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.collections-view-search-clear:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.collections-view-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+/* Sort dropdown */
+.collections-view-sort {
+  position: relative;
+}
+
+.collections-view-sort-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.collections-view-sort-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+
+.collections-view-sort-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 160px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.collections-view-sort-menu button {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.collections-view-sort-menu button:hover {
+  background: var(--bg-hover);
+}
+
+.collections-view-sort-menu button.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* View mode toggle */
+.collections-view-mode {
+  display: flex;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.collections-view-mode button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.collections-view-mode button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.collections-view-mode button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Create button */
+.collections-view-create-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: var(--text-on-accent);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.collections-view-create-btn:hover {
+  background: var(--accent-hover);
+}
+
+/* Grid view */
+.collections-view-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 20px;
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 120px;
+}
+
+/* List view */
+.collections-view-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 120px;
+}
+
+/* Empty state */
+.collections-view-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 64px 24px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.collections-view-empty p {
+  margin: 0;
+}
+
+.collections-view-empty-hint {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.collections-view-empty button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: background 0.15s;
+}
+
+.collections-view-empty button:hover {
+  background: var(--bg-hover);
+}
+
+/* Modal fields */
+.modal-field {
+  margin-bottom: 16px;
+}
+
+.modal-field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.modal-field input,
+.modal-field textarea {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.modal-field input:focus,
+.modal-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}

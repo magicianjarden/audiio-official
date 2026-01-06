@@ -140,6 +140,10 @@ export {
   ClockIcon,
   FilterIcon,
   SortIcon,
+  SparklesIcon,
+  TagIcon,
+  GridIcon,
+  ListIcon,
 } from './icons/ui';
 
 // Device & System Icons

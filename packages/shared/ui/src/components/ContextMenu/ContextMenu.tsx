@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import type { ContextMenuEntity } from '../../contexts/ContextMenuContext';
-import { useLibraryStore } from '../../stores/library-store';
+import { useLibraryStore, type Playlist } from '../../stores/library-store';
 import { usePlayerStore } from '../../stores/player-store';
 import { useRecommendationStore } from '../../stores/recommendation-store';
 import { useNavigationStore } from '../../stores/navigation-store';
 import { useSmartQueueStore, type RadioSeed } from '../../stores/smart-queue-store';
+import { useCollectionStore } from '../../stores/collection-store';
+import { useTagStore, type Tag } from '../../stores/tag-store';
 import { showSuccessToast } from '../../stores/toast-store';
 import {
   PlayIcon,
@@ -21,6 +23,12 @@ import {
   MusicNoteIcon,
   NextIcon,
   RadioIcon,
+  FolderIcon,
+  TagIcon,
+  CheckIcon,
+  TrashIcon,
+  EditIcon,
+  CopyIcon,
 } from '@audiio/icons';
 
 interface ContextMenuProps {
@@ -29,6 +37,8 @@ interface ContextMenuProps {
   y: number;
   onClose: () => void;
   onAddToPlaylist?: (track: UnifiedTrack) => void;
+  onAddToCollection?: (track: UnifiedTrack) => void;
+  onTagTrack?: (track: UnifiedTrack) => void;
   onDislike?: (track: UnifiedTrack) => void;
 }
 
@@ -38,18 +48,25 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   y,
   onClose,
   onAddToPlaylist,
+  onAddToCollection,
+  onTagTrack,
   onDislike
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const submenuRef = useRef<HTMLDivElement>(null);
   const [showPlaylistSubmenu, setShowPlaylistSubmenu] = useState(false);
+  const [showCollectionSubmenu, setShowCollectionSubmenu] = useState(false);
+  const [showTagSubmenu, setShowTagSubmenu] = useState(false);
+  const [trackTags, setTrackTags] = useState<string[]>([]);
   const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const { play, addToQueue, playNext } = usePlayerStore();
+  const { play, addToQueue, playNext, setQueue } = usePlayerStore();
   const { isLiked, toggleLike, playlists, addToPlaylist, startDownload, undislikeTrack, likedTracks } = useLibraryStore();
   const { isDisliked, removeDislike } = useRecommendationStore();
   const { openArtist, openAlbum } = useNavigationStore();
   const { startRadio } = useSmartQueueStore();
+  const { collections, addToCollection: addItemToCollection } = useCollectionStore();
+  const { tags, addTagToTrack, removeTagFromTrack, getTrackTags } = useTagStore();
 
   // Clear timeout on unmount
   useEffect(() => {
@@ -60,18 +77,60 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     };
   }, []);
 
-  const handleSubmenuEnter = useCallback(() => {
+  // Load track tags when entity changes
+  useEffect(() => {
+    if (entity.type === 'track') {
+      getTrackTags(entity.data.id).then(tags => {
+        setTrackTags(tags.map(t => t.tagName));
+      });
+    }
+  }, [entity, getTrackTags]);
+
+  const handlePlaylistSubmenuEnter = useCallback(() => {
     if (closeTimeoutRef.current) {
       clearTimeout(closeTimeoutRef.current);
       closeTimeoutRef.current = null;
     }
     setShowPlaylistSubmenu(true);
+    setShowCollectionSubmenu(false);
+    setShowTagSubmenu(false);
   }, []);
 
-  const handleSubmenuLeave = useCallback(() => {
-    // Delay closing to allow moving between parent and submenu
+  const handlePlaylistSubmenuLeave = useCallback(() => {
     closeTimeoutRef.current = setTimeout(() => {
       setShowPlaylistSubmenu(false);
+    }, 150);
+  }, []);
+
+  const handleCollectionSubmenuEnter = useCallback(() => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+    setShowCollectionSubmenu(true);
+    setShowPlaylistSubmenu(false);
+    setShowTagSubmenu(false);
+  }, []);
+
+  const handleCollectionSubmenuLeave = useCallback(() => {
+    closeTimeoutRef.current = setTimeout(() => {
+      setShowCollectionSubmenu(false);
+    }, 150);
+  }, []);
+
+  const handleTagSubmenuEnter = useCallback(() => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+    setShowTagSubmenu(true);
+    setShowPlaylistSubmenu(false);
+    setShowCollectionSubmenu(false);
+  }, []);
+
+  const handleTagSubmenuLeave = useCallback(() => {
+    closeTimeoutRef.current = setTimeout(() => {
+      setShowTagSubmenu(false);
     }, 150);
   }, []);
 
@@ -177,7 +236,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     };
 
     const handleGoToArtist = () => {
-      const artist = track.artists[0];
+      const artist = track.artists?.[0];
       if (artist) {
         openArtist(artist.id, {
           id: artist.id,
@@ -224,8 +283,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 
         <div
           className="context-menu-item has-submenu"
-          onMouseEnter={handleSubmenuEnter}
-          onMouseLeave={handleSubmenuLeave}
+          onMouseEnter={handlePlaylistSubmenuEnter}
+          onMouseLeave={handlePlaylistSubmenuLeave}
         >
           <PlaylistIcon size={16} />
           <span>Add to Playlist</span>
@@ -235,8 +294,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             <div
               ref={submenuRef}
               className="context-submenu"
-              onMouseEnter={handleSubmenuEnter}
-              onMouseLeave={handleSubmenuLeave}
+              onMouseEnter={handlePlaylistSubmenuEnter}
+              onMouseLeave={handlePlaylistSubmenuLeave}
             >
               {onAddToPlaylist && (
                 <button className="context-menu-item" onClick={handleOpenAddToPlaylistModal}>
@@ -267,9 +326,119 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           )}
         </div>
 
+        {/* Add to Collection submenu */}
+        {onAddToCollection && (
+          <div
+            className="context-menu-item has-submenu"
+            onMouseEnter={handleCollectionSubmenuEnter}
+            onMouseLeave={handleCollectionSubmenuLeave}
+          >
+            <FolderIcon size={16} />
+            <span>Add to Collection</span>
+            <ChevronRightIcon size={14} className="context-menu-arrow" />
+
+            {showCollectionSubmenu && (
+              <div
+                className="context-submenu"
+                onMouseEnter={handleCollectionSubmenuEnter}
+                onMouseLeave={handleCollectionSubmenuLeave}
+              >
+                <button className="context-menu-item" onClick={() => { onAddToCollection(track); onClose(); }}>
+                  <AddIcon size={16} />
+                  <span>New Collection...</span>
+                </button>
+                {collections.length > 0 && <div className="context-menu-divider" />}
+                {collections.length === 0 ? (
+                  <div className="context-menu-item disabled">
+                    <span>No collections</span>
+                  </div>
+                ) : (
+                  collections.map((collection) => (
+                    <button
+                      key={collection.id}
+                      className="context-menu-item"
+                      onClick={async () => {
+                        await addItemToCollection(collection.id, 'track', track.id, {
+                          title: track.title,
+                          artists: track.artists,
+                          artwork: track.artwork,
+                          album: track.album,
+                        });
+                        showSuccessToast(`Added to "${collection.name}"`);
+                        onClose();
+                      }}
+                    >
+                      <FolderIcon size={16} />
+                      <span>{collection.name}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tag Track submenu */}
+        {onTagTrack && (
+          <div
+            className="context-menu-item has-submenu"
+            onMouseEnter={handleTagSubmenuEnter}
+            onMouseLeave={handleTagSubmenuLeave}
+          >
+            <TagIcon size={16} />
+            <span>Tag Track</span>
+            <ChevronRightIcon size={14} className="context-menu-arrow" />
+
+            {showTagSubmenu && (
+              <div
+                className="context-submenu context-submenu-tags"
+                onMouseEnter={handleTagSubmenuEnter}
+                onMouseLeave={handleTagSubmenuLeave}
+              >
+                <button className="context-menu-item" onClick={() => { onTagTrack(track); onClose(); }}>
+                  <AddIcon size={16} />
+                  <span>Create New Tag...</span>
+                </button>
+                {tags.length > 0 && <div className="context-menu-divider" />}
+                {tags.length === 0 ? (
+                  <div className="context-menu-item disabled">
+                    <span>No tags</span>
+                  </div>
+                ) : (
+                  tags.map((tag) => {
+                    const hasTag = trackTags.includes(tag.name);
+                    return (
+                      <button
+                        key={tag.id}
+                        className={`context-menu-item ${hasTag ? 'has-check' : ''}`}
+                        onClick={async () => {
+                          if (hasTag) {
+                            await removeTagFromTrack(track.id, tag.name);
+                            setTrackTags(prev => prev.filter(t => t !== tag.name));
+                            showSuccessToast(`Removed "${tag.name}" tag`);
+                          } else {
+                            await addTagToTrack(track.id, tag.name, tag.color);
+                            setTrackTags(prev => [...prev, tag.name]);
+                            showSuccessToast(`Added "${tag.name}" tag`);
+                          }
+                          onClose();
+                        }}
+                      >
+                        <span className="context-menu-tag-dot" style={{ backgroundColor: tag.color || 'var(--accent)' }} />
+                        <span>{tag.name}</span>
+                        {hasTag && <CheckIcon size={14} className="context-menu-check" />}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="context-menu-divider" />
 
-        {track.artists[0] && (
+        {track.artists?.[0] && (
           <button className="context-menu-item" onClick={handleGoToArtist}>
             <MusicNoteIcon size={16} />
             <span>Go to Artist</span>
@@ -283,7 +452,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           </button>
         )}
 
-        {(track.artists[0] || track.album) && <div className="context-menu-divider" />}
+        {(track.artists?.[0] || track.album) && <div className="context-menu-divider" />}
 
         <button className="context-menu-item" onClick={handleLike}>
           {trackIsLiked ? <HeartIcon size={16} /> : <HeartOutlineIcon size={16} />}
@@ -406,6 +575,143 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           <MusicNoteIcon size={16} />
           <span>Go to Artist</span>
         </button>
+      </div>
+    );
+  }
+
+  // Render playlist-specific menu
+  if (entity.type === 'playlist') {
+    const playlist = entity.data as Playlist;
+
+    const handlePlayPlaylist = () => {
+      if (playlist.tracks && playlist.tracks.length > 0) {
+        setQueue(playlist.tracks as UnifiedTrack[], 0);
+      }
+      onClose();
+    };
+
+    const handleAddToQueue = () => {
+      if (playlist.tracks && playlist.tracks.length > 0) {
+        playlist.tracks.forEach(track => addToQueue(track as never));
+        showSuccessToast(`Added ${playlist.tracks.length} tracks to queue`);
+      }
+      onClose();
+    };
+
+    const handleAddToCollection = async (collectionId: string) => {
+      await addItemToCollection(collectionId, 'playlist', playlist.id, {
+        name: playlist.name,
+        trackCount: playlist.tracks?.length || 0,
+        artwork: (playlist as Record<string, unknown>).artwork,
+      });
+      showSuccessToast(`Added "${playlist.name}" to collection`);
+      onClose();
+    };
+
+    return (
+      <div ref={menuRef} className="context-menu" style={{ left: x, top: y }}>
+        <button className="context-menu-item" onClick={handlePlayPlaylist}>
+          <PlayIcon size={16} />
+          <span>Play Playlist</span>
+        </button>
+
+        <button className="context-menu-item" onClick={handleAddToQueue}>
+          <QueueIcon size={16} />
+          <span>Add to Queue</span>
+        </button>
+
+        <div className="context-menu-divider" />
+
+        {/* Add to Collection submenu */}
+        <div
+          className="context-menu-item has-submenu"
+          onMouseEnter={handleCollectionSubmenuEnter}
+          onMouseLeave={handleCollectionSubmenuLeave}
+        >
+          <FolderIcon size={16} />
+          <span>Add to Collection</span>
+          <ChevronRightIcon size={14} className="context-menu-arrow" />
+
+          {showCollectionSubmenu && (
+            <div
+              className="context-submenu"
+              onMouseEnter={handleCollectionSubmenuEnter}
+              onMouseLeave={handleCollectionSubmenuLeave}
+            >
+              {collections.length === 0 ? (
+                <div className="context-menu-item disabled">
+                  <span>No collections</span>
+                </div>
+              ) : (
+                collections.map((collection) => (
+                  <button
+                    key={collection.id}
+                    className="context-menu-item"
+                    onClick={() => handleAddToCollection(collection.id)}
+                  >
+                    <FolderIcon size={16} />
+                    <span>{collection.name}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Render tag-specific menu
+  if (entity.type === 'tag') {
+    const tag = entity.data as Tag;
+
+    const handleAddToCollection = async (collectionId: string) => {
+      await addItemToCollection(collectionId, 'tag', tag.id, {
+        name: tag.name,
+        color: tag.color,
+        usageCount: tag.usageCount,
+      });
+      showSuccessToast(`Added "${tag.name}" tag to collection`);
+      onClose();
+    };
+
+    return (
+      <div ref={menuRef} className="context-menu" style={{ left: x, top: y }}>
+        {/* Add to Collection submenu */}
+        <div
+          className="context-menu-item has-submenu"
+          onMouseEnter={handleCollectionSubmenuEnter}
+          onMouseLeave={handleCollectionSubmenuLeave}
+        >
+          <FolderIcon size={16} />
+          <span>Add to Collection</span>
+          <ChevronRightIcon size={14} className="context-menu-arrow" />
+
+          {showCollectionSubmenu && (
+            <div
+              className="context-submenu"
+              onMouseEnter={handleCollectionSubmenuEnter}
+              onMouseLeave={handleCollectionSubmenuLeave}
+            >
+              {collections.length === 0 ? (
+                <div className="context-menu-item disabled">
+                  <span>No collections</span>
+                </div>
+              ) : (
+                collections.map((collection) => (
+                  <button
+                    key={collection.id}
+                    className="context-menu-item"
+                    onClick={() => handleAddToCollection(collection.id)}
+                  >
+                    <FolderIcon size={16} />
+                    <span>{collection.name}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
       </div>
     );
   }

@@ -5,3 +5,4 @@
 export { EventRecorder } from './event-recorder';
 export { PreferenceStore } from './preference-store';
 export { TrainingScheduler } from './training-scheduler';
+export { StorageHelper } from './storage-helper';

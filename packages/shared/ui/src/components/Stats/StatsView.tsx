@@ -2,12 +2,14 @@
  * StatsView - Listening statistics dashboard with ML insights
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useStatsStore, formatDuration, type ListenEntry } from '../../stores/stats-store';
 import { useRecommendationStore } from '../../stores/recommendation-store';
 import { useMLStore } from '../../stores/ml-store';
 import { useNavigationStore } from '../../stores/navigation-store';
+import { useSearchStore } from '../../stores/search-store';
 import { useTrackContextMenu, useArtistContextMenu } from '../../contexts/ContextMenuContext';
+import { FloatingSearch, type SearchAction } from '../Search/FloatingSearch';
 import { StatCard } from './StatCard';
 import { TopArtistsList, TopGenresList } from './TopList';
 import { BarChart } from './charts/BarChart';
@@ -24,6 +26,7 @@ import {
   ClockIcon,
   TrendingUpIcon,
   RefreshIcon,
+  ChartIcon,
 } from '@audiio/icons';
 
 type Period = 'week' | 'month' | 'year' | 'all';
@@ -127,10 +130,27 @@ const RecentActivityItem: React.FC<{
 
 export const StatsView: React.FC = () => {
   const [period, setPeriod] = useState<Period>('week');
-  const { getStats, getSkipStats, listenHistory } = useStatsStore();
-  const { navigateTo, openArtist, openAlbum } = useNavigationStore();
+  const { getStats, fetchStats, fetchListenHistory, listenHistory, skipStats } = useStatsStore();
+  const { openArtist, openAlbum } = useNavigationStore();
   const { showContextMenu: showTrackMenu } = useTrackContextMenu();
   const { showContextMenu: showArtistMenu } = useArtistContextMenu();
+
+  // Global search redirect
+  const { setQuery, setIsOpen } = useSearchStore();
+  const handleSearch = useCallback((query: string) => {
+    if (query.trim()) {
+      setQuery(query);
+      setIsOpen(true);
+    }
+  }, [setQuery, setIsOpen]);
+
+  // Period selector actions for FloatingSearch CTA
+  const actions: SearchAction[] = useMemo(() => [
+    { id: 'period-week', label: 'Week', icon: <ClockIcon size={14} />, active: period === 'week', onClick: () => setPeriod('week') },
+    { id: 'period-month', label: 'Month', icon: <ClockIcon size={14} />, active: period === 'month', onClick: () => setPeriod('month') },
+    { id: 'period-year', label: 'Year', icon: <ClockIcon size={14} />, active: period === 'year', onClick: () => setPeriod('year') },
+    { id: 'period-all', label: 'All Time', icon: <ClockIcon size={14} />, active: period === 'all', onClick: () => setPeriod('all') },
+  ], [period]);
 
   // ML Store data
   const {
@@ -144,10 +164,20 @@ export const StatsView: React.FC = () => {
   } = useMLStore();
 
   // Recommendation Store data
-  const { userProfile, dislikedTracks, listenHistory: recHistory } = useRecommendationStore();
+  const { userProfile, dislikedTracks, fetchUserProfile } = useRecommendationStore();
 
-  const stats = useMemo(() => getStats(period), [period, getStats]);
-  const skipStats = useMemo(() => getSkipStats(), [getSkipStats]);
+  // Fetch stats on mount and when period changes
+  useEffect(() => {
+    fetchStats(period);
+  }, [period, fetchStats]);
+
+  // Fetch listen history and user profile on mount
+  useEffect(() => {
+    fetchListenHistory();
+    fetchUserProfile();
+  }, [fetchListenHistory, fetchUserProfile]);
+
+  const stats = getStats(period);
 
   // Handle artist click - navigate to artist page
   const handleArtistClick = useCallback((artistId: string, artistName?: string) => {
@@ -204,8 +234,8 @@ export const StatsView: React.FC = () => {
     const skipped = listenHistory.filter(e => e.skipped).length;
     const completed = listenHistory.filter(e => e.completed).length;
 
-    // Calculate average session time from user profile
-    const avgSessionMinutes = Math.round(userProfile.avgSessionLength / 60000) || 0;
+    // Calculate average session time from user profile (with null safety)
+    const avgSessionMinutes = Math.round((userProfile?.avgSessionLength || 0) / 60000);
 
     return {
       skipRate: Math.round((skipped / total) * 100),
@@ -214,16 +244,18 @@ export const StatsView: React.FC = () => {
       totalSkips: skipStats.totalSkips,
       earlySkips: skipStats.earlySkips,
     };
-  }, [listenHistory, userProfile.avgSessionLength, skipStats]);
+  }, [listenHistory, userProfile?.avgSessionLength, skipStats]);
 
   // Get top artist/genre affinities
   const affinities = useMemo(() => {
-    const artistPrefs = Object.values(userProfile.artistPreferences)
+    if (!userProfile) return { artists: [], genres: [] };
+
+    const artistPrefs = Object.values(userProfile.artistPreferences || {})
       .filter(a => a.playCount > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
 
-    const genrePrefs = Object.values(userProfile.genrePreferences)
+    const genrePrefs = Object.values(userProfile.genrePreferences || {})
       .filter(g => g.playCount > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
@@ -234,7 +266,8 @@ export const StatsView: React.FC = () => {
   // Calculate energy distribution from listening patterns
   const energyDistribution = useMemo(() => {
     const distribution = { low: 0, medium: 0, high: 0 };
-    userProfile.timePatterns.forEach(tp => {
+    const timePatterns = userProfile?.timePatterns || [];
+    timePatterns.forEach(tp => {
       distribution[tp.energy]++;
     });
     const total = 24;
@@ -243,7 +276,7 @@ export const StatsView: React.FC = () => {
       medium: Math.round((distribution.medium / total) * 100),
       high: Math.round((distribution.high / total) * 100),
     };
-  }, [userProfile.timePatterns]);
+  }, [userProfile?.timePatterns]);
 
   // Format last trained date
   const lastTrainedText = useMemo(() => {
@@ -265,7 +298,7 @@ export const StatsView: React.FC = () => {
 
   // Handle train model button
   const handleTrainModel = async () => {
-    if (recHistory.length < 10) {
+    if (listenHistory.length < 10) {
       console.warn('[Stats] Not enough data to train model');
       return;
     }
@@ -278,28 +311,16 @@ export const StatsView: React.FC = () => {
 
   return (
     <div className="stats-view">
-      <header className="stats-header">
-        <div className="stats-header-left">
-          <h1 className="stats-title">Stats</h1>
-          <div className="stats-period-selector">
-            {(Object.keys(PERIOD_LABELS) as Period[]).map(p => (
-              <button
-                key={p}
-                className={`period-btn ${period === p ? 'active' : ''}`}
-                onClick={() => setPeriod(p)}
-              >
-                {PERIOD_LABELS[p]}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="stats-header-right">
-          <div className="stats-header-stat">
-            <span className="stats-header-stat-value">{formatDuration(stats.totalListenTime)}</span>
-            <span className="stats-header-stat-label">total time</span>
-          </div>
-        </div>
-      </header>
+      <FloatingSearch
+        onSearch={handleSearch}
+        onClose={() => {}}
+        isSearchActive={false}
+        actions={actions}
+        pageContext={{ type: 'other', label: 'Stats', icon: <TrendingUpIcon size={14} /> }}
+      />
+
+      {/* Ambient Background */}
+      <div className="detail-ambient-bg stats-ambient" />
 
       <div className="stats-content">
         {/* Summary Cards - Hero Section */}
@@ -397,7 +418,7 @@ export const StatsView: React.FC = () => {
                   <span className="behavior-detail-label">Disliked</span>
                 </div>
                 <div className="behavior-detail">
-                  <span className="behavior-detail-value">{userProfile.totalListens}</span>
+                  <span className="behavior-detail-value">{userProfile?.totalListens || 0}</span>
                   <span className="behavior-detail-label">Interactions</span>
                 </div>
               </div>
@@ -428,13 +449,13 @@ export const StatsView: React.FC = () => {
                     <div className="stats-ml-untrained-text">
                       <h3>Personalized Recommendations</h3>
                       <p>
-                        {recHistory.length < 10
-                          ? `Listen to ${10 - recHistory.length} more tracks to unlock AI-powered recommendations tailored to your taste.`
+                        {listenHistory.length < 10
+                          ? `Listen to ${10 - listenHistory.length} more tracks to unlock AI-powered recommendations tailored to your taste.`
                           : 'You have enough listening data! Train the model to get personalized recommendations.'
                         }
                       </p>
                     </div>
-                    {recHistory.length >= 10 && (
+                    {listenHistory.length >= 10 && (
                       <button className="stats-ml-train-cta" onClick={handleTrainModel}>
                         <ZapIcon size={16} />
                         <span>Train Model</span>
@@ -444,10 +465,10 @@ export const StatsView: React.FC = () => {
                       <div className="stats-ml-progress-track">
                         <div
                           className="stats-ml-progress-fill"
-                          style={{ width: `${Math.min(100, (recHistory.length / 10) * 100)}%` }}
+                          style={{ width: `${Math.min(100, (listenHistory.length / 10) * 100)}%` }}
                         />
                       </div>
-                      <span className="stats-ml-progress-label">{recHistory.length}/10 samples</span>
+                      <span className="stats-ml-progress-label">{listenHistory.length}/10 samples</span>
                     </div>
                   </div>
                 ) : (
@@ -493,7 +514,7 @@ export const StatsView: React.FC = () => {
                         </>
                       )}
                       <div className="stats-ml-metric">
-                        <span className="stats-ml-metric-value">{recHistory.length}</span>
+                        <span className="stats-ml-metric-value">{listenHistory.length}</span>
                         <span className="stats-ml-metric-label">Samples</span>
                       </div>
                     </div>

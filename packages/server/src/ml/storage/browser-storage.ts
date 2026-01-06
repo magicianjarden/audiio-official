@@ -72,19 +72,3 @@ export class MemoryStorage implements StorageAdapter {
   }
 }
 
-/**
- * Create appropriate storage adapter based on environment
- *
- * Note: For Node.js/Electron environments that need file-based storage,
- * import NodeStorage from './node-storage' instead.
- */
-export function createStorage(): StorageAdapter {
-  // Check if localStorage is available (browser/renderer)
-  if (typeof localStorage !== 'undefined') {
-    return new BrowserStorage();
-  }
-
-  // Fallback to memory storage
-  console.warn('[Storage] No persistent storage available, using memory storage');
-  return new MemoryStorage();
-}

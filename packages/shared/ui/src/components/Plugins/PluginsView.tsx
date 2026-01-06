@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -19,6 +19,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { usePluginStore, type Plugin, type PluginCategory } from '../../stores/plugin-store';
 import { useNavigationStore } from '../../stores/navigation-store';
 import { useSettingsStore } from '../../stores/settings-store';
+import { useSearchStore } from '../../stores/search-store';
+import { FloatingSearch, type SearchAction } from '../Search/FloatingSearch';
 import {
   PluginIcon,
   AddIcon,
@@ -32,6 +34,8 @@ import {
   CheckIcon,
   CloseIcon,
   FolderIcon,
+  BrowseIcon,
+  UpdateIcon,
 } from '@audiio/icons';
 
 // Tab types
@@ -472,6 +476,15 @@ export const PluginsView: React.FC = () => {
   const { openPlugin } = useNavigationStore();
   const { pluginFolder, setPluginFolder } = useSettingsStore();
 
+  // Global search redirect
+  const { setQuery, setIsOpen } = useSearchStore();
+  const handleSearch = useCallback((query: string) => {
+    if (query.trim()) {
+      setQuery(query);
+      setIsOpen(true);
+    }
+  }, [setQuery, setIsOpen]);
+
   // Sync installed plugins from backend on mount and when plugins change
   useEffect(() => {
     syncFromBackend();
@@ -778,53 +791,28 @@ export const PluginsView: React.FC = () => {
     return pluginId;
   };
 
+  // Tab actions for FloatingSearch CTA
+  const actions: SearchAction[] = useMemo(() => [
+    { id: 'tab-installed', label: 'Installed', icon: <PluginIcon size={14} />, active: activeTab === 'installed', onClick: () => setActiveTab('installed') },
+    { id: 'tab-browse', label: 'Browse', icon: <DownloadIcon size={14} />, active: activeTab === 'browse', onClick: () => setActiveTab('browse') },
+    { id: 'tab-updates', label: 'Updates', icon: <RefreshIcon size={14} />, active: activeTab === 'updates', onClick: () => setActiveTab('updates') },
+    { id: 'tab-repos', label: 'Repos', icon: <SettingsIcon size={14} />, active: activeTab === 'repositories', onClick: () => setActiveTab('repositories') },
+  ], [activeTab]);
+
   return (
     <div className="plugins-view">
-      <header className="plugins-header">
-        <div className="plugins-header-icon">
-          <PluginIcon size={64} />
-        </div>
-        <div className="plugins-header-info">
-          <span className="plugins-header-type">Extensions</span>
-          <h1 className="plugins-header-title">Plugins</h1>
-          <span className="plugins-header-count">
-            {enabledCount} enabled · {installedPlugins.length} installed
-          </span>
-        </div>
-      </header>
+      <FloatingSearch
+        onSearch={handleSearch}
+        onClose={() => {}}
+        isSearchActive={false}
+        actions={actions}
+        pageContext={{ type: 'other', label: 'Plugins', icon: <PluginIcon size={14} /> }}
+      />
 
-      {/* Tabs */}
-      <div className="plugins-tabs">
-        <button
-          className={`plugins-tab ${activeTab === 'installed' ? 'active' : ''}`}
-          onClick={() => setActiveTab('installed')}
-        >
-          Installed
-          <span className="plugins-tab-count">{installedPlugins.length}</span>
-        </button>
-        <button
-          className={`plugins-tab ${activeTab === 'browse' ? 'active' : ''}`}
-          onClick={() => setActiveTab('browse')}
-        >
-          Browse
-        </button>
-        <button
-          className={`plugins-tab ${activeTab === 'updates' ? 'active' : ''}`}
-          onClick={() => setActiveTab('updates')}
-        >
-          Updates
-          {updates.length > 0 && (
-            <span className="plugins-tab-badge">{updates.length}</span>
-          )}
-        </button>
-        <button
-          className={`plugins-tab ${activeTab === 'repositories' ? 'active' : ''}`}
-          onClick={() => setActiveTab('repositories')}
-        >
-          <SettingsIcon size={16} />
-          Repos
-        </button>
-      </div>
+      {/* Ambient Background */}
+      <div className="detail-ambient-bg plugins-ambient" />
+
+      <div className="plugins-content">
 
       {/* Installed Tab */}
       {activeTab === 'installed' && (
@@ -1073,6 +1061,8 @@ export const PluginsView: React.FC = () => {
           </div>
         </>
       )}
+
+      </div>
 
       {/* Modals */}
       <AddRepositoryModal

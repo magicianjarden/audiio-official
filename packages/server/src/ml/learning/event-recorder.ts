@@ -22,7 +22,7 @@ import {
   getEventWeight,
   DISLIKE_REASON_WEIGHTS,
 } from '../utils';
-import type { StorageAdapter } from '../storage/node-storage';
+import { StorageHelper } from './storage-helper';
 
 const STORAGE_KEY = 'audiio-ml-events';
 const MAX_EVENTS = 10000;
@@ -51,7 +51,7 @@ function getGraduatedSkipWeight(skipPercentage: number): number {
   return 0.30;
 }
 
-export interface EventRecorderState {
+interface EventRecorderState {
   events: UserEvent[];
   lastTrainingEventCount: number;
   lastTrainingTimestamp: number;
@@ -60,7 +60,7 @@ export interface EventRecorderState {
   lastModelVersion: number;
 }
 
-export class EventRecorder {
+export class EventRecorder extends StorageHelper {
   private events: UserEvent[] = [];
   private listeners: Set<(event: UserEvent) => void> = new Set();
   private lastTrainingEventCount = 0;
@@ -68,30 +68,6 @@ export class EventRecorder {
   private lastTrainingAccuracy = 0;
   private lastTrainingLoss = 0;
   private lastModelVersion = 0;
-  private storage: StorageAdapter | null = null;
-
-  /**
-   * Set storage adapter (call before load)
-   */
-  setStorage(storage: StorageAdapter): void {
-    this.storage = storage;
-  }
-
-  /**
-   * Get storage adapter (falls back to localStorage if available)
-   */
-  private getStorage(): StorageAdapter | null {
-    if (this.storage) return this.storage;
-    if (typeof localStorage !== 'undefined') {
-      return {
-        getItem: (key) => localStorage.getItem(key),
-        setItem: (key, value) => localStorage.setItem(key, value),
-        removeItem: (key) => localStorage.removeItem(key),
-        clear: () => localStorage.clear(),
-      };
-    }
-    return null;
-  }
 
   /**
    * Load events from storage
@@ -168,7 +144,7 @@ export class EventRecorder {
   }
 
   /**
-   * Get all events
+   * Get all events (for debugging/admin)
    */
   getEvents(): UserEvent[] {
     return [...this.events];
@@ -366,7 +342,8 @@ export class EventRecorder {
   }
 
   /**
-   * Update training results
+   * Update training results after training completes
+   * Called by the training pipeline to record accuracy/loss metrics
    */
   updateTrainingResults(accuracy: number, loss: number): void {
     this.lastTrainingAccuracy = accuracy;

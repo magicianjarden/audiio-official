@@ -155,8 +155,7 @@ npm run dev
 | `@audiio/core` | Core types, orchestrators, plugin interfaces |
 | `@audiio/sdk` | SDK for building addons (7 roles) |
 | `@audiio/ui` | React UI components (21 Zustand stores) |
-| `@audiio/desktop` | Electron desktop app (131+ IPC handlers) |
-| `@audiio/mobile` | Mobile server + web app |
+| `@audiio/client` | Electron desktop app |
 | `@audiio/relay` | P2P relay server/client |
 | `@audiio/icons` | 170+ icon components |
 | `@audiio/landing` | Marketing landing page |

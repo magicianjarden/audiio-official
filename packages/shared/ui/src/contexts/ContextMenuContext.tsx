@@ -1,15 +1,19 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import type { UnifiedTrack } from '@audiio/core';
 import type { SearchArtist, SearchAlbum } from '../stores/search-store';
+import type { Playlist } from '../stores/library-store';
+import type { Tag } from '../stores/tag-store';
 import { ContextMenu } from '../components/ContextMenu/ContextMenu';
 
 // Context menu can handle different entity types
-export type ContextMenuType = 'track' | 'artist' | 'album';
+export type ContextMenuType = 'track' | 'artist' | 'album' | 'playlist' | 'tag';
 
 export type ContextMenuEntity =
   | { type: 'track'; data: UnifiedTrack }
   | { type: 'artist'; data: SearchArtist }
-  | { type: 'album'; data: SearchAlbum };
+  | { type: 'album'; data: SearchAlbum }
+  | { type: 'playlist'; data: Playlist }
+  | { type: 'tag'; data: Tag };
 
 type ContextMenuState = {
   entity: ContextMenuEntity;
@@ -25,6 +29,8 @@ interface ContextMenuContextValue {
   showTrackMenu: (e: React.MouseEvent, track: UnifiedTrack) => void;
   showArtistMenu: (e: React.MouseEvent, artist: SearchArtist) => void;
   showAlbumMenu: (e: React.MouseEvent, album: SearchAlbum) => void;
+  showPlaylistMenu: (e: React.MouseEvent, playlist: Playlist) => void;
+  showTagMenu: (e: React.MouseEvent, tag: Tag) => void;
 }
 
 const ContextMenuContext = createContext<ContextMenuContextValue | null>(null);
@@ -63,6 +69,28 @@ export function useAlbumContextMenu() {
   };
 }
 
+export function usePlaylistContextMenu() {
+  const context = useContext(ContextMenuContext);
+  if (!context) {
+    throw new Error('usePlaylistContextMenu must be used within a ContextMenuProvider');
+  }
+  return {
+    showContextMenu: context.showPlaylistMenu,
+    hideContextMenu: context.hideContextMenu,
+  };
+}
+
+export function useTagContextMenu() {
+  const context = useContext(ContextMenuContext);
+  if (!context) {
+    throw new Error('useTagContextMenu must be used within a ContextMenuProvider');
+  }
+  return {
+    showContextMenu: context.showTagMenu,
+    hideContextMenu: context.hideContextMenu,
+  };
+}
+
 // Generic hook for all menu types
 export function useEntityContextMenu() {
   const context = useContext(ContextMenuContext);
@@ -75,12 +103,16 @@ export function useEntityContextMenu() {
 interface ContextMenuProviderProps {
   children: React.ReactNode;
   onAddToPlaylist?: (track: UnifiedTrack) => void;
+  onAddToCollection?: (track: UnifiedTrack) => void;
+  onTagTrack?: (track: UnifiedTrack) => void;
   onDislike?: (track: UnifiedTrack) => void;
 }
 
 export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({
   children,
   onAddToPlaylist,
+  onAddToCollection,
+  onTagTrack,
   onDislike
 }) => {
   const [menuState, setMenuState] = useState<ContextMenuState>(null);
@@ -109,6 +141,18 @@ export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({
     setMenuState({ entity: { type: 'album', data: album }, x: e.clientX, y: e.clientY });
   }, []);
 
+  const showPlaylistMenu = useCallback((e: React.MouseEvent, playlist: Playlist) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuState({ entity: { type: 'playlist', data: playlist }, x: e.clientX, y: e.clientY });
+  }, []);
+
+  const showTagMenu = useCallback((e: React.MouseEvent, tag: Tag) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuState({ entity: { type: 'tag', data: tag }, x: e.clientX, y: e.clientY });
+  }, []);
+
   const hideContextMenu = useCallback(() => {
     setMenuState(null);
   }, []);
@@ -120,6 +164,8 @@ export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({
       showTrackMenu,
       showArtistMenu,
       showAlbumMenu,
+      showPlaylistMenu,
+      showTagMenu,
     }}>
       {children}
       {menuState && (
@@ -129,6 +175,8 @@ export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({
           y={menuState.y}
           onClose={hideContextMenu}
           onAddToPlaylist={onAddToPlaylist}
+          onAddToCollection={onAddToCollection}
+          onTagTrack={onTagTrack}
           onDislike={onDislike}
         />
       )}

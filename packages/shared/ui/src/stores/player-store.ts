@@ -38,6 +38,7 @@ interface PlayerState {
   videoSize: { width: number; height: number };
 
   // Audio Actions
+  initialize: () => Promise<void>;
   play: (track: UnifiedTrack) => Promise<void>;
   pause: () => void;
   resume: () => void;
@@ -53,6 +54,7 @@ interface PlayerState {
   removeFromQueue: (trackId: string) => void;
   setPosition: (position: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
+  setDuration: (duration: number) => void;
   setStreamInfo: (track: UnifiedTrack, streamInfo: StreamInfo) => void;
   clearError: () => void;
   toggleShuffle: () => void;
@@ -103,6 +105,26 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   videoSize: { width: 480, height: 270 },
 
   // Audio Actions
+  initialize: async () => {
+    try {
+      if (window.api?.playerGetLastState) {
+        const result = await window.api.playerGetLastState();
+        if (result.success && result.state) {
+          const { track, position } = result.state;
+          set({
+            currentTrack: track,
+            position,
+            duration: track.duration ? track.duration * 1000 : 0,
+            isPlaying: false, // Start paused
+          });
+          console.log('[PlayerStore] Restored last playback state:', track.title);
+        }
+      }
+    } catch (error) {
+      console.warn('[PlayerStore] Failed to restore playback state:', error);
+    }
+  },
+
   play: async (track) => {
     // Pause any playing video when audio starts
     const { isVideoPlaying } = get();
@@ -113,31 +135,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      // Check if track already has streamInfo (e.g., local files)
-      // Local tracks have streamInfo pre-populated with local-audio:// URLs
-      const isLocalTrack = track.id.startsWith('local:') || track._meta?.metadataProvider === 'local-file';
-
-      if (isLocalTrack && track.streamInfo?.url) {
-        // Use existing streamInfo for local tracks
-        console.log('[PlayerStore] Playing local track with existing streamInfo:', track.streamInfo.url);
-        set({
-          currentTrack: track,
-          isPlaying: true,
-          duration: track.duration * 1000,
-          position: 0,
-          isLoading: false
-        });
-
-        // Update queue index if track is in queue
-        const { queue } = get();
-        const index = queue.findIndex(t => t.id === track.id);
-        if (index !== -1) {
-          set({ queueIndex: index });
-          setTimeout(() => {
-            window.dispatchEvent(new CustomEvent('audiio:check-auto-queue'));
-          }, 100);
-        }
-      } else if (window.api) {
+      // All tracks (including local) should go through IPC to get proper stream URLs
+      // Local tracks have local-audio:// URLs that need to be converted to http://server/api/stream/local
+      if (window.api) {
         // Check prefetch cache first for instant playback
         const cachedStream = streamPrefetch.getCached(track.id);
         let streamInfo: StreamInfo;
@@ -360,6 +360,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   setIsPlaying: (isPlaying) => {
     set({ isPlaying });
+  },
+
+  setDuration: (duration) => {
+    set({ duration });
   },
 
   setStreamInfo: (track, streamInfo) => {

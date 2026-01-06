@@ -192,19 +192,6 @@ export function calculateClassWeights(labels: number[]): { 0: number; 1: number 
 // ============================================================================
 
 /**
- * Convert arrays to tensors with proper cleanup
- */
-export function arraysToTensors(
-  features: number[][],
-  labels: number[]
-): { x: tf.Tensor2D; y: tf.Tensor1D } {
-  return {
-    x: tf.tensor2d(features),
-    y: tf.tensor1d(labels),
-  };
-}
-
-/**
  * Shuffle arrays in unison
  */
 export function shuffleArrays<T, U>(arr1: T[], arr2: U[]): [T[], U[]] {
@@ -259,17 +246,6 @@ export async function predictBatch(
   }
 }
 
-/**
- * Predict score for a single feature vector
- */
-export async function predictSingle(
-  model: tf.LayersModel,
-  features: number[]
-): Promise<number> {
-  const scores = await predictBatch(model, [features]);
-  return scores[0];
-}
-
 // ============================================================================
 // Model Management
 // ============================================================================
@@ -285,22 +261,6 @@ export function getModelSummary(model: tf.LayersModel): string {
   });
 
   return lines.join('\n');
-}
-
-/**
- * Count total parameters in model
- */
-export function countParameters(model: tf.LayersModel): number {
-  let total = 0;
-
-  for (const layer of model.layers) {
-    const weights = layer.getWeights();
-    for (const w of weights) {
-      total += w.size;
-    }
-  }
-
-  return total;
 }
 
 /**
@@ -335,13 +295,6 @@ export function disposeTensors(...tensors: (tf.Tensor | null | undefined)[]): vo
       tensor.dispose();
     }
   }
-}
-
-/**
- * Run a function with automatic tensor cleanup
- */
-export function tidy<T extends tf.TensorContainer>(fn: () => T): T {
-  return tf.tidy(fn) as T;
 }
 
 /**

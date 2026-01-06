@@ -2,7 +2,7 @@
  * Feature provider types for algorithm plugins
  */
 
-import type { AudioFeatures, EmotionFeatures, LyricsFeatures, Track, TrackMatch } from './track';
+import type { AudioFeatures, EmotionFeatures, LyricsFeatures, GenreFeatures, Track, TrackMatch } from './track';
 
 // ============================================================================
 // Unified Feature Provider
@@ -48,6 +48,11 @@ export interface FeatureProvider {
   /** Analyze lyrics text directly */
   analyzeLyrics?(lyrics: string): Promise<LyricsFeatures | null>;
 
+  // === Genre Features ===
+
+  /** Get genre features for a track (from metadata or ML classification) */
+  getGenreFeatures?(trackId: string): Promise<GenreFeatures | null>;
+
   // === Similarity ===
 
   /** Find similar tracks */
@@ -89,6 +94,7 @@ export interface ProviderCapabilities {
   audioAnalysis: boolean;
   emotionDetection: boolean;
   lyricsAnalysis: boolean;
+  genreClassification: boolean;
   similarity: boolean;
   fingerprinting: boolean;
   embeddings: boolean;
@@ -123,29 +129,8 @@ export interface DuplicateResult {
   type: 'exact' | 'similar' | 'remaster' | 'live' | 'acoustic';
 }
 
-// ============================================================================
-// Provider Registry
-// ============================================================================
-
-export interface ProviderRegistry {
-  /** Register a feature provider */
-  register(provider: FeatureProvider): void;
-
-  /** Unregister a provider */
-  unregister(providerId: string): void;
-
-  /** Get provider by ID */
-  get(providerId: string): FeatureProvider | undefined;
-
-  /** Get all providers */
-  getAll(): FeatureProvider[];
-
-  /** Get providers sorted by priority */
-  getByPriority(): FeatureProvider[];
-
-  /** Get providers with specific capability */
-  getWithCapability(capability: keyof ProviderCapabilities): FeatureProvider[];
-}
+// Note: ProviderRegistry interface was removed as unused dead code
+// Provider registration is handled directly by FeatureAggregator
 
 // ============================================================================
 // Feature Aggregation
@@ -180,38 +165,5 @@ export const DEFAULT_AGGREGATION_CONFIG: FeatureAggregationConfig = {
   providerTimeout: 10000, // 10 seconds
 };
 
-// ============================================================================
-// Provider Statistics
-// ============================================================================
-
-export interface ProviderStats {
-  providerId: string;
-
-  /** Number of successful requests */
-  successCount: number;
-
-  /** Number of failed requests */
-  errorCount: number;
-
-  /** Average response time in ms */
-  avgResponseTime: number;
-
-  /** Cache hit rate (0-1) */
-  cacheHitRate: number;
-
-  /** Last error */
-  lastError?: {
-    message: string;
-    timestamp: number;
-  };
-
-  /** Features this provider has contributed */
-  featuresProvided: {
-    audio: number;
-    emotion: number;
-    lyrics: number;
-    similarity: number;
-    fingerprint: number;
-    embedding: number;
-  };
-}
+// Note: ProviderStats interface was removed as unused dead code
+// Statistics tracking can be added when needed in the future

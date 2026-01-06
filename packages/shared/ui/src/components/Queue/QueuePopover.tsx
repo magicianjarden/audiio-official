@@ -51,7 +51,7 @@ function getTrackSourceHint(
 ): { type: QueueSourceType; label: string } | null {
   // Check if from radio seed
   if (radioSeed) {
-    if (radioSeed.type === 'artist' && track.artists.some(a => a.name === radioSeed.name)) {
+    if (radioSeed.type === 'artist' && track.artists?.some(a => a.name === radioSeed.name)) {
       return { type: 'artist', label: radioSeed.name };
     }
     if (radioSeed.type === 'genre') {
@@ -66,8 +66,8 @@ function getTrackSourceHint(
   // Check if similar to current track
   if (currentTrack && isAutoQueue) {
     // Same artist (any artist match, not just primary)
-    const matchingArtist = track.artists.find(a =>
-      currentTrack.artists.some(ca => ca.name === a.name || ca.id === a.id)
+    const matchingArtist = track.artists?.find(a =>
+      currentTrack.artists?.some(ca => ca.name === a.name || ca.id === a.id)
     );
     if (matchingArtist) {
       return { type: 'artist', label: matchingArtist.name };
@@ -444,7 +444,7 @@ export const QueuePopover: React.FC = () => {
               <div className="queue-popover-track-info">
                 <div className="queue-popover-track-title">{currentTrack.title}</div>
                 <div className="queue-popover-track-artist">
-                  {currentTrack.artists.map(a => a.name).join(', ')}
+                  {currentTrack.artists?.map(a => a.name).join(', ') || 'Unknown Artist'}
                 </div>
               </div>
             </div>

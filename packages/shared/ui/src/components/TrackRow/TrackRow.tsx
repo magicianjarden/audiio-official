@@ -33,8 +33,11 @@ export const TrackRow: React.FC<TrackRowProps> = ({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const artistNames = track.artists?.map(a => a.name).join(', ') ?? 'Unknown Artist';
+  const artistNames = track.artists?.length > 0
+    ? track.artists.map(a => a.name).join(', ')
+    : 'Unknown Artist';
   const { artworkUrl, isLoading: artworkLoading } = useArtwork(track);
+
 
   const handleContextMenu = (e: React.MouseEvent) => {
     if (onContextMenu) {

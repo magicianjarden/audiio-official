@@ -2,11 +2,12 @@
  * Emotion Provider - Audio-based emotion/mood detection
  *
  * Uses a CNN model trained on mel-spectrograms to predict valence/arousal.
+ * Leverages AudioProcessor (Essentia WASM) for high-performance spectrogram computation.
  */
 
 import * as tf from '@tensorflow/tfjs';
 import type { EmotionFeatures, MoodCategory, MLCoreEndpoints } from '../types';
-import { MemoryCache, valenceArousalToMood } from '../utils';
+import { MemoryCache, valenceArousalToMood, getAudioProcessor } from '../utils';
 
 const MODEL_KEY = 'emotion-model';
 const SAMPLE_RATE = 22050;
@@ -19,7 +20,6 @@ export class EmotionProvider {
   private model: tf.LayersModel | null = null;
   private endpoints!: MLCoreEndpoints;
   private cache: MemoryCache<EmotionFeatures>;
-  private isLoading = false;
 
   constructor() {
     this.cache = new MemoryCache<EmotionFeatures>(1000, 3600000);
@@ -81,21 +81,26 @@ export class EmotionProvider {
     }
 
     try {
-      // Resample if needed
-      const resampled = sampleRate === SAMPLE_RATE
-        ? audioData
-        : this.resample(audioData, sampleRate, SAMPLE_RATE);
+      const audioProcessor = getAudioProcessor();
+      await audioProcessor.initialize();
+
+      // Resample using AudioProcessor (uses Essentia if available)
+      const resampled = audioProcessor.resample(audioData, sampleRate, SAMPLE_RATE);
 
       // Take a segment from the middle
       const segmentSamples = SAMPLE_RATE * DURATION_SECONDS;
       const start = Math.max(0, Math.floor((resampled.length - segmentSamples) / 2));
       const segment = resampled.slice(start, start + segmentSamples);
 
-      // Compute mel spectrogram
-      const melSpec = await this.computeMelSpectrogram(segment);
+      // Compute mel spectrogram using AudioProcessor (uses Essentia if available)
+      const melSpec = audioProcessor.computeMelSpectrogram(segment, {
+        sampleRate: SAMPLE_RATE,
+        windowSize: WINDOW_SIZE,
+        hopSize: HOP_SIZE,
+        nMels: N_MELS,
+      });
 
       // Reshape melSpec to 4D: [batch, frames, mels, channels]
-      // melSpec is [frames][mels], we need to add batch and channel dimensions
       const melSpec4d = melSpec.map(frame => frame.map(val => [val]));
 
       // Predict valence/arousal
@@ -175,120 +180,6 @@ export class EmotionProvider {
     });
 
     return model;
-  }
-
-  /**
-   * Compute mel spectrogram from audio
-   */
-  private async computeMelSpectrogram(audioData: Float32Array): Promise<number[][]> {
-    const numFrames = Math.floor((audioData.length - WINDOW_SIZE) / HOP_SIZE) + 1;
-    const melSpec: number[][] = [];
-
-    // Simple mel spectrogram computation
-    // In production, use a proper DSP library
-    for (let i = 0; i < numFrames; i++) {
-      const start = i * HOP_SIZE;
-      const frame = audioData.slice(start, start + WINDOW_SIZE);
-
-      // Apply Hann window
-      const windowed = this.applyHannWindow(frame);
-
-      // Compute FFT magnitude
-      const fftMag = this.computeFFTMagnitude(windowed);
-
-      // Apply mel filterbank
-      const melFrame = this.applyMelFilterbank(fftMag);
-
-      // Log scale
-      const logMel = melFrame.map(x => Math.log10(Math.max(1e-10, x)));
-
-      melSpec.push(logMel);
-    }
-
-    return melSpec;
-  }
-
-  /**
-   * Apply Hann window
-   */
-  private applyHannWindow(frame: Float32Array): Float32Array {
-    const result = new Float32Array(frame.length);
-    for (let i = 0; i < frame.length; i++) {
-      const multiplier = 0.5 * (1 - Math.cos(2 * Math.PI * i / (frame.length - 1)));
-      result[i] = frame[i] * multiplier;
-    }
-    return result;
-  }
-
-  /**
-   * Compute FFT magnitude (simplified)
-   */
-  private computeFFTMagnitude(frame: Float32Array): Float32Array {
-    // Simplified DFT for demonstration
-    // In production, use proper FFT library
-    const n = frame.length;
-    const magnitude = new Float32Array(n / 2);
-
-    for (let k = 0; k < n / 2; k++) {
-      let real = 0;
-      let imag = 0;
-
-      for (let t = 0; t < n; t++) {
-        const angle = (2 * Math.PI * k * t) / n;
-        real += frame[t] * Math.cos(angle);
-        imag -= frame[t] * Math.sin(angle);
-      }
-
-      magnitude[k] = Math.sqrt(real * real + imag * imag);
-    }
-
-    return magnitude;
-  }
-
-  /**
-   * Apply mel filterbank
-   */
-  private applyMelFilterbank(fftMag: Float32Array): number[] {
-    const melFilters: number[] = [];
-    const fftBins = fftMag.length;
-
-    for (let m = 0; m < N_MELS; m++) {
-      // Simplified mel filter
-      const startBin = Math.floor((m / N_MELS) * fftBins * 0.8);
-      const endBin = Math.floor(((m + 1) / N_MELS) * fftBins * 0.8);
-
-      let sum = 0;
-      for (let i = startBin; i < endBin && i < fftBins; i++) {
-        sum += fftMag[i];
-      }
-      melFilters.push(sum / Math.max(1, endBin - startBin));
-    }
-
-    return melFilters;
-  }
-
-  /**
-   * Resample audio
-   */
-  private resample(
-    audioData: Float32Array,
-    fromRate: number,
-    toRate: number
-  ): Float32Array {
-    const ratio = fromRate / toRate;
-    const newLength = Math.floor(audioData.length / ratio);
-    const result = new Float32Array(newLength);
-
-    for (let i = 0; i < newLength; i++) {
-      const srcIndex = i * ratio;
-      const srcIndexFloor = Math.floor(srcIndex);
-      const srcIndexCeil = Math.min(srcIndexFloor + 1, audioData.length - 1);
-      const frac = srcIndex - srcIndexFloor;
-
-      result[i] = audioData[srcIndexFloor] * (1 - frac) + audioData[srcIndexCeil] * frac;
-    }
-
-    return result;
   }
 
   /**

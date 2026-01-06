@@ -65,6 +65,9 @@ export interface ScoreComponents {
   /** Contribution to queue variety */
   diversityScore?: number;
 
+  /** Boost for familiar tracks (played before but not too recently) */
+  familiarityBoost?: number;
+
   // === Penalties ===
 
   /** Penalty for recently played tracks */
@@ -78,6 +81,20 @@ export interface ScoreComponents {
 
   /** Penalty for fatigue (too much of similar sound) */
   fatiguePenalty?: number;
+
+  // === Sequential/Session Components ===
+
+  /** How well track fits the session trajectory in embedding space */
+  trajectoryFit?: number;
+
+  /** DJ-style BPM flow (smooth tempo transitions) */
+  tempoFlow?: number;
+
+  /** Genre transition naturalness (rock→metal vs rock→classical) */
+  genreTransition?: number;
+
+  /** Energy trend continuation (if building up, continue building) */
+  energyTrend?: number;
 
   // === Custom Components ===
 
@@ -178,6 +195,13 @@ export interface ScoringWeights {
   explorationBonus: number;
   serendipityScore: number;
   diversityScore: number;
+  familiarityBoost: number;
+
+  // Sequential/session flow weights
+  trajectoryFit: number;
+  tempoFlow: number;
+  genreTransition: number;
+  energyTrend: number;
 
   // Penalty multipliers
   recentPlayPenalty: number;
@@ -187,17 +211,24 @@ export interface ScoringWeights {
 }
 
 export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
-  basePreference: 0.25,
-  mlPrediction: 0.20,
-  audioMatch: 0.10,
-  moodMatch: 0.08,
-  harmonicFlow: 0.05,
+  basePreference: 0.20,
+  mlPrediction: 0.18,
+  audioMatch: 0.08,
+  moodMatch: 0.06,
+  harmonicFlow: 0.04,
   temporalFit: 0.05,
-  sessionFlow: 0.07,
-  activityMatch: 0.05,
+  sessionFlow: 0.04,
+  activityMatch: 0.04,
   explorationBonus: 0.05,
   serendipityScore: 0.05,
   diversityScore: 0.05,
+  familiarityBoost: 0.04, // Modest weight for rediscovering favorites
+
+  // Sequential scoring (DJ-style flow)
+  trajectoryFit: 0.06,
+  tempoFlow: 0.04,
+  genreTransition: 0.04,
+  energyTrend: 0.02,
 
   recentPlayPenalty: 1.0,
   dislikePenalty: 1.5,
@@ -212,8 +243,14 @@ export interface ScoreExplanation {
   /** Natural language explanation */
   summary: string;
 
-  /** Detailed breakdown */
-  details: ScoreExplanationDetail[];
+  /** Detailed breakdown - inline type replaces removed ScoreExplanationDetail */
+  details: Array<{
+    component: keyof ScoreComponents;
+    label: string;
+    value: number;
+    impact: 'positive' | 'negative' | 'neutral';
+    reason: string;
+  }>;
 
   /** Comparison to average */
   comparison: {
@@ -222,10 +259,5 @@ export interface ScoreExplanation {
   };
 }
 
-export interface ScoreExplanationDetail {
-  component: keyof ScoreComponents;
-  label: string;
-  value: number;
-  impact: 'positive' | 'negative' | 'neutral';
-  reason: string;
-}
+// Note: ScoreExplanationDetail was removed as unused dead code
+// The ScoreExplanation.details field can use a simple inline type if needed

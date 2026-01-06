@@ -4,7 +4,7 @@
  */
 
 import type { ComponentType } from 'react';
-import type { UserProfile } from '../../stores/recommendation-store';
+import type { RecommendationProfile } from '../../stores/recommendation-store';
 import type { UnifiedTrack } from '@audiio/core';
 import type { StructuredSectionQuery } from './types';
 
@@ -56,7 +56,7 @@ export type SectionType =
 
 // Context passed to selection algorithm and sections
 export interface SelectionContext {
-  userProfile: UserProfile;
+  userProfile: RecommendationProfile;
   likedTracksCount: number;
   topArtists: string[];
   topGenres: string[];
@@ -441,7 +441,7 @@ export const sectionRegistry = new SectionRegistry();
 
 // Helper to create selection context
 export function createSelectionContext(options: {
-  userProfile: UserProfile;
+  userProfile: RecommendationProfile;
   likedTracksCount: number;
   topArtists: string[];
   topGenres: string[];

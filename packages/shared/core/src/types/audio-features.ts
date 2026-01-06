@@ -4,11 +4,12 @@
  */
 
 /**
- * Musical key representation
+ * Musical key representation (includes enharmonic equivalents)
  */
 export type MusicalKey =
-  | 'C' | 'C#' | 'D' | 'D#' | 'E' | 'F'
-  | 'F#' | 'G' | 'G#' | 'A' | 'A#' | 'B';
+  | 'C' | 'C#' | 'Db' | 'D' | 'D#' | 'Eb'
+  | 'E' | 'F' | 'F#' | 'Gb' | 'G' | 'G#'
+  | 'Ab' | 'A' | 'A#' | 'Bb' | 'B';
 
 /**
  * Musical mode

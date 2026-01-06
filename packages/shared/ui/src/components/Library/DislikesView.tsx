@@ -1,29 +1,17 @@
-import React, { useState, useMemo } from 'react';
-import { useLibraryStore, LibraryTrack } from '../../stores/library-store';
+import React, { useState, useMemo, useCallback } from 'react';
+import { useLibraryStore } from '../../stores/library-store';
 import { usePlayerStore } from '../../stores/player-store';
 import { useRecommendationStore, DISLIKE_REASONS } from '../../stores/recommendation-store';
 import { TrackRow } from '../TrackRow/TrackRow';
-import { LibraryActionBar, SortOption, FilterOption } from './LibraryActionBar';
-import { ThumbDownIcon, CloseIcon } from '@audiio/icons';
+import { FloatingSearch, SearchAction } from '../Search/FloatingSearch';
+import {
+  ThumbDownIcon,
+  CloseIcon,
+  ClockIcon,
+  SortIcon,
+  FilterIcon,
+} from '@audiio/icons';
 import type { Track } from '@audiio/core';
-
-const SORT_OPTIONS: SortOption[] = [
-  { value: 'recent', label: 'Recently Added' },
-  { value: 'oldest', label: 'Oldest First' },
-  { value: 'title', label: 'Title A-Z' },
-  { value: 'title-desc', label: 'Title Z-A' },
-  { value: 'artist', label: 'Artist A-Z' },
-  { value: 'artist-desc', label: 'Artist Z-A' },
-];
-
-const shuffleArray = <T,>(array: T[]): T[] => {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
-  }
-  return shuffled;
-};
 
 export const DislikesView: React.FC = () => {
   const { dislikedTracks, undislikeTrack } = useLibraryStore();
@@ -33,11 +21,6 @@ export const DislikesView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('recent');
   const [filterReason, setFilterReason] = useState<string>('all');
-
-  const filterOptions: FilterOption[] = [
-    { value: 'all', label: 'All Reasons' },
-    ...DISLIKE_REASONS.map(r => ({ value: r.value, label: r.label })),
-  ];
 
   const getReasonLabels = (trackId: string): string[] => {
     const reasons = getDislikeReasons(trackId);
@@ -51,7 +34,7 @@ export const DislikesView: React.FC = () => {
     let libraryTracks = [...dislikedTracks];
 
     // Filter by search query
-    if (searchQuery.trim()) {
+    if (searchQuery?.trim()) {
       const query = searchQuery.toLowerCase();
       libraryTracks = libraryTracks.filter(lt =>
         lt.track.title.toLowerCase().includes(query) ||
@@ -78,9 +61,6 @@ export const DislikesView: React.FC = () => {
       case 'title':
         libraryTracks.sort((a, b) => a.track.title.localeCompare(b.track.title));
         break;
-      case 'title-desc':
-        libraryTracks.sort((a, b) => b.track.title.localeCompare(a.track.title));
-        break;
       case 'artist':
         libraryTracks.sort((a, b) => {
           const artistA = a.track.artists[0]?.name || '';
@@ -93,27 +73,11 @@ export const DislikesView: React.FC = () => {
     return libraryTracks;
   }, [dislikedTracks, searchQuery, sortBy, filterReason, getDislikeReasons]);
 
-  // Extract just the tracks for playback
   const tracks = useMemo(() => filteredAndSortedTracks.map(lt => lt.track), [filteredAndSortedTracks]);
 
   const handlePlayTrack = (track: Track, index: number) => {
     setQueue(tracks, index);
     play(track);
-  };
-
-  const handlePlayAll = () => {
-    if (tracks.length > 0) {
-      setQueue(tracks, 0);
-      play(tracks[0]!);
-    }
-  };
-
-  const handleShuffle = () => {
-    if (tracks.length > 0) {
-      const shuffled = shuffleArray(tracks);
-      setQueue(shuffled, 0);
-      play(shuffled[0]!);
-    }
   };
 
   const handleUndislike = (trackId: string, e: React.MouseEvent) => {
@@ -122,36 +86,57 @@ export const DislikesView: React.FC = () => {
     undislikeTrack(trackId);
   };
 
-  return (
-    <div className="library-view">
-      <header className="library-header">
-        <div className="library-header-icon dislikes-icon"><ThumbDownIcon size={64} /></div>
-        <div className="library-header-info">
-          <span className="library-header-type">Collection</span>
-          <h1 className="library-header-title">Disliked Songs</h1>
-          <span className="library-header-count">{dislikedTracks.length} songs</span>
-        </div>
-      </header>
+  // Build actions for the search bar
+  const actions: SearchAction[] = useMemo(() => {
+    const result: SearchAction[] = [];
 
-      {dislikedTracks.length > 0 && (
-        <LibraryActionBar
-          onPlay={handlePlayAll}
-          onShuffle={handleShuffle}
-          disablePlay={tracks.length === 0}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          searchPlaceholder="Search disliked songs..."
-          sortOptions={SORT_OPTIONS}
-          currentSort={sortBy}
-          onSortChange={setSortBy}
-          filterOptions={filterOptions}
-          currentFilter={filterReason}
-          onFilterChange={setFilterReason}
-          filterLabel="Reason"
-          totalCount={dislikedTracks.length}
-          filteredCount={filteredAndSortedTracks.length}
-        />
-      )}
+    // Sort options
+    result.push({
+      id: 'sort-recent',
+      label: 'Recent',
+      icon: <ClockIcon size={14} />,
+      active: sortBy === 'recent',
+      onClick: () => setSortBy('recent'),
+    });
+    result.push({
+      id: 'sort-title',
+      label: 'Title',
+      icon: <SortIcon size={14} />,
+      active: sortBy === 'title',
+      onClick: () => setSortBy('title'),
+    });
+
+    // Filter options
+    result.push({
+      id: 'filter-all',
+      label: 'All',
+      icon: <FilterIcon size={14} />,
+      active: filterReason === 'all',
+      onClick: () => setFilterReason('all'),
+    });
+
+    return result;
+  }, [sortBy, filterReason]);
+
+  const isSearching = searchQuery.trim().length > 0;
+
+  const handleClose = useCallback(() => {
+    setSearchQuery('');
+  }, []);
+
+  return (
+    <div className={`library-view dislikes-view ${isSearching ? 'searching' : ''}`}>
+      <FloatingSearch
+        onSearch={setSearchQuery}
+        onClose={handleClose}
+        isSearchActive={isSearching}
+        actions={actions}
+        pageContext={{
+          type: 'dislikes',
+          label: 'Disliked Songs',
+          icon: <ThumbDownIcon size={14} />,
+        }}
+      />
 
       <div className="library-content">
         {dislikedTracks.length === 0 ? (

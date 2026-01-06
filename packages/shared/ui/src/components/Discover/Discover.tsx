@@ -36,13 +36,16 @@ export const Discover: React.FC = () => {
   const totalListens = useRecommendationStore((s) => s.userProfile?.totalListens ?? 0);
   const likedTracksCount = useLibraryStore((s) => s.likedTracks.length);
   const playlistCount = useLibraryStore((s) => s.playlists.length);
-  const hasCapability = usePluginStore((s) => s.hasCapability);
+  // Subscribe to discovery layout from store
+  const discoveryLayout = useRecommendationStore((s) => s.discoveryLayout);
+  const fetchDiscoveryLayout = useRecommendationStore((s) => s.fetchDiscoveryLayout);
 
   // Track recently shown sections for variety - use ref to avoid triggering re-renders
   const recentSectionsRef = React.useRef<SectionType[]>([]);
   const [selectedSections, setSelectedSections] = useState<SectionConfig[]>([]);
 
   // Check for lyrics capability (any lyrics provider)
+  const hasCapability = usePluginStore((s) => s.hasCapability);
   const hasLyrics = hasCapability('lyrics-provider');
 
   // Create selection context - only recalculate when key metrics change
@@ -61,14 +64,25 @@ export const Discover: React.FC = () => {
     });
   }, [totalListens, likedTracksCount, hasLyrics, playlistCount]); // Only primitive values
 
-  // Show ALL sections - only run once on mount and when key data changes
+  // Fetch layout on mount
   useEffect(() => {
-    const sections = sectionRegistry.getAllSectionConfigs(selectionContext);
-    setSelectedSections(sections);
+    fetchDiscoveryLayout();
+  }, [fetchDiscoveryLayout]);
 
-    // Update recent sections ref (doesn't trigger re-render)
-    recentSectionsRef.current = [...sections.map((s) => s.type), ...recentSectionsRef.current].slice(0, 20);
-  }, [totalListens, likedTracksCount]); // Only re-run when these key metrics change
+  // Update sections when layout or context changes
+  useEffect(() => {
+    if (discoveryLayout && discoveryLayout.length > 0) {
+      // Use server-provided layout
+      setSelectedSections(discoveryLayout);
+    } else {
+      // Fallback to client-side generation
+      const sections = sectionRegistry.getAllSectionConfigs(selectionContext);
+      setSelectedSections(sections);
+
+      // Update recent sections ref
+      recentSectionsRef.current = [...sections.map((s) => s.type), ...recentSectionsRef.current].slice(0, 20);
+    }
+  }, [discoveryLayout, totalListens, likedTracksCount, selectionContext]);
 
   const handleSeeAll = useCallback((config: SectionConfig) => {
     // Prefer structuredQuery for ML-aware "See All", fall back to legacy query
@@ -83,70 +97,8 @@ export const Discover: React.FC = () => {
     }
   }, [openSectionDetail]);
 
-  // Generate smart contextual greeting based on time and user data
-  const getContextualGreeting = useMemo(() => {
-    const hour = new Date().getHours();
-    const dayOfWeek = new Date().getDay();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-
-    const topGenres = selectionContext.topGenres;
-    const topArtists = selectionContext.topArtists;
-    const listensCount = totalListens || 0; // Use subscribed primitive value
-
-    // Time-based base greeting
-    let timeContext = '';
-    if (hour >= 5 && hour < 12) {
-      timeContext = isWeekend ? 'Lazy morning' : 'Morning';
-    } else if (hour >= 12 && hour < 17) {
-      timeContext = 'Afternoon';
-    } else if (hour >= 17 && hour < 21) {
-      timeContext = isWeekend ? 'Weekend vibes' : 'Evening';
-    } else {
-      timeContext = 'Late night';
-    }
-
-    // Context-aware suffix based on user data
-    const contextPhrases: string[] = [];
-
-    if (topGenres.length > 0) {
-      const genre = topGenres[0].toLowerCase();
-      contextPhrases.push(`Your ${genre} mood continues`);
-      contextPhrases.push(`More ${genre} for you`);
-      contextPhrases.push(`Curated with your love for ${genre}`);
-    }
-
-    if (topArtists.length > 0) {
-      const artist = topArtists[0];
-      contextPhrases.push(`Because you love ${artist}`);
-      contextPhrases.push(`Inspired by your ${artist} plays`);
-    }
-
-    if (listensCount > 100) {
-      contextPhrases.push(`Tailored from ${listensCount}+ listens`);
-    }
-
-    // Fallback generic phrases
-    if (contextPhrases.length === 0) {
-      contextPhrases.push('Fresh picks for you');
-      contextPhrases.push('Discover something new');
-      contextPhrases.push('Music curated for you');
-    }
-
-    // Pick a semi-random phrase based on the day
-    const phraseIndex = dayOfWeek % contextPhrases.length;
-    const contextPhrase = contextPhrases[phraseIndex];
-
-    return { timeContext, contextPhrase };
-  }, [selectionContext.topGenres, selectionContext.topArtists, totalListens]);
-
   return (
     <div className="discover">
-      {/* Minimal contextual greeting - flows into content */}
-      <header className="discover-header">
-        <span className="discover-greeting-time">{getContextualGreeting.timeContext}</span>
-        <span className="discover-greeting-context">{getContextualGreeting.contextPhrase}</span>
-      </header>
-
       {/* Dynamic Sections from Registry */}
       <div className="discover-sections">
         {selectedSections.map((sectionConfig, index) => (
@@ -173,6 +125,41 @@ interface DynamicSectionProps {
   onSeeAll?: () => void;
 }
 
+/**
+ * Simple Error Boundary for individual sections
+ */
+class SectionErrorBoundary extends React.Component<
+  { children: React.ReactNode; sectionType: string },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: React.ReactNode; sectionType: string }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error(`[Discover] Section "${this.props.sectionType}" crashed:`, error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="discover-section-error">
+          <p>This section couldn't load</p>
+          <button onClick={() => this.setState({ hasError: false })}>
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const DynamicSection: React.FC<DynamicSectionProps> = ({
   config,
   context,
@@ -189,22 +176,24 @@ const DynamicSection: React.FC<DynamicSectionProps> = ({
   const SectionComponent = definition.component;
 
   return (
-    <div
-      className="discover-section-wrapper"
-      style={{ animationDelay: `${index * 100}ms` }}
-    >
-      <SectionComponent
-        id={config.id}
-        type={config.type}
-        title={config.title}
-        subtitle={config.subtitle}
-        query={config.query}
-        isPersonalized={config.isPersonalized}
-        whyExplanation={config.whyExplanation}
-        context={context}
-        onSeeAll={onSeeAll}
-      />
-    </div>
+    <SectionErrorBoundary sectionType={config.type}>
+      <div
+        className="discover-section-wrapper"
+        style={{ animationDelay: `${index * 100}ms` }}
+      >
+        <SectionComponent
+          id={config.id}
+          type={config.type}
+          title={config.title}
+          subtitle={config.subtitle}
+          query={config.query}
+          isPersonalized={config.isPersonalized}
+          whyExplanation={config.whyExplanation}
+          context={context}
+          onSeeAll={onSeeAll}
+        />
+      </div>
+    </SectionErrorBoundary>
   );
 };
 

@@ -83,6 +83,10 @@ interface StatsState {
   isLoading: boolean;
   /** Error state */
   error: string | null;
+  /** Recent listen history from server */
+  listenHistory: ListenEntry[];
+  /** Skip stats from server */
+  skipStats: { totalSkips: number; earlySkips: number; avgSkipPosition: number };
 
   // Actions
   recordListen: (track: UnifiedTrack, duration: number, completed: boolean, skipped?: boolean) => Promise<void>;
@@ -90,6 +94,7 @@ interface StatsState {
   getStats: (period: 'week' | 'month' | 'year' | 'all') => StatsSnapshot;
   fetchStats: (period: 'week' | 'month' | 'year' | 'all') => Promise<StatsSnapshot>;
   getSkipStats: () => { totalSkips: number; earlySkips: number; avgSkipPosition: number };
+  fetchListenHistory: () => Promise<void>;
   clearHistory: () => Promise<void>;
 }
 
@@ -116,6 +121,8 @@ export const useStatsStore = create<StatsState>()((set, get) => ({
   cacheTimestamp: 0,
   isLoading: false,
   error: null,
+  listenHistory: [],
+  skipStats: { totalSkips: 0, earlySkips: 0, avgSkipPosition: 0 },
 
   /**
    * Record a listen event - sends to server
@@ -177,21 +184,12 @@ export const useStatsStore = create<StatsState>()((set, get) => ({
   },
 
   /**
-   * Get stats - uses cache or fetches from server
+   * Get stats - returns cached stats (call fetchStats separately via useEffect)
+   * This does NOT trigger fetches to avoid setState during render
    */
   getStats: (period) => {
     const state = get();
-    const cacheAge = Date.now() - state.cacheTimestamp;
-
-    // Use cache if less than 5 minutes old
-    if (cacheAge < 5 * 60 * 1000 && state.cachedStats[period]) {
-      return state.cachedStats[period]!;
-    }
-
-    // Trigger async fetch
-    get().fetchStats(period);
-
-    // Return cached or empty stats
+    // Return cached or empty stats - no async fetch here to avoid setState during render
     return state.cachedStats[period] || getEmptyStats(period);
   },
 
@@ -246,16 +244,56 @@ export const useStatsStore = create<StatsState>()((set, get) => ({
   },
 
   /**
-   * Get skip stats - fetches from server
+   * Get skip stats - returns cached skip stats
    */
   getSkipStats: () => {
-    // This would need to be fetched from server
-    // For now return empty stats
-    return {
-      totalSkips: 0,
-      earlySkips: 0,
-      avgSkipPosition: 0,
-    };
+    return get().skipStats;
+  },
+
+  /**
+   * Fetch listen history from server
+   */
+  fetchListenHistory: async () => {
+    try {
+      if (window.api?.getListenHistory) {
+        const result = await window.api.getListenHistory(50); // Last 50 entries
+        if (result?.entries) {
+          const entries: ListenEntry[] = result.entries.map((e: any) => ({
+            trackId: e.trackId || '',
+            trackTitle: e.trackTitle || e.trackData?.title || 'Unknown Track',
+            artistId: e.artistId || e.trackData?.artists?.[0] || '',
+            artistName: e.artistName || e.trackData?.artists?.[0] || 'Unknown Artist',
+            albumId: e.albumId,
+            albumTitle: e.albumTitle,
+            artwork: e.artwork,
+            genre: e.genre || e.trackData?.genres?.[0] || '',
+            duration: e.duration || 0,
+            totalDuration: e.totalDuration || e.trackData?.duration || 0,
+            timestamp: e.timestamp || Date.now(),
+            completed: e.completed ?? e.type === 'complete',
+            skipped: e.skipped ?? e.type === 'skip',
+          }));
+
+          // Calculate skip stats from history
+          const skipped = entries.filter(e => e.skipped);
+          const earlySkips = skipped.filter(e => e.duration < (e.totalDuration || 0) * 0.3);
+          const avgSkipPos = skipped.length > 0
+            ? skipped.reduce((sum, e) => sum + (e.duration / (e.totalDuration || 1)), 0) / skipped.length
+            : 0;
+
+          set({
+            listenHistory: entries,
+            skipStats: {
+              totalSkips: skipped.length,
+              earlySkips: earlySkips.length,
+              avgSkipPosition: avgSkipPos,
+            },
+          });
+        }
+      }
+    } catch (error) {
+      console.error('[StatsStore] Failed to fetch listen history:', error);
+    }
   },
 
   /**

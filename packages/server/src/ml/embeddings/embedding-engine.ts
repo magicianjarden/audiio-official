@@ -17,6 +17,7 @@ import {
   MOOD_VECTORS,
 } from './types';
 import type { AudioFeatures } from '../types';
+import { normalizeVector as normalizeVectorUtil } from '../utils/vector-utils';
 
 /**
  * Track data for embedding generation
@@ -305,20 +306,7 @@ export class EmbeddingEngine {
    * Normalize a vector to unit length
    */
   normalizeVector(vector: Float32Array): Float32Array {
-    let magnitude = 0;
-    for (let i = 0; i < vector.length; i++) {
-      magnitude += vector[i] * vector[i];
-    }
-    magnitude = Math.sqrt(magnitude);
-
-    if (magnitude === 0) return vector;
-
-    const normalized = new Float32Array(vector.length);
-    for (let i = 0; i < vector.length; i++) {
-      normalized[i] = vector[i] / magnitude;
-    }
-
-    return normalized;
+    return normalizeVectorUtil(vector);
   }
 
   /**

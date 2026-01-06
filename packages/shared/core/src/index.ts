@@ -31,6 +31,16 @@ export type {
   AudioFeaturesCacheEntry
 } from './types/audio-features';
 
+// Mood and emotion types
+export type {
+  EmotionCategory,
+  MoodType
+} from './types/mood';
+export {
+  EMOTION_CATEGORIES,
+  MOOD_TYPES
+} from './types/mood';
+
 // Pipeline types (for plugin Discover integrations)
 export type {
   QueryStrategy,
@@ -49,6 +59,16 @@ export type {
 } from './types/pipeline';
 
 export type {
+  // Settings schema types
+  SettingsFieldType,
+  SettingsSchemaItem,
+  // Privacy manifest types
+  PrivacyDataCategory,
+  PrivacyDataUsage,
+  PrivacyNetworkAccess,
+  PrivacyDataAccess,
+  PrivacyManifest,
+  // Addon base types
   AddonRole,
   AddonManifest,
   BaseAddon,
@@ -66,7 +86,6 @@ export type {
   NowPlayingPayload,
   Scrobbler,
   DeezerProviderSettings,
-  AppleMusicArtworkSettings,
   // Extended detail types
   ArtistDetail,
   AlbumDetail,
@@ -74,8 +93,6 @@ export type {
   // Trending & discovery types
   TrendingContent,
   Playlist,
-  AlbumRelatedContent,
-  ArtistFullContent,
   // Audio processor types
   AudioProcessorResult,
   AudioProcessor,
@@ -92,7 +109,46 @@ export type {
   ArtistImages,
   ArtistEnrichmentType,
   ArtistEnrichmentData,
-  ArtistEnrichmentProvider
+  ArtistEnrichmentProvider,
+  // Library management types - Metadata Enricher
+  MetadataEnrichmentResult,
+  MetadataEnrichmentQuery,
+  MetadataEnricher,
+  // Library management types - Artwork Provider
+  ArtworkResult,
+  ArtworkProvider,
+  // Library management types - Fingerprint Provider
+  FingerprintResult,
+  FingerprintProvider,
+  // Library management types - ISRC Resolver
+  ISRCLookupResult,
+  ISRCResolver,
+  // Library management types - Analytics Provider
+  TrackAnalytics,
+  ArtistAnalytics,
+  AnalyticsProvider,
+  // Library management types - Smart Playlist Rules
+  SmartPlaylistRule,
+  SmartPlaylistRuleDefinition,
+  SmartPlaylistRulesProvider,
+  // Library management types - Duplicate Detector
+  DuplicateCandidate,
+  DuplicateDetector,
+  // Library management types - Import/Export
+  ImportSource,
+  ImportResult,
+  ImportProvider,
+  ExportFormat,
+  ExportProvider,
+  // Library management types - Library Hook
+  LibraryEventType,
+  LibraryEvent,
+  LibraryHook,
+  // Search provider types
+  SearchResultType,
+  SearchProviderOptions,
+  SearchProviderResults,
+  SearchProvider
 } from './types/addon';
 
 // Registry
@@ -113,14 +169,6 @@ export {
 
 // Services
 export { TrackMatcher } from './services/track-matcher';
-export {
-  MediaProcessor,
-  getMediaProcessor,
-  type HLSConversionOptions,
-  type ConversionResult,
-  type FFmpegProgress,
-  type ProgressCallback
-} from './services/media-processor';
 export {
   AudioAnalyzer,
   getAudioAnalyzer

@@ -3,13 +3,15 @@
  * Features: centered layout, ambient glow, clean borderless track list
  */
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigationStore } from '../../stores/navigation-store';
 import { usePlayerStore } from '../../stores/player-store';
 import { useAlbumStore } from '../../stores/album-store';
+import { useSearchStore } from '../../stores/search-store';
 import { useTrackContextMenu, useAlbumContextMenu } from '../../contexts/ContextMenuContext';
 import { CreditsModal } from './CreditsModal';
-import { MusicNoteIcon, PlayIcon, ShuffleIcon, MoreIcon, BackIcon } from '@audiio/icons';
+import { FloatingSearch, type SearchAction } from '../Search/FloatingSearch';
+import { MusicNoteIcon, PlayIcon, ShuffleIcon } from '@audiio/icons';
 import { getColorsForArtwork, getDefaultColors, type ExtractedColors } from '../../utils/color-extraction';
 import { useAlbumEnrichment } from '../../hooks/useAlbumEnrichment';
 import { MusicVideosSection } from '../Artist/sections/MusicVideosSection';
@@ -29,11 +31,21 @@ function hasCreditsContent(credits: AlbumCredits): boolean {
 }
 
 export const AlbumDetailView: React.FC = () => {
-  const { selectedAlbumId, selectedAlbumData, goBack, openArtist, openAlbum } = useNavigationStore();
+  const { selectedAlbumId, selectedAlbumData, goBack, openArtist, openAlbum, setSearchQuery, setSearchActive } = useNavigationStore();
   const { play, setQueue, currentTrack, playVideo } = usePlayerStore();
   const { fetchAlbum, getAlbum, loadingAlbumId, error } = useAlbumStore();
   const { showContextMenu: showTrackContextMenu } = useTrackContextMenu();
   const { showContextMenu: showAlbumContextMenu } = useAlbumContextMenu();
+  const { search } = useSearchStore();
+
+  // Global search redirect
+  const handleSearch = useCallback((query: string) => {
+    if (query.trim()) {
+      setSearchQuery(query);
+      setSearchActive(true);
+      search(query);
+    }
+  }, [search, setSearchQuery, setSearchActive]);
 
   const [colors, setColors] = useState<ExtractedColors>(getDefaultColors());
   const [showCredits, setShowCredits] = useState(false);
@@ -83,22 +95,46 @@ export const AlbumDetailView: React.FC = () => {
     );
   }
 
-  const handlePlayAll = () => {
+  const handlePlayAll = useCallback(() => {
     if (albumDetail?.tracks && albumDetail.tracks.length > 0) {
       const firstTrack = albumDetail.tracks[0];
       setQueue(albumDetail.tracks, 0);
       if (firstTrack) play(firstTrack);
     }
-  };
+  }, [albumDetail?.tracks, setQueue, play]);
 
-  const handleShufflePlay = () => {
+  const handleShufflePlay = useCallback(() => {
     if (albumDetail?.tracks && albumDetail.tracks.length > 0) {
       const shuffled = [...albumDetail.tracks].sort(() => Math.random() - 0.5);
       const firstTrack = shuffled[0];
       setQueue(shuffled, 0);
       if (firstTrack) play(firstTrack);
     }
-  };
+  }, [albumDetail?.tracks, setQueue, play]);
+
+  // Build actions for FloatingSearch
+  const actions: SearchAction[] = useMemo(() => {
+    const result: SearchAction[] = [];
+    if (albumDetail?.tracks?.length) {
+      result.push({
+        id: 'play',
+        label: 'Play',
+        icon: <PlayIcon size={14} />,
+        shortcut: 'P',
+        primary: true,
+        onClick: handlePlayAll,
+      });
+      result.push({
+        id: 'shuffle',
+        label: 'Shuffle',
+        icon: <ShuffleIcon size={14} />,
+        shortcut: 'S',
+        primary: true,
+        onClick: handleShufflePlay,
+      });
+    }
+    return result;
+  }, [albumDetail?.tracks?.length, handlePlayAll, handleShufflePlay]);
 
   const handleTrackClick = (track: UnifiedTrack, index: number) => {
     if (albumDetail?.tracks) {
@@ -169,6 +205,20 @@ export const AlbumDetailView: React.FC = () => {
       className="album-detail-view album-detail-centered"
       style={{ '--ambient-color': colors.dominant } as React.CSSProperties}
     >
+      {/* Floating Search Bar with Detail Info */}
+      <FloatingSearch
+        onSearch={handleSearch}
+        onClose={() => {}}
+        isSearchActive={false}
+        actions={actions}
+        detailInfo={{
+          title: album?.title || 'Album',
+          subtitle: album?.artist,
+          artwork: album?.artwork,
+          onBack: goBack,
+        }}
+      />
+
       {/* Ambient Background - soft blur */}
       {album?.artwork && (
         <div
@@ -176,11 +226,6 @@ export const AlbumDetailView: React.FC = () => {
           style={{ backgroundImage: `url(${album.artwork})` }}
         />
       )}
-
-      {/* Back Button */}
-      <button className="back-btn-round album-back-btn" onClick={goBack} aria-label="Go back">
-        <BackIcon size={20} />
-      </button>
 
       {/* Hero Section - Centered Layout (Apple-style) */}
       <div className="album-hero-centered">
@@ -235,31 +280,6 @@ export const AlbumDetailView: React.FC = () => {
             )}
           </div>
 
-          {/* Action Buttons - Pill shaped */}
-          <div className="album-actions-centered">
-            <button
-              className="album-play-btn-pill"
-              onClick={handlePlayAll}
-              disabled={!albumDetail?.tracks?.length}
-            >
-              <PlayIcon size={20} />
-              <span>Play</span>
-            </button>
-            <button
-              className="album-shuffle-btn-pill"
-              onClick={handleShufflePlay}
-              disabled={!albumDetail?.tracks?.length}
-            >
-              <ShuffleIcon size={18} />
-              <span>Shuffle</span>
-            </button>
-            <button
-              className="album-more-btn-pill"
-              onClick={(e) => album && showAlbumContextMenu(e, album as SearchAlbum)}
-            >
-              <MoreIcon size={20} />
-            </button>
-          </div>
         </div>
       </div>
 

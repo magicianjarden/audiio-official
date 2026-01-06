@@ -1,24 +1,33 @@
 /**
  * Embedding Provider - Track embeddings for similarity search
  *
- * Uses a small neural network to generate embedding vectors for tracks.
+ * Supports two embedding types:
+ * 1. Metadata Embeddings (64-dim): Generated from track features like BPM, key, energy
+ * 2. Audio Embeddings (128-dim): Generated from actual audio analysis via EssentiaProvider
+ *
+ * Audio embeddings provide better "sound-alike" matching but require audio data.
  */
 
 import * as tf from '@tensorflow/tfjs';
 import type { Track, AggregatedFeatures, MLCoreEndpoints } from '../types';
-import { MemoryCache, flattenFeatureVector, buildFeatureVector, getFeatureVectorDimension } from '../utils';
+import { AsyncCache, flattenFeatureVector, buildFeatureVector, getFeatureVectorDimension, cosineSimilarity } from '../utils';
 
 const MODEL_KEY = 'embedding-model';
-const EMBEDDING_DIM = 64;
+const METADATA_EMBEDDING_DIM = 64;
 
 export class EmbeddingProvider {
   private model: tf.LayersModel | null = null;
   private endpoints!: MLCoreEndpoints;
   private embeddingIndex: Map<string, number[]> = new Map();
-  private cache: MemoryCache<number[]>;
+  private cache: AsyncCache<number[] | null>;
 
   constructor() {
-    this.cache = new MemoryCache<number[]>(5000, 24 * 60 * 60 * 1000);
+    // AsyncCache auto-loads on cache miss and deduplicates concurrent requests
+    this.cache = new AsyncCache<number[] | null>(
+      async (trackId: string) => this.loadOrGenerateEmbedding(trackId),
+      5000,
+      24 * 60 * 60 * 1000
+    );
   }
 
   /**
@@ -65,19 +74,19 @@ export class EmbeddingProvider {
   }
 
   /**
-   * Get embedding for a track
+   * Get embedding for a track (uses AsyncCache for auto-loading and deduplication)
    */
   async getEmbedding(trackId: string): Promise<number[] | null> {
-    // Check cache
-    const cached = this.cache.get(trackId);
-    if (cached) return cached;
+    return this.cache.get(trackId);
+  }
 
-    // Check index
+  /**
+   * Load from index or generate embedding (called by AsyncCache on miss)
+   */
+  private async loadOrGenerateEmbedding(trackId: string): Promise<number[] | null> {
+    // Check persistent index first
     const indexed = this.embeddingIndex.get(trackId);
-    if (indexed) {
-      this.cache.set(trackId, indexed);
-      return indexed;
-    }
+    if (indexed) return indexed;
 
     // Generate embedding
     const features = await this.endpoints.features.get(trackId);
@@ -86,7 +95,6 @@ export class EmbeddingProvider {
     const embedding = await this.generateEmbedding(features);
     if (embedding) {
       this.embeddingIndex.set(trackId, embedding);
-      this.cache.set(trackId, embedding);
     }
 
     return embedding;
@@ -165,7 +173,7 @@ export class EmbeddingProvider {
     for (const [id, embeddingB] of this.embeddingIndex) {
       if (id === excludeId) continue;
 
-      const similarity = this.cosineSimilarity(embedding, embeddingB);
+      const similarity = cosineSimilarity(embedding, embeddingB);
       similarities.push({ id, similarity });
     }
 
@@ -228,7 +236,7 @@ export class EmbeddingProvider {
 
     // Embedding layer - L2 normalization will be done post-prediction
     model.add(tf.layers.dense({
-      units: EMBEDDING_DIM,
+      units: METADATA_EMBEDDING_DIM,
       activation: 'linear',
       name: 'embedding',
     }));
@@ -239,29 +247,5 @@ export class EmbeddingProvider {
     });
 
     return model;
-  }
-
-  /**
-   * Calculate cosine similarity
-   */
-  private cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length) return 0;
-
-    let dotProduct = 0;
-    let normA = 0;
-    let normB = 0;
-
-    for (let i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-
-    normA = Math.sqrt(normA);
-    normB = Math.sqrt(normB);
-
-    if (normA === 0 || normB === 0) return 0;
-
-    return dotProduct / (normA * normB);
   }
 }

@@ -13,8 +13,6 @@ import {
   isEmbeddingReady,
   getIndexedTrackCount,
   generateEmbeddingPlaylist,
-  getAllIndexedTracks,
-  indexTracksStandalone,
 } from '../../hooks/useEmbeddingPlaylist';
 
 const CORE_PLUGIN_ID = 'core';
@@ -310,14 +308,14 @@ export const similarTracksProvider: DataProvider = {
 
 /**
  * Genre Provider
- * Uses search with genre terms
+ * Uses ML genre radio API for intelligent genre-based recommendations
  */
 export const genreProvider: DataProvider = {
   id: `${CORE_PLUGIN_ID}:genre`,
   pluginId: CORE_PLUGIN_ID,
   priority: 75,
   name: 'Genre Provider',
-  description: 'Fetches tracks by genre',
+  description: 'Fetches tracks by genre using ML recommendations',
 
   canProvide(query: StructuredSectionQuery): boolean {
     return (
@@ -334,18 +332,28 @@ export const genreProvider: DataProvider = {
     }
 
     try {
-      if (!window.api?.search) {
-        return [];
+      // Use ML genre radio API for real recommendations
+      if (window.api?.algoGetGenreRadio) {
+        console.log(`[GenreProvider] Using ML genre radio for: ${genre}`);
+        const tracks = await window.api.algoGetGenreRadio(genre, context.query.limit || 30);
+        if (tracks?.length) {
+          console.log(`[GenreProvider] Got ${tracks.length} tracks from ML genre radio`);
+          return tracks;
+        }
       }
 
-      console.log(`[GenreProvider] Searching for genre: ${genre}`);
-      const results = await window.api.search({
-        query: `${genre} music best hits`,
-        type: 'track',
-        limit: context.query.limit || 30,
-      });
+      // Fallback to search only if genre radio not available
+      if (window.api?.search) {
+        console.log(`[GenreProvider] Falling back to search for: ${genre}`);
+        const results = await window.api.search({
+          query: genre,
+          type: 'track',
+          limit: context.query.limit || 30,
+        });
+        return results || [];
+      }
 
-      return results || [];
+      return [];
     } catch (error) {
       console.error('[GenreProvider] Error:', error);
       return [];
@@ -356,14 +364,14 @@ export const genreProvider: DataProvider = {
 /**
  * Mood Provider
  * Handles mood-based sections: mood-playlist, activity, seasonal, focus-mode
- * Uses search with mood-related terms from plugins
+ * Uses ML genre radio API for intelligent mood-based recommendations
  */
 export const moodProvider: DataProvider = {
   id: `${CORE_PLUGIN_ID}:mood`,
   pluginId: CORE_PLUGIN_ID,
   priority: 70,
   name: 'Mood Provider',
-  description: 'Fetches tracks by mood for activities, seasons, and playlists',
+  description: 'Fetches tracks by mood using ML recommendations',
 
   canProvide(query: StructuredSectionQuery): boolean {
     // Handle all mood-based sections
@@ -384,59 +392,31 @@ export const moodProvider: DataProvider = {
     const { query } = context;
 
     // Get mood from embedding or section-specific logic
-    let mood = query.embedding?.mood;
-    let searchTerms = '';
-
-    // Extended mood mappings for all use cases
-    const moodSearchTerms: Record<string, string> = {
-      // Basic moods
-      chill: 'chill relaxing lofi ambient calm',
-      energetic: 'upbeat energetic workout dance edm',
-      happy: 'happy feel good positive uplifting',
-      sad: 'sad emotional melancholy acoustic',
-      focus: 'focus concentration instrumental ambient study',
-      party: 'party dance club hits electronic',
-      romantic: 'romantic love songs ballads',
-      uplifting: 'uplifting motivational inspiring positive',
-      // Activity-specific
-      workout: 'workout gym training high energy electronic',
-      running: 'running cardio high bpm energetic',
-      cooking: 'cooking jazz soul feel good',
-      gaming: 'gaming electronic intense epic',
-      study: 'study focus lo-fi instrumental concentration',
-      relaxing: 'relaxing calm peaceful ambient',
-      // Seasonal
-      winter: 'winter cozy acoustic warm indie',
-      spring: 'spring fresh uplifting indie pop',
-      summer: 'summer hits beach party tropical',
-      autumn: 'autumn fall chill acoustic indie',
-    };
-
-    // Use explicit search query from section if provided
-    if (query.search?.query) {
-      searchTerms = query.search.query;
-    } else if (mood) {
-      searchTerms = moodSearchTerms[mood.toLowerCase()] || `${mood} music`;
-    } else {
-      // Can't provide without mood
+    const mood = query.embedding?.mood;
+    if (!mood) {
       return [];
     }
 
     try {
-      if (!window.api?.search) {
-        return [];
+      // Use ML genre radio API - moods are treated as genres in the ML system
+      if (window.api?.algoGetGenreRadio) {
+        console.log(`[MoodProvider] Using ML genre radio for mood: ${mood}`);
+        const tracks = await window.api.algoGetGenreRadio(mood, query.limit || 30);
+        if (tracks?.length) {
+          console.log(`[MoodProvider] Got ${tracks.length} tracks for mood: ${mood}`);
+          return tracks;
+        }
       }
 
-      console.log(`[MoodProvider] Searching: "${searchTerms}" for ${query.sectionType}`);
-      const results = await window.api.search({
-        query: searchTerms,
-        type: 'track',
-        limit: query.limit || 30,
-      });
-
-      if (results?.length) {
-        console.log(`[MoodProvider] Got ${results.length} tracks for ${mood || query.sectionType}`);
-        return results;
+      // Fallback to search only if genre radio not available
+      if (window.api?.search) {
+        console.log(`[MoodProvider] Falling back to search for mood: ${mood}`);
+        const results = await window.api.search({
+          query: mood,
+          type: 'track',
+          limit: query.limit || 30,
+        });
+        return results || [];
       }
 
       return [];

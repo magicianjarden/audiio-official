@@ -6,6 +6,7 @@
  */
 
 import type { SimilarityResult, TrackEmbedding } from './types';
+import { cosineSimilarity as cosineSimilarityUtil, euclideanDistance } from '../utils/vector-utils';
 
 /**
  * Configuration for the vector index
@@ -355,32 +356,14 @@ export class VectorIndex {
    * Calculate Euclidean distance between two vectors
    */
   private distance(a: Float32Array, b: Float32Array): number {
-    let sum = 0;
-    const len = Math.min(a.length, b.length);
-    for (let i = 0; i < len; i++) {
-      const diff = a[i] - b[i];
-      sum += diff * diff;
-    }
-    return Math.sqrt(sum);
+    return euclideanDistance(a, b);
   }
 
   /**
    * Calculate cosine similarity between two vectors
    */
   cosineSimilarity(a: Float32Array, b: Float32Array): number {
-    let dotProduct = 0;
-    let normA = 0;
-    let normB = 0;
-    const len = Math.min(a.length, b.length);
-
-    for (let i = 0; i < len; i++) {
-      dotProduct += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-
-    if (normA === 0 || normB === 0) return 0;
-    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    return cosineSimilarityUtil(a, b);
   }
 
   /**

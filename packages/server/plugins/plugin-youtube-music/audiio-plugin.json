@@ -1,9 +1,0 @@
-{
-  "id": "youtube-music",
-  "name": "YouTube Music",
-  "version": "1.0.0",
-  "main": "./dist/index.js",
-  "description": "Stream music from YouTube Music with high-quality audio",
-  "roles": ["stream-provider"],
-  "author": "Audiio"
-}

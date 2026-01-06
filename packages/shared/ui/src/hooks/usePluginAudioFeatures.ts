@@ -18,7 +18,7 @@ import {
   createPluginFeatureProvider,
   keyNumberToString
 } from '../ml/plugin-audio-provider';
-import type { AudioFeatures } from '../ml/advanced-scoring';
+import type { AudioFeatures } from '@audiio/core';
 
 // Audio features cache (persists across renders)
 const audioFeaturesCache = new Map<string, AudioFeatures>();

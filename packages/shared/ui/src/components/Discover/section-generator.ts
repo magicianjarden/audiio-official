@@ -3,7 +3,7 @@
  * based on user listening history and preferences
  */
 
-import type { UserProfile } from '../../stores/recommendation-store';
+import type { RecommendationProfile } from '../../stores/recommendation-store';
 
 export type SectionType =
   | 'hero'
@@ -24,7 +24,7 @@ export interface SectionConfig {
 }
 
 interface GenerateOptions {
-  userProfile: UserProfile;
+  userProfile: RecommendationProfile;
   likedTracksCount: number;
   topArtists: string[];
   topGenres: string[];

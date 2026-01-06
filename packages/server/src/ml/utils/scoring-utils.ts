@@ -32,6 +32,12 @@ export function calculateWeightedScore(
     ['explorationBonus', weights.explorationBonus],
     ['serendipityScore', weights.serendipityScore],
     ['diversityScore', weights.diversityScore],
+    ['familiarityBoost', weights.familiarityBoost],
+    // Sequential scoring components
+    ['trajectoryFit', weights.trajectoryFit],
+    ['tempoFlow', weights.tempoFlow],
+    ['genreTransition', weights.genreTransition],
+    ['energyTrend', weights.energyTrend],
   ];
 
   for (const [key, weight] of positiveComponents) {
@@ -485,6 +491,23 @@ export function generateExplanation(
 
   if ((components.sessionFlow ?? 0) > thresholds.high) {
     explanations.push('Flows well with recent tracks');
+  }
+
+  // Sequential scoring explanations
+  if ((components.trajectoryFit ?? 0) > thresholds.high) {
+    explanations.push('Continues your session direction');
+  }
+
+  if ((components.tempoFlow ?? 0) > thresholds.high) {
+    explanations.push('Smooth tempo transition');
+  }
+
+  if ((components.genreTransition ?? 0) > thresholds.high) {
+    explanations.push('Natural genre progression');
+  }
+
+  if ((components.energyTrend ?? 0) > thresholds.high) {
+    explanations.push('Matches energy trend');
   }
 
   if ((components.explorationBonus ?? 0) > thresholds.high) {

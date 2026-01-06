@@ -116,7 +116,8 @@ export interface DislikedTrack {
   };
 }
 
-export interface ArtistPreference {
+/** Client-side artist preference for recommendation UI */
+export interface RecommendationArtistPreference {
   artistId: string;
   artistName: string;
   score: number;
@@ -126,7 +127,8 @@ export interface ArtistPreference {
   dislikeCount: number;
 }
 
-export interface GenrePreference {
+/** Client-side genre preference for recommendation UI */
+export interface RecommendationGenrePreference {
   genre: string;
   score: number;
   playCount: number;
@@ -140,9 +142,10 @@ export interface TimePattern {
   energy: 'low' | 'medium' | 'high';
 }
 
-export interface UserProfile {
-  artistPreferences: Record<string, ArtistPreference>;
-  genrePreferences: Record<string, GenrePreference>;
+/** Client-side user profile for recommendation UI (cached from server) */
+export interface RecommendationProfile {
+  artistPreferences: Record<string, RecommendationArtistPreference>;
+  genrePreferences: Record<string, RecommendationGenrePreference>;
   timePatterns: TimePattern[];
   avgSessionLength: number;
   preferredDuration: { min: number; max: number };
@@ -186,7 +189,8 @@ export const GENRE_ENERGY_MAP: Record<string, number> = {
 interface RecommendationState {
   // Cached data from server (NOT persisted locally)
   dislikedTracks: Record<string, DislikedTrack>;
-  userProfile: UserProfile | null;
+  userProfile: RecommendationProfile | null;
+  discoveryLayout: any[] | null;
   isLoading: boolean;
   lastFetched: number;
   error: string | null;
@@ -214,6 +218,7 @@ interface RecommendationState {
   // Actions - Data fetching
   fetchUserProfile: () => Promise<void>;
   fetchDislikedTracks: () => Promise<void>;
+  fetchDiscoveryLayout: () => Promise<void>;
   refreshData: () => Promise<void>;
 
   // Actions - Advanced Scoring Support (from cached profile)
@@ -277,7 +282,7 @@ export function calculateTrackMood(track: UnifiedTrack): TrackMoodScore {
 // Default Profile
 // ============================================
 
-const defaultProfile: UserProfile = {
+const defaultProfile: RecommendationProfile = {
   artistPreferences: {},
   genrePreferences: {},
   timePatterns: Array.from({ length: 24 }, (_, i) => ({
@@ -301,6 +306,7 @@ export const useRecommendationStore = create<RecommendationState>()((set, get) =
   // Initial state - empty until fetched from server
   dislikedTracks: {},
   userProfile: null,
+  discoveryLayout: null,
   isLoading: false,
   lastFetched: 0,
   error: null,
@@ -645,11 +651,29 @@ export const useRecommendationStore = create<RecommendationState>()((set, get) =
     }
   },
 
+  fetchDiscoveryLayout: async () => {
+    try {
+      if (window.api?.getDiscoveryLayout) {
+        const result = await window.api.getDiscoveryLayout();
+        if (result?.sections) {
+          set({ discoveryLayout: result.sections });
+        }
+      } else {
+        // Fallback or dev mode: try fetching directly if window.api is incomplete but we have HTTP access
+        // Ideally window.api should be the bridge.
+        // For now, if no window.api, we might rely on default local behavior (which is what null implies)
+      }
+    } catch (error) {
+      console.error('[RecommendationStore] Fetch discovery layout failed:', error);
+    }
+  },
+
   refreshData: async () => {
     const state = get();
     await Promise.all([
       state.fetchUserProfile(),
       state.fetchDislikedTracks(),
+      state.fetchDiscoveryLayout(),
     ]);
   },
 

@@ -111,24 +111,42 @@ export class TrainingScheduler {
   }
 
   /**
-   * Get time until next scheduled training
+   * Update configuration
+   */
+  updateConfig(config: Partial<AutoTrainingConfig>): void {
+    this.config = { ...this.config, ...config };
+  }
+
+  /**
+   * Get time until next scheduled training (for admin UI)
+   * Returns null if no training is scheduled
    */
   getNextTrainingTime(): number | null {
     if (!this.scheduledTraining) return null;
 
     const timeSinceLastTraining = Date.now() - this.lastTrainingTime;
     if (timeSinceLastTraining >= this.config.maxInterval) {
-      return Date.now();
+      return Date.now(); // Training overdue
     }
 
     return this.lastTrainingTime + this.config.minInterval;
   }
 
   /**
-   * Update configuration
+   * Get current scheduler status (for admin UI)
    */
-  updateConfig(config: Partial<AutoTrainingConfig>): void {
-    this.config = { ...this.config, ...config };
+  getStatus(): {
+    isRunning: boolean;
+    lastTrainingTime: number;
+    nextTrainingTime: number | null;
+    config: AutoTrainingConfig;
+  } {
+    return {
+      isRunning: this.isRunning,
+      lastTrainingTime: this.lastTrainingTime,
+      nextTrainingTime: this.getNextTrainingTime(),
+      config: { ...this.config },
+    };
   }
 
   /**

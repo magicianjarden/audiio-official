@@ -2,6 +2,17 @@
  * Core track types used throughout the ML system
  */
 
+import type {
+  AudioFeatures as CoreAudioFeatures,
+  EmotionCategory,
+  MusicalKey
+} from '@audiio/core';
+
+// Re-export for backwards compatibility
+export type { EmotionCategory, MusicalKey };
+/** @deprecated Use EmotionCategory instead */
+export type MoodCategory = EmotionCategory;
+
 export interface Track {
   id: string;
   title: string;
@@ -41,61 +52,45 @@ export interface TrackMatch {
   matchType: 'fingerprint' | 'metadata' | 'embedding';
 }
 
-export interface DuplicateGroup {
-  tracks: Track[];
-  confidence: number;
-  matchType: 'exact' | 'similar' | 'different-quality';
-}
+// Note: DuplicateGroup was removed as unused dead code
+// Use DuplicateResult from providers.ts for duplicate detection
 
-export interface AudioFeatures {
-  // Rhythm
-  bpm?: number;
+/**
+ * Extended audio features for ML processing.
+ * Extends the core AudioFeatures with ML-specific fields.
+ */
+export interface AudioFeaturesML extends CoreAudioFeatures {
+  // Extended rhythm
   beatsPerBar?: number;
   beatStrength?: number;
-
-  // Tonal
-  key?: MusicalKey;
-  mode?: 'major' | 'minor';
   tuning?: number; // Hz, typically 440
 
-  // Energy & Dynamics
-  energy?: number; // 0-1
-  loudness?: number; // dB
+  // Dynamics
   dynamicRange?: number;
 
-  // Timbre
-  brightness?: number; // 0-1, spectral centroid normalized
-  warmth?: number; // 0-1
-  roughness?: number; // 0-1
+  // Timbre (0-1 normalized)
+  brightness?: number; // spectral centroid normalized
+  warmth?: number;
+  roughness?: number;
 
-  // Mood (audio-derived)
-  valence?: number; // 0-1, positivity
+  // Emotion (Russell's circumplex)
   arousal?: number; // 0-1, intensity
 
-  // Composition
-  danceability?: number; // 0-1
-  acousticness?: number; // 0-1
-  instrumentalness?: number; // 0-1
-  speechiness?: number; // 0-1
-  liveness?: number; // 0-1
-
-  // Spectral
+  // Spectral analysis
   spectralCentroid?: number;
   spectralRolloff?: number;
   spectralFlux?: number;
   zeroCrossingRate?: number;
 
-  // MFCC (for ML models)
+  // ML model input
   mfcc?: number[];
 
   // Confidence
   analysisConfidence?: number;
 }
 
-export type MusicalKey =
-  | 'C' | 'C#' | 'Db' | 'D' | 'D#' | 'Eb'
-  | 'E' | 'F' | 'F#' | 'Gb' | 'G' | 'G#'
-  | 'Ab' | 'A' | 'A#' | 'Bb' | 'B';
+/** @deprecated Use AudioFeaturesML instead */
+export type AudioFeatures = AudioFeaturesML;
 
 export interface EmotionFeatures {
   // Russell's circumplex model
@@ -103,19 +98,13 @@ export interface EmotionFeatures {
   arousal: number; // 0-1, activation dimension
   dominance?: number; // 0-1, control dimension
 
-  // Categorical mood
-  moodCategory: MoodCategory;
+  // Categorical mood (uses EmotionCategory from @audiio/core)
+  moodCategory: EmotionCategory;
   moodConfidence: number;
 
   // Secondary moods
-  secondaryMoods?: MoodCategory[];
+  secondaryMoods?: EmotionCategory[];
 }
-
-export type MoodCategory =
-  | 'happy' | 'sad' | 'angry' | 'fearful'
-  | 'calm' | 'energetic' | 'tense' | 'melancholic'
-  | 'euphoric' | 'peaceful' | 'aggressive' | 'romantic'
-  | 'nostalgic' | 'hopeful' | 'dark' | 'uplifting';
 
 export interface LyricsFeatures {
   // Sentiment
@@ -133,7 +122,7 @@ export interface LyricsFeatures {
 
   // Optional: raw lyrics for further processing
   lyrics?: string;
-  syncedLyrics?: SyncedLyric[];
+  syncedLyrics?: Array<{ time: number; text: string }>;
 }
 
 export interface LyricsTheme {
@@ -141,9 +130,20 @@ export interface LyricsTheme {
   confidence: number;
 }
 
-export interface SyncedLyric {
-  time: number; // seconds
-  text: string;
+export interface GenreFeatures {
+  /** Primary predicted genre */
+  primaryGenre: string;
+  /** Confidence of primary prediction (0-1) */
+  primaryConfidence: number;
+  /** All genre predictions with confidence scores */
+  predictions: GenrePrediction[];
+  /** Whether this was ML-predicted or from metadata */
+  source: 'metadata' | 'ml-predicted';
+}
+
+export interface GenrePrediction {
+  genre: string;
+  confidence: number;
 }
 
 export interface AggregatedFeatures {
@@ -157,6 +157,9 @@ export interface AggregatedFeatures {
 
   // Lyrics-derived features
   lyrics?: LyricsFeatures;
+
+  // Genre classification
+  genre?: GenreFeatures;
 
   // Embedding vector for similarity search
   embedding?: number[];

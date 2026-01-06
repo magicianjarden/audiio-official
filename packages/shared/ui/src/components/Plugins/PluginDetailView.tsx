@@ -1,18 +1,16 @@
-import React from 'react';
-import { usePluginStore, type PluginCategory, type PluginPrivacyAccess, type PluginSettingDefinition } from '../../stores/plugin-store';
+import React, { useCallback, useMemo } from 'react';
+import { usePluginStore, type PluginCategory, type PluginSettingDefinition } from '../../stores/plugin-store';
 import { useNavigationStore } from '../../stores/navigation-store';
+import { useSearchStore } from '../../stores/search-store';
+import { FloatingSearch, type SearchAction } from '../Search/FloatingSearch';
+import { PrivacyCard } from './PrivacyCard';
 import {
   PluginIcon,
   BackIcon,
   DeleteIcon,
-  NetworkIcon,
-  StorageIcon,
-  PlaybackIcon,
-  LibraryAccessIcon,
-  SystemIcon,
-  ShieldIcon,
   CheckIcon,
   SettingsIcon,
+  DownloadIcon,
 } from '@audiio/icons';
 
 const categoryLabels: Record<PluginCategory, string> = {
@@ -37,22 +35,6 @@ const categoryColors: Record<PluginCategory, string> = {
   audio: 'var(--color-access-audio, var(--color-access-playback))',
   tool: 'var(--color-access-tool, var(--color-access-system))',
   other: 'var(--color-access-other)',
-};
-
-const accessTypeIcons: Record<string, React.FC<{ size?: number }>> = {
-  network: NetworkIcon,
-  storage: StorageIcon,
-  playback: PlaybackIcon,
-  library: LibraryAccessIcon,
-  system: SystemIcon,
-};
-
-const accessTypeColors: Record<string, string> = {
-  network: 'var(--color-access-network)',
-  storage: 'var(--color-access-storage)',
-  playback: 'var(--color-access-playback)',
-  library: 'var(--color-access-library)',
-  system: 'var(--color-access-system)',
 };
 
 // ========================================
@@ -111,7 +93,31 @@ const PluginSettingItem: React.FC<PluginSettingItemProps> = ({
             value={value as number}
             min={setting.min}
             max={setting.max}
+            step={setting.step}
             onChange={(e) => onChange(parseInt(e.target.value, 10) || setting.default as number)}
+            disabled={disabled}
+          />
+        );
+
+      case 'string':
+        return (
+          <input
+            type={setting.secret ? 'password' : 'text'}
+            className="plugin-text-input"
+            value={(value as string) || ''}
+            placeholder={setting.placeholder}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={disabled}
+          />
+        );
+
+      case 'color':
+        return (
+          <input
+            type="color"
+            className="plugin-color-input"
+            value={(value as string) || '#6366f1'}
+            onChange={(e) => onChange(e.target.value)}
             disabled={disabled}
           />
         );
@@ -124,71 +130,15 @@ const PluginSettingItem: React.FC<PluginSettingItemProps> = ({
   return (
     <div className="plugin-setting-item">
       <div className="plugin-setting-info">
-        <span className="plugin-setting-label">{setting.label}</span>
-        <span className="plugin-setting-description">{setting.description}</span>
+        <span className="plugin-setting-label">
+          {setting.label}
+          {setting.required && <span className="plugin-setting-required">*</span>}
+        </span>
+        {setting.description && (
+          <span className="plugin-setting-description">{setting.description}</span>
+        )}
       </div>
       {renderControl()}
-    </div>
-  );
-};
-
-interface PrivacyCardProps {
-  privacyAccess: PluginPrivacyAccess[];
-}
-
-const PrivacyCard: React.FC<PrivacyCardProps> = ({ privacyAccess }) => {
-  if (privacyAccess.length === 0) {
-    return (
-      <div className="privacy-card">
-        <div className="privacy-card-header">
-          <ShieldIcon size={24} />
-          <h3>App Privacy</h3>
-        </div>
-        <div className="privacy-card-empty">
-          <CheckIcon size={32} />
-          <p>This plugin does not access any sensitive data</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="privacy-card">
-      <div className="privacy-card-header">
-        <ShieldIcon size={24} />
-        <h3>App Privacy</h3>
-      </div>
-      <p className="privacy-card-subtitle">
-        The developer indicated that this plugin may access the following data:
-      </p>
-      <div className="privacy-access-list">
-        {privacyAccess.map((access, index) => {
-          const Icon = accessTypeIcons[access.type] || SystemIcon;
-          const color = accessTypeColors[access.type] || '#6b7280';
-          return (
-            <div key={index} className="privacy-access-item">
-              <div className="privacy-access-icon" style={{ backgroundColor: `${color}20`, color }}>
-                <Icon size={20} />
-              </div>
-              <div className="privacy-access-info">
-                <div className="privacy-access-header">
-                  <span className="privacy-access-label">{access.label}</span>
-                  {access.required && (
-                    <span className="privacy-access-required">Required</span>
-                  )}
-                </div>
-                <p className="privacy-access-description">{access.description}</p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="privacy-card-footer">
-        <p>
-          Privacy practices may vary based on the features you use or your configuration.
-          <a href="#" className="privacy-learn-more">Learn More</a>
-        </p>
-      </div>
     </div>
   );
 };
@@ -197,7 +147,65 @@ export const PluginDetailView: React.FC = () => {
   const { selectedPluginId, goBack } = useNavigationStore();
   const { plugins, togglePlugin, removePlugin, updatePluginSetting } = usePluginStore();
 
+  // Global search redirect
+  const { setQuery, setIsOpen } = useSearchStore();
+  const handleSearch = useCallback((query: string) => {
+    if (query.trim()) {
+      setQuery(query);
+      setIsOpen(true);
+    }
+  }, [setQuery, setIsOpen]);
+
   const plugin = plugins.find(p => p.id === selectedPluginId);
+
+  const handleToggle = useCallback(() => {
+    if (plugin) togglePlugin(plugin.id);
+  }, [plugin, togglePlugin]);
+
+  const handleUninstall = useCallback(async () => {
+    if (!plugin) return;
+    if (confirm(`Are you sure you want to uninstall "${plugin.name}"?`)) {
+      try {
+        await removePlugin(plugin.id);
+        goBack();
+      } catch (error) {
+        console.error('Failed to uninstall plugin:', error);
+      }
+    }
+  }, [plugin, removePlugin, goBack]);
+
+  // Actions for FloatingSearch CTA
+  const actions: SearchAction[] = useMemo(() => {
+    if (!plugin) return [];
+    const result: SearchAction[] = [];
+
+    if (plugin.installed) {
+      result.push({
+        id: 'toggle',
+        label: plugin.enabled ? 'Disable' : 'Enable',
+        icon: plugin.enabled ? <CheckIcon size={14} /> : <PluginIcon size={14} />,
+        primary: true,
+        active: plugin.enabled,
+        onClick: handleToggle,
+      });
+      result.push({
+        id: 'uninstall',
+        label: 'Uninstall',
+        icon: <DeleteIcon size={14} />,
+        onClick: handleUninstall,
+      });
+    } else {
+      result.push({
+        id: 'install',
+        label: 'Install',
+        icon: <DownloadIcon size={14} />,
+        primary: true,
+        onClick: () => {}, // TODO: implement install
+      });
+    }
+
+    return result;
+  }, [plugin, handleToggle, handleUninstall]);
 
   if (!plugin) {
     return (
@@ -210,66 +218,32 @@ export const PluginDetailView: React.FC = () => {
     );
   }
 
-  const handleToggle = () => {
-    togglePlugin(plugin.id);
-  };
-
-  const handleUninstall = async () => {
-    if (confirm(`Are you sure you want to uninstall "${plugin.name}"?`)) {
-      try {
-        await removePlugin(plugin.id);
-        goBack();
-      } catch (error) {
-        console.error('Failed to uninstall plugin:', error);
-      }
-    }
-  };
-
   return (
     <div className="plugin-detail-view">
-      <header className="plugin-detail-header">
-        <button className="back-btn-round plugin-back-btn-pos" onClick={goBack} aria-label="Go back">
-          <BackIcon size={20} />
-        </button>
-      </header>
+      <FloatingSearch
+        onSearch={handleSearch}
+        onClose={() => {}}
+        isSearchActive={false}
+        actions={actions}
+        pageContext={{ type: 'other', icon: <PluginIcon size={14} /> }}
+        detailInfo={{
+          title: plugin.name,
+          subtitle: `${categoryLabels[plugin.category]} v${plugin.version}`,
+          icon: plugin.icon ? (
+            <img src={plugin.icon} alt={plugin.name} style={{ width: 16, height: 16, borderRadius: 4 }} />
+          ) : (
+            <PluginIcon size={16} />
+          ),
+          color: categoryColors[plugin.category],
+          onBack: goBack,
+        }}
+      />
 
-      <div className="plugin-detail-hero">
-        <div
-          className="plugin-detail-icon"
-          style={{ background: categoryColors[plugin.category] }}
-        >
-          {plugin.icon ? (
-            <img src={plugin.icon} alt={plugin.name} />
-          ) : (
-            <PluginIcon size={56} />
-          )}
-        </div>
-        <div className="plugin-detail-info">
-          <h1 className="plugin-detail-name">{plugin.name}</h1>
-          <span className="plugin-detail-category" style={{ color: categoryColors[plugin.category] }}>
-            {categoryLabels[plugin.category]}
-          </span>
-          <div className="plugin-detail-meta">
-            <span className="plugin-detail-version">Version {plugin.version}</span>
-            <span className="plugin-detail-author">by {plugin.author}</span>
-          </div>
-        </div>
-        <div className="plugin-detail-actions">
-          {plugin.installed ? (
-            <button
-              className="plugin-action-button danger"
-              onClick={handleUninstall}
-            >
-              <DeleteIcon size={18} />
-              Uninstall
-            </button>
-          ) : (
-            <button className="plugin-action-button primary">
-              Install
-            </button>
-          )}
-        </div>
-      </div>
+      {/* Ambient Background */}
+      <div
+        className="detail-ambient-bg plugin-ambient"
+        style={{ background: categoryColors[plugin.category] }}
+      />
 
       <div className="plugin-detail-content">
         <section className="plugin-detail-section">
@@ -292,7 +266,7 @@ export const PluginDetailView: React.FC = () => {
         </section>
 
         <section className="plugin-detail-section">
-          <PrivacyCard privacyAccess={plugin.privacyAccess || []} />
+          <PrivacyCard privacy={plugin.privacy} pluginName={plugin.name} />
         </section>
 
         <section className="plugin-detail-section">

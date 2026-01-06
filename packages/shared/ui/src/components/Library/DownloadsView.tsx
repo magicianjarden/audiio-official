@@ -1,54 +1,95 @@
-import React, { useState, useMemo } from 'react';
-import { useLibraryStore } from '../../stores/library-store';
+/**
+ * DownloadsView - Shows download queue and completed downloads
+ *
+ * All downloads are managed server-side. This component fetches
+ * download status from library-store and displays progress.
+ */
+
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useLibraryStore, type Download } from '../../stores/library-store';
 import { usePlayerStore } from '../../stores/player-store';
-import { LibraryActionBar, SortOption, FilterOption } from './LibraryActionBar';
+import { FloatingSearch, SearchAction } from '../Search/FloatingSearch';
 import {
   DownloadIcon,
   PlayIcon,
   CloseIcon,
   RefreshIcon,
   MusicNoteIcon,
-  CheckCircleIcon
+  CheckCircleIcon,
+  AlertIcon,
+  FilterIcon,
 } from '@audiio/icons';
 
 type StatusFilter = 'all' | 'completed' | 'in_progress' | 'failed';
 
-const SORT_OPTIONS: SortOption[] = [
-  { value: 'recent', label: 'Recently Added' },
-  { value: 'title', label: 'Title A-Z' },
-  { value: 'title-desc', label: 'Title Z-A' },
-  { value: 'artist', label: 'Artist A-Z' },
-];
+// Get display title for a download
+const getDownloadTitle = (download: Download): string => {
+  if (download.track?.title) return download.track.title;
+  if (download.filename) {
+    // Remove extension and clean up filename
+    return download.filename.replace(/\.[^/.]+$/, '');
+  }
+  return 'Unknown';
+};
 
-const STATUS_LABELS: Record<StatusFilter, string> = {
-  all: 'All Downloads',
-  completed: 'Completed',
-  in_progress: 'In Progress',
-  failed: 'Failed',
+// Get display artist for a download
+const getDownloadArtist = (download: Download): string => {
+  if (download.track?.artists?.length) {
+    return download.track.artists.map(a => a.name).join(', ');
+  }
+  return 'Unknown Artist';
+};
+
+// Get artwork URL for a download
+const getDownloadArtwork = (download: Download): string | undefined => {
+  if (download.track?.artwork) {
+    const artwork = download.track.artwork;
+    if (typeof artwork === 'string') return artwork;
+    return artwork.medium || artwork.small || artwork.url;
+  }
+  return undefined;
 };
 
 export const DownloadsView: React.FC = () => {
-  const { downloads, removeDownload, retryDownload } = useLibraryStore();
+  const { downloads, removeDownload, retryDownload, refreshDownloads } = useLibraryStore();
   const { play, setQueue, currentTrack } = usePlayerStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('recent');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
+  // Refresh downloads on mount and periodically while there are active downloads
+  useEffect(() => {
+    refreshDownloads();
+
+    const hasActive = downloads.some(d =>
+      d.status === 'queued' || d.status === 'downloading' || d.status === 'processing'
+    );
+
+    if (hasActive) {
+      const interval = setInterval(refreshDownloads, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [downloads.some(d => d.status === 'queued' || d.status === 'downloading')]);
+
+  // Categorize downloads
   const completedDownloads = downloads.filter(d => d.status === 'completed');
-  const activeDownloads = downloads.filter(d => d.status !== 'completed');
+  const activeDownloads = downloads.filter(d =>
+    d.status === 'queued' || d.status === 'downloading' || d.status === 'processing'
+  );
   const failedDownloads = downloads.filter(d => d.status === 'failed');
 
   const filteredDownloads = useMemo(() => {
     let filtered = [...downloads];
 
-    // Filter by search query
-    if (searchQuery.trim()) {
+    // Filter by global search query
+    if (searchQuery?.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(download =>
-        download.track.title.toLowerCase().includes(query) ||
-        download.track.artists.some(a => a.name.toLowerCase().includes(query))
-      );
+      filtered = filtered.filter(download => {
+        const title = getDownloadTitle(download).toLowerCase();
+        const artist = getDownloadArtist(download).toLowerCase();
+        return title.includes(query) || artist.includes(query);
+      });
     }
 
     // Filter by status
@@ -57,33 +98,30 @@ export const DownloadsView: React.FC = () => {
         filtered = filtered.filter(d => d.status === 'completed');
         break;
       case 'in_progress':
-        filtered = filtered.filter(d => d.status === 'pending' || d.status === 'downloading');
+        filtered = filtered.filter(d =>
+          d.status === 'queued' || d.status === 'downloading' || d.status === 'processing'
+        );
         break;
       case 'failed':
         filtered = filtered.filter(d => d.status === 'failed');
-        break;
-      case 'all':
-      default:
         break;
     }
 
     // Sort downloads
     switch (sortBy) {
       case 'title':
-        filtered.sort((a, b) => a.track.title.localeCompare(b.track.title));
+        filtered.sort((a, b) => getDownloadTitle(a).localeCompare(getDownloadTitle(b)));
         break;
       case 'title-desc':
-        filtered.sort((a, b) => b.track.title.localeCompare(a.track.title));
-        break;
-      case 'artist':
-        filtered.sort((a, b) => {
-          const artistA = a.track.artists[0]?.name || '';
-          const artistB = b.track.artists[0]?.name || '';
-          return artistA.localeCompare(artistB);
-        });
+        filtered.sort((a, b) => getDownloadTitle(b).localeCompare(getDownloadTitle(a)));
         break;
       case 'recent':
       default:
+        filtered.sort((a, b) => {
+          const timeA = a.startedAt?.getTime() || 0;
+          const timeB = b.startedAt?.getTime() || 0;
+          return timeB - timeA;
+        });
         break;
     }
 
@@ -92,81 +130,127 @@ export const DownloadsView: React.FC = () => {
 
   // Group filtered downloads by status for display
   const filteredCompleted = filteredDownloads.filter(d => d.status === 'completed');
-  const filteredActive = filteredDownloads.filter(d => d.status !== 'completed');
+  const filteredActive = filteredDownloads.filter(d =>
+    d.status !== 'completed' && d.status !== 'cancelled'
+  );
 
-  const handlePlayDownload = (download: typeof downloads[0]) => {
-    if (download.status === 'completed') {
-      const completedTracks = filteredCompleted.map(d => d.track);
-      const index = completedTracks.findIndex(t => t.id === download.track.id);
-      setQueue(completedTracks, index);
-      play(download.track);
+  const handlePlayDownload = (download: Download) => {
+    if (download.status === 'completed' && download.track) {
+      const playableTracks = filteredCompleted
+        .filter(d => d.track)
+        .map(d => d.track!);
+      const index = playableTracks.findIndex(t => t.id === download.track?.id);
+      if (index >= 0) {
+        setQueue(playableTracks, index);
+        play(download.track);
+      }
     }
+  };
+
+  const handleRemove = (downloadId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    removeDownload(downloadId);
+  };
+
+  const handleRetry = async (downloadId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    await retryDownload(downloadId);
   };
 
   const formatProgress = (progress: number) => `${Math.round(progress)}%`;
 
-  const statusCounts = {
-    all: downloads.length,
-    completed: completedDownloads.length,
-    in_progress: activeDownloads.length - failedDownloads.length,
-    failed: failedDownloads.length,
+  const formatSpeed = (bytesPerSec?: number) => {
+    if (!bytesPerSec) return '';
+    if (bytesPerSec > 1024 * 1024) {
+      return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+    }
+    if (bytesPerSec > 1024) {
+      return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+    }
+    return `${bytesPerSec} B/s`;
   };
 
-  const filterOptions: FilterOption[] = (Object.keys(STATUS_LABELS) as StatusFilter[]).map(status => ({
-    value: status,
-    label: STATUS_LABELS[status],
-    count: statusCounts[status],
-  }));
+  const formatEta = (seconds?: number) => {
+    if (!seconds || seconds <= 0) return '';
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+    return `${Math.round(seconds / 3600)}h`;
+  };
+
+  // Build actions for the search bar
+  const actions: SearchAction[] = useMemo(() => {
+    const result: SearchAction[] = [];
+
+    // Status filters
+    result.push({
+      id: 'filter-all',
+      label: 'All',
+      icon: <FilterIcon size={14} />,
+      active: statusFilter === 'all',
+      onClick: () => setStatusFilter('all'),
+    });
+    result.push({
+      id: 'filter-completed',
+      label: 'Completed',
+      icon: <CheckCircleIcon size={14} />,
+      active: statusFilter === 'completed',
+      onClick: () => setStatusFilter('completed'),
+    });
+    result.push({
+      id: 'filter-progress',
+      label: 'In Progress',
+      icon: <DownloadIcon size={14} />,
+      active: statusFilter === 'in_progress',
+      onClick: () => setStatusFilter('in_progress'),
+    });
+
+    return result;
+  }, [statusFilter]);
+
+  const isSearching = searchQuery.trim().length > 0;
+
+  const handleClose = useCallback(() => {
+    setSearchQuery('');
+  }, []);
 
   return (
-    <div className="library-view">
-      <header className="library-header">
-        <div className="library-header-icon downloads-icon"><DownloadIcon size={64} /></div>
-        <div className="library-header-info">
-          <span className="library-header-type">Library</span>
-          <h1 className="library-header-title">Downloads</h1>
-          <span className="library-header-count">
-            {completedDownloads.length} downloaded{activeDownloads.length > 0 && ` · ${activeDownloads.length} in progress`}
-          </span>
-        </div>
-      </header>
-
-      {downloads.length > 0 && (
-        <LibraryActionBar
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          searchPlaceholder="Search downloads..."
-          sortOptions={SORT_OPTIONS}
-          currentSort={sortBy}
-          onSortChange={setSortBy}
-          filterOptions={filterOptions}
-          currentFilter={statusFilter}
-          onFilterChange={(value) => setStatusFilter(value as StatusFilter)}
-          filterLabel="Status"
-          totalCount={downloads.length}
-          filteredCount={filteredDownloads.length}
-        />
-      )}
+    <div className={`library-view downloads-view ${isSearching ? 'searching' : ''}`}>
+      <FloatingSearch
+        onSearch={setSearchQuery}
+        onClose={handleClose}
+        isSearchActive={isSearching}
+        actions={actions}
+        pageContext={{
+          type: 'downloads',
+          label: 'Downloads',
+          icon: <DownloadIcon size={14} />,
+        }}
+      />
 
       <div className="library-content downloads-content">
+        {/* Active Downloads Section */}
         {filteredActive.length > 0 && (
           <section className="downloads-section">
             <h2 className="downloads-section-title">In Progress</h2>
             <div className="downloads-list">
               {filteredActive.map((download) => (
-                <div key={download.track.id} className="download-item">
+                <div key={download.id} className="download-item">
                   <div className="download-artwork">
-                    {download.track.artwork?.medium ? (
-                      <img src={download.track.artwork.medium} alt={download.track.title} />
+                    {getDownloadArtwork(download) ? (
+                      <img
+                        src={getDownloadArtwork(download)}
+                        alt={getDownloadTitle(download)}
+                      />
                     ) : (
-                      <div className="download-artwork-placeholder"><MusicNoteIcon size={24} /></div>
+                      <div className="download-artwork-placeholder">
+                        <MusicNoteIcon size={24} />
+                      </div>
                     )}
                   </div>
                   <div className="download-info">
-                    <div className="download-title">{download.track.title}</div>
-                    <div className="download-artist">
-                      {download.track.artists.map(a => a.name).join(', ')}
-                    </div>
+                    <div className="download-title">{getDownloadTitle(download)}</div>
+                    <div className="download-artist">{getDownloadArtist(download)}</div>
+
                     {download.status === 'downloading' && (
                       <div className="download-progress">
                         <div
@@ -175,14 +259,23 @@ export const DownloadsView: React.FC = () => {
                         />
                         <span className="download-progress-text">
                           {formatProgress(download.progress)}
+                          {download.speed && ` · ${formatSpeed(download.speed)}`}
+                          {download.eta && ` · ${formatEta(download.eta)} left`}
                         </span>
                       </div>
                     )}
-                    {download.status === 'pending' && (
-                      <div className="download-status">Waiting...</div>
+
+                    {download.status === 'queued' && (
+                      <div className="download-status">Queued...</div>
                     )}
+
+                    {download.status === 'processing' && (
+                      <div className="download-status">Processing...</div>
+                    )}
+
                     {download.status === 'failed' && (
                       <div className="download-status error">
+                        <AlertIcon size={12} />
                         {download.error || 'Download failed'}
                       </div>
                     )}
@@ -191,7 +284,7 @@ export const DownloadsView: React.FC = () => {
                     {download.status === 'failed' && (
                       <button
                         className="download-retry"
-                        onClick={() => retryDownload(download.track.id)}
+                        onClick={(e) => handleRetry(download.id, e)}
                         title="Retry"
                       >
                         <RefreshIcon size={18} />
@@ -199,7 +292,7 @@ export const DownloadsView: React.FC = () => {
                     )}
                     <button
                       className="download-remove"
-                      onClick={() => removeDownload(download.track.id)}
+                      onClick={(e) => handleRemove(download.id, e)}
                       title="Cancel"
                     >
                       <CloseIcon size={18} />
@@ -211,6 +304,7 @@ export const DownloadsView: React.FC = () => {
           </section>
         )}
 
+        {/* Completed Downloads Section */}
         <section className="downloads-section">
           <h2 className="downloads-section-title">
             Downloaded
@@ -218,15 +312,20 @@ export const DownloadsView: React.FC = () => {
               <span className="downloads-section-count">{filteredCompleted.length}</span>
             )}
           </h2>
+
           {downloads.length === 0 ? (
             <div className="library-empty">
-              <div className="library-empty-icon"><DownloadIcon size={48} /></div>
+              <div className="library-empty-icon">
+                <DownloadIcon size={48} />
+              </div>
               <h3>No downloads yet</h3>
               <p>Download songs to listen offline</p>
             </div>
-          ) : filteredCompleted.length === 0 && statusFilter !== 'in_progress' && statusFilter !== 'failed' ? (
+          ) : filteredCompleted.length === 0 && statusFilter !== 'in_progress' ? (
             <div className="library-empty">
-              <div className="library-empty-icon"><DownloadIcon size={48} /></div>
+              <div className="library-empty-icon">
+                <DownloadIcon size={48} />
+              </div>
               <h3>No matching downloads</h3>
               <p>Try adjusting your search or filter</p>
             </div>
@@ -234,35 +333,37 @@ export const DownloadsView: React.FC = () => {
             <div className="downloads-list">
               {filteredCompleted.map((download) => (
                 <div
-                  key={download.track.id}
+                  key={download.id}
                   className={`download-item completed ${
-                    currentTrack?.id === download.track.id ? 'playing' : ''
+                    currentTrack?.id === download.track?.id ? 'playing' : ''
                   }`}
                   onClick={() => handlePlayDownload(download)}
                 >
                   <div className="download-artwork">
-                    {download.track.artwork?.medium ? (
-                      <img src={download.track.artwork.medium} alt={download.track.title} />
+                    {getDownloadArtwork(download) ? (
+                      <img
+                        src={getDownloadArtwork(download)}
+                        alt={getDownloadTitle(download)}
+                      />
                     ) : (
-                      <div className="download-artwork-placeholder"><MusicNoteIcon size={24} /></div>
+                      <div className="download-artwork-placeholder">
+                        <MusicNoteIcon size={24} />
+                      </div>
                     )}
-                    <div className="download-play-overlay"><PlayIcon size={24} /></div>
+                    <div className="download-play-overlay">
+                      <PlayIcon size={24} />
+                    </div>
                   </div>
                   <div className="download-info">
-                    <div className="download-title">{download.track.title}</div>
-                    <div className="download-artist">
-                      {download.track.artists.map(a => a.name).join(', ')}
-                    </div>
+                    <div className="download-title">{getDownloadTitle(download)}</div>
+                    <div className="download-artist">{getDownloadArtist(download)}</div>
                     <div className="download-status success">
                       <CheckCircleIcon size={12} /> Downloaded
                     </div>
                   </div>
                   <button
                     className="download-remove"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeDownload(download.track.id);
-                    }}
+                    onClick={(e) => handleRemove(download.id, e)}
                     title="Remove"
                   >
                     <CloseIcon size={18} />
@@ -276,3 +377,5 @@ export const DownloadsView: React.FC = () => {
     </div>
   );
 };
+
+export default DownloadsView;

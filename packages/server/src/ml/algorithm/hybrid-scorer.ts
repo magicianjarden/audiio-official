@@ -17,7 +17,9 @@ import type {
   MoodCategory,
   AudioFeatures,
   ActivityType,
+  MoodType,
 } from '../types';
+import { getMoodMatcher } from '../mood/mood-matcher';
 import {
   calculateWeightedScore,
   calculateTemporalFit,
@@ -27,6 +29,7 @@ import {
   calculateExplorationBonus,
   calculateSerendipityScore,
   calculateRecentPlayPenalty,
+  calculateRecencyScore,
   calculateAudioMatchScore,
   generateExplanation,
   buildFeatureVector,
@@ -37,10 +40,12 @@ import {
   getTimeOfDayLabel,
 } from '../utils';
 import type { NeuralScorer } from './neural-scorer';
+import { SequentialScorer, type SequentialTrack, type SequentialContext } from './sequential-scorer';
 
 export class HybridScorer {
   private endpoints: MLCoreEndpoints;
   private neuralScorer: NeuralScorer;
+  private sequentialScorer: SequentialScorer;
   private settings: Record<string, unknown>;
 
   // Cached user data
@@ -58,8 +63,10 @@ export class HybridScorer {
   ) {
     this.endpoints = endpoints;
     this.neuralScorer = neuralScorer;
+    this.sequentialScorer = new SequentialScorer();
     this.settings = settings;
   }
+
 
   /**
    * Score a single track
@@ -226,8 +233,13 @@ export class HybridScorer {
     }
 
     // === Mood Match ===
-    if (features.emotion && context.userMood) {
-      const moodMatch = this.calculateMoodMatch(features.emotion, context.userMood);
+    if (context.userMood) {
+      const moodMatch = this.calculateMoodMatch(
+        track,
+        features.audio,
+        features.emotion,
+        context.userMood
+      );
       components.moodMatch = moodMatch * 100;
     }
 
@@ -275,13 +287,52 @@ export class HybridScorer {
       }
     }
 
-    // === Session Flow ===
+    // === Session Flow (basic energy-based) ===
     if (this.settings.enableSessionFlow !== false && context.sessionTracks.length > 0) {
       const sessionEnergies = context.sessionTracks
         .slice(-5)
         .map(t => ({ energy: 0.5 })); // TODO: Get actual energies
       const trackEnergy = features.audio?.energy ?? 0.5;
       components.sessionFlow = calculateSessionFlowScore(trackEnergy, sessionEnergies) * 100;
+    }
+
+    // === Sequential Scoring (DJ-style flow) ===
+    if (this.settings.enableSequentialScoring !== false && context.sessionTracks.length > 0) {
+      // Build sequential context from session tracks
+      const recentTracks = await this.buildSequentialTracks(context.sessionTracks.slice(-5));
+
+      const sequentialContext: SequentialContext = {
+        recentTracks,
+        timestamp: context.timestamp.getTime(),
+        sessionDuration: recentTracks.length * 3, // Rough estimate: 3 min per track
+      };
+
+      // Build candidate track with features
+      const candidateTrack: SequentialTrack = {
+        track,
+        audio: features.audio,
+        embedding: features.embedding,
+      };
+
+      // Get sequential scores
+      const seqResult = this.sequentialScorer.score(candidateTrack, sequentialContext);
+
+      // Map sequential components to score components (scale to 0-100)
+      components.trajectoryFit = seqResult.components.trajectoryFit * 100;
+      components.tempoFlow = seqResult.components.tempoFlow * 100;
+      components.genreTransition = seqResult.components.genreTransition * 100;
+      components.energyTrend = seqResult.components.energyProgression * 100;
+
+      // Learn from the last transition if we have genre info
+      if (recentTracks.length > 0) {
+        const lastTrack = recentTracks[recentTracks.length - 1];
+        const lastGenre = lastTrack.track.genre;
+        const currentGenre = track.genre;
+        if (lastGenre && currentGenre) {
+          // Will learn based on whether user skips or completes
+          // (actual learning happens in handleEvent)
+        }
+      }
     }
 
     // === Activity Match ===
@@ -325,6 +376,19 @@ export class HybridScorer {
     const lastPlayed = await this.endpoints.user.getLastPlayed(track.id);
     components.recentPlayPenalty = calculateRecentPlayPenalty(lastPlayed);
 
+    // === Familiarity Boost (smooth exponential decay) ===
+    // Gives a small boost to tracks you've heard before but not too recently
+    // This encourages rediscovering favorites while recentPlayPenalty prevents immediate repetition
+    if (lastPlayed) {
+      const recencyScore = calculateRecencyScore(lastPlayed, 14); // 14-day half-life
+      // Only apply boost if not in the "too recent" penalty zone (> 3 days ago)
+      const hoursSincePlay = (Date.now() - lastPlayed) / (60 * 60 * 1000);
+      if (hoursSincePlay > 72) {
+        // Scale recency (0-1) to a modest boost (0-15 points)
+        components.familiarityBoost = recencyScore * 15;
+      }
+    }
+
     // Dislike penalty
     const dislikedTracks = await this.endpoints.user.getDislikedTracks();
     const isDisliked = dislikedTracks.some(d => d.trackId === track.id);
@@ -350,21 +414,36 @@ export class HybridScorer {
     // Adjust temporal weight based on settings
     const timeOfDayMode = this.settings.timeOfDayMode as string || 'auto';
     const temporalWeight = timeOfDayMode === 'off' ? 0 :
-                          timeOfDayMode === 'strong' ? 0.12 : 0.08; // Default 'auto' = 0.08
+      timeOfDayMode === 'strong' ? 0.12 : 0.08;
+
+    // Adjust sequential scoring weight based on settings
+    const sequentialEnabled = this.settings.enableSequentialScoring !== false;
+    const sequentialWeight = sequentialEnabled ? 0.16 : 0; // Total for all 4 components
 
     return {
-      basePreference: 0.25 * ruleWeight,
+      // Core preference signals
+      basePreference: 0.20 * ruleWeight,
       mlPrediction: mlWeight,
-      audioMatch: 0.10 * ruleWeight,
-      moodMatch: 0.08 * ruleWeight,
-      harmonicFlow: 0.05 * ruleWeight,
-      temporalFit: temporalWeight * ruleWeight, // Increased from 0.05 to 0.08
-      sessionFlow: 0.07 * ruleWeight,
-      activityMatch: 0.05 * ruleWeight,
-      explorationBonus: 0.10 * ruleWeight,
-      serendipityScore: 0.10 * ruleWeight,
-      diversityScore: 0.10 * ruleWeight,
+      audioMatch: 0.08 * ruleWeight,
+      moodMatch: 0.06 * ruleWeight,
+      harmonicFlow: 0.04 * ruleWeight,
+      temporalFit: temporalWeight * ruleWeight,
+      sessionFlow: 0.04 * ruleWeight,
+      activityMatch: 0.04 * ruleWeight,
 
+      // Discovery & variety
+      explorationBonus: 0.08 * ruleWeight,
+      serendipityScore: 0.08 * ruleWeight,
+      diversityScore: 0.08 * ruleWeight,
+      familiarityBoost: 0.04 * ruleWeight, // Rediscover favorites
+
+      // Sequential scoring (DJ-style flow)
+      trajectoryFit: (sequentialWeight * 0.35) * ruleWeight,   // 35% of sequential weight
+      tempoFlow: (sequentialWeight * 0.25) * ruleWeight,       // 25% of sequential weight
+      genreTransition: (sequentialWeight * 0.25) * ruleWeight, // 25% of sequential weight
+      energyTrend: (sequentialWeight * 0.15) * ruleWeight,     // 15% of sequential weight
+
+      // Penalty multipliers
       recentPlayPenalty: 1.0,
       dislikePenalty: 1.5,
       repetitionPenalty: 1.0,
@@ -373,29 +452,84 @@ export class HybridScorer {
   }
 
   /**
-   * Calculate mood match
+   * Map MoodCategory to MoodType for MoodMatcher integration
+   */
+  private static readonly MOOD_CATEGORY_TO_TYPE: Partial<Record<MoodCategory, MoodType>> = {
+    happy: 'happy',
+    energetic: 'energetic',
+    melancholic: 'melancholy',
+    calm: 'chill',
+    peaceful: 'chill',
+    euphoric: 'party',
+    uplifting: 'happy',
+    sad: 'melancholy',
+    dark: 'melancholy',
+    hopeful: 'happy',
+    romantic: 'chill',
+  };
+
+  /**
+   * Fallback valence/arousal targets for moods not in MoodMatcher
+   */
+  private static readonly MOOD_VA_TARGETS: Record<string, { valence: number; arousal: number }> = {
+    angry: { valence: 0.2, arousal: 0.9 },
+    fearful: { valence: 0.2, arousal: 0.7 },
+    tense: { valence: 0.3, arousal: 0.8 },
+    aggressive: { valence: 0.2, arousal: 0.95 },
+    nostalgic: { valence: 0.5, arousal: 0.4 },
+  };
+
+  /**
+   * Calculate mood match using MoodMatcher for rich profiles,
+   * with fallback to valence/arousal for unmapped moods
    */
   private calculateMoodMatch(
-    emotion: EmotionFeatures,
+    track: Track,
+    audio: AudioFeatures | undefined,
+    emotion: EmotionFeatures | undefined,
     targetMood: MoodCategory
   ): number {
-    // Map moods to valence/arousal targets
-    const moodTargets: Record<string, { valence: number; arousal: number }> = {
-      happy: { valence: 0.8, arousal: 0.7 },
-      sad: { valence: 0.2, arousal: 0.3 },
-      calm: { valence: 0.6, arousal: 0.2 },
-      energetic: { valence: 0.7, arousal: 0.9 },
-      tense: { valence: 0.3, arousal: 0.8 },
-      melancholic: { valence: 0.3, arousal: 0.4 },
-      euphoric: { valence: 0.9, arousal: 0.9 },
-      peaceful: { valence: 0.7, arousal: 0.2 },
-    };
+    // Try to map to MoodType for rich profile matching
+    const moodType = HybridScorer.MOOD_CATEGORY_TO_TYPE[targetMood];
 
-    const target = moodTargets[targetMood] || { valence: 0.5, arousal: 0.5 };
-    const valenceDiff = Math.abs(emotion.valence - target.valence);
-    const arousalDiff = Math.abs(emotion.arousal - target.arousal);
+    if (moodType && (audio || track.genre)) {
+      // Use MoodMatcher for comprehensive matching
+      const matcher = getMoodMatcher();
+      const moodTrack = {
+        id: track.id,
+        title: track.title,
+        artist: track.artist,
+        genres: track.genre ? [track.genre] : undefined,
+        features: audio,
+      };
 
-    return 1 - (valenceDiff + arousalDiff) / 2;
+      const result = matcher.matchTrack(moodTrack, moodType);
+
+      // If we also have emotion features, blend the scores
+      if (emotion) {
+        const profile = matcher.getProfile(moodType);
+        if (profile?.features.valence) {
+          const valenceMid = (profile.features.valence.min + profile.features.valence.max) / 2;
+          const valenceDiff = Math.abs(emotion.valence - valenceMid);
+          const emotionScore = 1 - valenceDiff;
+          // Weight: 70% MoodMatcher (audio+genre), 30% emotion
+          return result.score * 0.7 + emotionScore * 0.3;
+        }
+      }
+
+      return result.score;
+    }
+
+    // Fallback to valence/arousal for unmapped moods
+    if (emotion) {
+      const target = HybridScorer.MOOD_VA_TARGETS[targetMood] || { valence: 0.5, arousal: 0.5 };
+      const valenceDiff = Math.abs(emotion.valence - target.valence);
+      const arousalDiff = Math.abs(emotion.arousal - target.arousal);
+      return 1 - (valenceDiff + arousalDiff) / 2;
+    }
+
+    // No data available
+    return 0.5;
   }
 
   /**
@@ -470,6 +604,31 @@ export class HybridScorer {
   }
 
   /**
+   * Build SequentialTrack array from session tracks with features
+   */
+  private async buildSequentialTracks(sessionTracks: Track[]): Promise<SequentialTrack[]> {
+    const results: SequentialTrack[] = [];
+
+    for (const track of sessionTracks) {
+      const features = await this.endpoints.features.get(track.id);
+      results.push({
+        track,
+        audio: features.audio,
+        embedding: features.embedding,
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * Teach the sequential scorer about a genre transition outcome
+   */
+  learnTransition(fromGenre: string, toGenre: string, success: boolean): void {
+    this.sequentialScorer.learnTransition(fromGenre, toGenre, success);
+  }
+
+  /**
    * Get label for a component
    */
   private getComponentLabel(key: string): string {
@@ -485,6 +644,12 @@ export class HybridScorer {
       explorationBonus: 'Discovery Bonus',
       serendipityScore: 'Serendipity',
       diversityScore: 'Diversity',
+      // Sequential scoring components
+      trajectoryFit: 'Session Direction',
+      tempoFlow: 'Tempo Flow',
+      genreTransition: 'Genre Flow',
+      energyTrend: 'Energy Trend',
+      // Penalties
       recentPlayPenalty: 'Recent Play',
       dislikePenalty: 'Dislike',
       repetitionPenalty: 'Repetition',

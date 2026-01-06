@@ -1,19 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './TitleBar.css';
 
-declare global {
-  interface Window {
-    api: {
-      windowMinimize: () => Promise<void>;
-      windowMaximize: () => Promise<void>;
-      windowClose: () => Promise<void>;
-      windowIsMaximized: () => Promise<boolean>;
-      onWindowMaximizedChange: (callback: (isMaximized: boolean) => void) => () => void;
-      getPlatform: () => Promise<string>;
-    };
-  }
-}
-
 export const TitleBar: React.FC = () => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [platform, setPlatform] = useState<string>('win32');

@@ -2,11 +2,12 @@
  * SettingsView - Main settings page with theme customization
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useThemeStore, type ThemeConfig } from '../../stores/theme-store';
 import { useConnectionStore } from '../../stores/connection-store';
+import { useSearchStore } from '../../stores/search-store';
+import { FloatingSearch, type SearchAction } from '../Search/FloatingSearch';
 import { ThemeEditorModal } from './ThemeEditorModal';
-import { MobileAccessSettings } from './MobileAccessSettings';
 import { StorageSettings } from './StorageSettings';
 import { AudioSettings } from './AudioSettings';
 import { ConnectionSettings } from './ConnectionSettings';
@@ -160,7 +161,7 @@ const ThemePreviewCard: React.FC<ThemePreviewCardProps> = ({
 // Settings Tabs
 // ========================================
 
-type SettingsTab = 'appearance' | 'audio' | 'storage' | 'mobile' | 'connection';
+type SettingsTab = 'appearance' | 'audio' | 'storage' | 'connection';
 
 // ========================================
 // Settings View
@@ -183,6 +184,15 @@ export const SettingsView: React.FC = () => {
   } = useThemeStore();
 
   const { isClientMode } = useConnectionStore();
+
+  // Global search redirect
+  const { setQuery, setIsOpen } = useSearchStore();
+  const handleSearch = useCallback((query: string) => {
+    if (query.trim()) {
+      setQuery(query);
+      setIsOpen(true);
+    }
+  }, [setQuery, setIsOpen]);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -263,60 +273,33 @@ export const SettingsView: React.FC = () => {
     }
   };
 
+  // Tab actions for FloatingSearch CTA
+  const actions: SearchAction[] = useMemo(() => {
+    const result: SearchAction[] = [
+      { id: 'tab-appearance', label: 'Appearance', icon: <PaletteIcon size={14} />, active: activeTab === 'appearance', onClick: () => setActiveTab('appearance') },
+      { id: 'tab-audio', label: 'Audio', icon: <MusicNoteIcon size={14} />, active: activeTab === 'audio', onClick: () => setActiveTab('audio') },
+      { id: 'tab-storage', label: 'Storage', icon: <FolderIcon size={14} />, active: activeTab === 'storage', onClick: () => setActiveTab('storage') },
+    ];
+
+    if (isClientMode) {
+      result.push({ id: 'tab-connection', label: 'Server', icon: <GlobeIcon size={14} />, active: activeTab === 'connection', onClick: () => setActiveTab('connection') });
+    }
+
+    return result;
+  }, [activeTab, isClientMode]);
+
   return (
     <div className="settings-view">
-      {/* Header */}
-      <header className="settings-header">
-        <div className="settings-header-icon">
-          <SettingsIcon size={64} />
-        </div>
-        <div className="settings-header-info">
-          <span className="settings-header-type">Preferences</span>
-          <h1 className="settings-header-title">Settings</h1>
-          <span className="settings-header-subtitle">Customize your Audiio experience</span>
-        </div>
-      </header>
+      <FloatingSearch
+        onSearch={handleSearch}
+        onClose={() => {}}
+        isSearchActive={false}
+        actions={actions}
+        pageContext={{ type: 'other', label: 'Settings', icon: <SettingsIcon size={14} /> }}
+      />
 
-      {/* Tab Bar */}
-      <div className="settings-tabs">
-        <button
-          className={`settings-tab ${activeTab === 'appearance' ? 'active' : ''}`}
-          onClick={() => setActiveTab('appearance')}
-        >
-          <PaletteIcon size={18} />
-          <span>Appearance</span>
-        </button>
-        <button
-          className={`settings-tab ${activeTab === 'audio' ? 'active' : ''}`}
-          onClick={() => setActiveTab('audio')}
-        >
-          <MusicNoteIcon size={18} />
-          <span>Audio</span>
-        </button>
-        <button
-          className={`settings-tab ${activeTab === 'storage' ? 'active' : ''}`}
-          onClick={() => setActiveTab('storage')}
-        >
-          <FolderIcon size={18} />
-          <span>Storage</span>
-        </button>
-        <button
-          className={`settings-tab ${activeTab === 'mobile' ? 'active' : ''}`}
-          onClick={() => setActiveTab('mobile')}
-        >
-          <MobileAccessIcon size={18} />
-          <span>Mobile</span>
-        </button>
-        {isClientMode && (
-          <button
-            className={`settings-tab ${activeTab === 'connection' ? 'active' : ''}`}
-            onClick={() => setActiveTab('connection')}
-          >
-            <GlobeIcon size={18} />
-            <span>Server</span>
-          </button>
-        )}
-      </div>
+      {/* Ambient Background */}
+      <div className="detail-ambient-bg settings-ambient" />
 
       <div className="settings-content">
         {/* Appearance Tab */}
@@ -480,20 +463,6 @@ export const SettingsView: React.FC = () => {
           </section>
         )}
 
-        {/* Mobile Tab */}
-        {activeTab === 'mobile' && (
-          <section className="settings-section">
-            <div className="settings-section-header">
-              <MobileAccessIcon size={20} />
-              <h2>Mobile Access</h2>
-            </div>
-            <p className="settings-section-description">
-              Access your music library from your phone or tablet. Stream anywhere on your local network or use remote access to listen from outside your home.
-            </p>
-            <MobileAccessSettings />
-          </section>
-        )}
-
         {/* Connection Tab */}
         {activeTab === 'connection' && (
           <section className="settings-section">
@@ -642,9 +611,3 @@ export const SettingsView: React.FC = () => {
   );
 };
 
-// Mobile Access Icon
-const MobileAccessIcon: React.FC<{ size: number }> = ({ size }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-    <path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/>
-  </svg>
-);

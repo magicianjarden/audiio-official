@@ -62,6 +62,9 @@ export interface FeatureEndpoint {
   /** Find similar tracks by embedding vector */
   findSimilarByEmbedding(embedding: number[], count?: number): Promise<Array<{ trackId: string; similarity: number }>>;
 
+  /** Get all cached embeddings (for batch operations) */
+  getAllEmbeddings?(): Map<string, number[]>;
+
   /** Register a feature provider */
   register(provider: FeatureProvider): void;
 
@@ -288,6 +291,15 @@ export interface TrainingEndpoint {
 
   /** Get last training info */
   getLastTrainingInfo(): Promise<LastTrainingInfo | null>;
+
+  /** Update training results (accuracy/loss) after training completes */
+  updateTrainingResults(accuracy: number, loss: number): Promise<void>;
+
+  /** Get all events (for debugging/admin) */
+  getEvents?(): Promise<UserEvent[]>;
+
+  /** Get dislike events */
+  getDislikeEvents?(): Promise<DislikeEvent[]>;
 }
 
 export interface DatasetOptions {
@@ -324,20 +336,8 @@ export interface QueueEndpoint {
   /** Get candidate tracks for queue */
   getCandidates(context: QueueCandidateContext): Promise<Track[]>;
 
-  /** Submit ranked tracks for queue */
-  submitRanking(tracks: Array<{ track: Track; score: TrackScore }>): void;
-
-  /** Get current queue */
-  getCurrentQueue(): Track[];
-
   /** Get session history (recently played) */
   getSessionHistory(): Track[];
-
-  /** Get queue configuration */
-  getConfig(): QueueConfig;
-
-  /** Check if track is in queue */
-  isInQueue(trackId: string): boolean;
 
   /** Check if track was played in session */
   wasPlayedInSession(trackId: string): boolean;
@@ -362,30 +362,8 @@ export interface QueueCandidateContext {
 
 export type CandidateSource =
   | 'library'          // User's local library
-  | 'liked'            // Liked tracks
-  | 'playlists'        // Tracks from playlists
   | 'similar'          // Similar to current/seed
-  | 'discovery'        // API recommendations
-  | 'trending'         // Trending tracks
-  | 'recent'           // Recently played
   | 'radio';           // Radio-specific
-
-export interface QueueConfig {
-  /** Queue mode */
-  mode: 'manual' | 'auto' | 'radio';
-
-  /** Auto-replenish threshold */
-  replenishThreshold: number;
-
-  /** Number of tracks to add when replenishing */
-  replenishCount: number;
-
-  /** Maximum same artist in queue */
-  maxSameArtist: number;
-
-  /** Whether to allow explicit content */
-  allowExplicit: boolean;
-}
 
 // ============================================================================
 // Scoring Endpoint

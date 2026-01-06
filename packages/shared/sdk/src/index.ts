@@ -19,6 +19,17 @@ export type {
   SearchQuery,
   SearchResult,
 
+  // Settings schema types
+  SettingsFieldType,
+  SettingsSchemaItem,
+
+  // Privacy manifest types
+  PrivacyDataCategory,
+  PrivacyDataUsage,
+  PrivacyNetworkAccess,
+  PrivacyDataAccess,
+  PrivacyManifest,
+
   // Addon types
   AddonRole,
   AddonManifest,
@@ -43,7 +54,6 @@ export type {
 
   // Provider settings types
   DeezerProviderSettings,
-  AppleMusicArtworkSettings,
 
   // Audio processor types
   AudioProcessor,
@@ -64,12 +74,8 @@ export type {
   ArtistEnrichmentType,
   ArtistEnrichmentData,
   ArtistEnrichmentProvider,
-
-  // Media processing types
-  HLSConversionOptions,
-  ConversionResult,
-  FFmpegProgress,
-  ProgressCallback,
+  // Playlist type (for search providers)
+  Playlist,
 
   // Pipeline types (for Discover integrations)
   QueryStrategy,
@@ -84,11 +90,48 @@ export type {
   PipelineResult,
   PipelineConfig,
   PipelineRegistrationOptions,
-  PluginPipelineAPI
-} from '@audiio/core';
+  PluginPipelineAPI,
 
-// Media processing
-export { MediaProcessor, getMediaProcessor } from '@audiio/core';
+  // Library management types - Metadata Enricher
+  MetadataEnrichmentResult,
+  MetadataEnrichmentQuery,
+  MetadataEnricher,
+  // Library management types - Artwork Provider
+  ArtworkResult,
+  ArtworkProvider,
+  // Library management types - Fingerprint Provider
+  FingerprintResult,
+  FingerprintProvider,
+  // Library management types - ISRC Resolver
+  ISRCLookupResult,
+  ISRCResolver,
+  // Library management types - Analytics Provider
+  TrackAnalytics,
+  ArtistAnalytics,
+  AnalyticsProvider,
+  // Library management types - Smart Playlist Rules
+  SmartPlaylistRule,
+  SmartPlaylistRuleDefinition,
+  SmartPlaylistRulesProvider,
+  // Library management types - Duplicate Detector
+  DuplicateCandidate,
+  DuplicateDetector,
+  // Library management types - Import/Export
+  ImportSource,
+  ImportResult,
+  ImportProvider,
+  ExportFormat,
+  ExportProvider,
+  // Library management types - Library Hook
+  LibraryEventType,
+  LibraryEvent,
+  LibraryHook,
+  // Search provider types
+  SearchResultType,
+  SearchProviderOptions,
+  SearchProviderResults,
+  SearchProvider
+} from '@audiio/core';
 
 // Base classes
 export { BaseMetadataProvider } from './base/BaseMetadataProvider';
@@ -124,6 +167,8 @@ export type {
 } from './types/sandbox';
 
 // Plugin manifest types
+import type { SettingsSchemaItem, AddonRole } from '@audiio/core';
+
 export interface PluginManifest {
   /** Unique plugin identifier */
   id: string;
@@ -134,11 +179,13 @@ export interface PluginManifest {
   /** Plugin description */
   description?: string;
   /** Plugin roles/capabilities */
-  roles: ('metadata-provider' | 'stream-provider' | 'lyrics-provider' | 'audio-processor' | 'scrobbler' | 'tool' | 'artist-enrichment')[];
+  roles: AddonRole[];
   /** Entry point file (relative to package root) */
   main?: string;
   /** Author name or object */
   author?: string | { name: string; email?: string };
+  /** Settings schema for plugin configuration UI */
+  settingsSchema?: SettingsSchemaItem[];
 }
 
 /**
@@ -169,6 +216,11 @@ export interface AudiioPluginPackageJson {
   };
 }
 
-// Plugin templates are available in the `templates` folder.
-// Copy them to your plugin project as starting points.
-// Templates are NOT exported at runtime - they are reference code only.
+// ============================================
+// Base Classes for Library Management Plugins
+// ============================================
+
+// Note: Base classes for new provider types can be created in the base/ folder
+// following the pattern of BaseMetadataProvider, BaseStreamProvider, etc.
+// Plugin authors can extend these base classes or implement interfaces directly.
+

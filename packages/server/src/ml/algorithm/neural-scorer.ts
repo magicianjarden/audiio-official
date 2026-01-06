@@ -18,6 +18,8 @@ import {
   calculateClassWeights,
   getFeatureVectorDimension,
   flattenFeatureVector,
+  createEarlyStoppingCallback,
+  shuffleArrays,
 } from '../utils';
 
 const MODEL_KEY = 'recommendation-model';
@@ -146,14 +148,19 @@ export class NeuralScorer {
       const xTensor = tf.tensor2d(features);
       const yTensor = tf.tensor1d(labels);
 
-      // Train
+      // Create early stopping callback to prevent overfitting
+      // Stops training when validation loss stops improving for 5 epochs
+      const earlyStoppingCallback = createEarlyStoppingCallback(5, 'val_loss');
+
+      // Train with early stopping
       const metrics = await trainModel(this.model, xTensor, yTensor, {
-        epochs: 50,
+        epochs: 100, // Max epochs - early stopping will stop sooner if needed
         batchSize: 32,
         validationSplit: 0.2,
         classWeight: classWeights,
         shuffle: true,
         verbose: 0,
+        callbacks: earlyStoppingCallback,
       });
 
       // Cleanup tensors
@@ -233,6 +240,7 @@ export class NeuralScorer {
 
   /**
    * Prepare training data from dataset
+   * Shuffles data to prevent ordering bias during training
    */
   private prepareTrainingData(dataset: TrainingDataset): {
     features: number[][];
@@ -253,7 +261,10 @@ export class NeuralScorer {
       labels.push(sample.label);
     }
 
-    return { features, labels };
+    // Shuffle to prevent ordering bias (e.g., all positives then all negatives)
+    const [shuffledFeatures, shuffledLabels] = shuffleArrays(features, labels);
+
+    return { features: shuffledFeatures, labels: shuffledLabels };
   }
 
   /**

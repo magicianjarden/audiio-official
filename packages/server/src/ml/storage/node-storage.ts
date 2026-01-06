@@ -130,9 +130,3 @@ export class NodeStorage implements StorageAdapter {
   }
 }
 
-/**
- * Create storage adapter for Node.js environment
- */
-export function createNodeStorage(storagePath: string, filename?: string): StorageAdapter {
-  return new NodeStorage(storagePath, filename);
-}

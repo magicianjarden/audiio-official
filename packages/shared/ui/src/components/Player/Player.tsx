@@ -52,6 +52,7 @@ export const Player: React.FC = () => {
     toggleMute,
     setPosition,
     setIsPlaying,
+    setDuration,
     toggleShuffle,
     cycleRepeat,
     // Video state
@@ -78,6 +79,7 @@ export const Player: React.FC = () => {
   const { recordListen } = useRecommendationStore();
   const { openAlbum, openArtist } = useNavigationStore();
   const { showContextMenu } = useTrackContextMenu();
+  const { isLiked, toggleLike, updateTrackDuration } = useLibraryStore();
 
   // Resolve artwork (handles embedded artwork from local files)
   const { artworkUrl } = useArtwork(currentTrack);
@@ -196,6 +198,29 @@ export const Player: React.FC = () => {
       setPosition(audioRef.current.currentTime * 1000);
     }
   }, [setPosition]);
+
+  // Handle loaded metadata - get actual duration from audio element
+  // This is crucial for local files where metadata extraction might have failed
+  const handleLoadedMetadata = useCallback(() => {
+    if (audioRef.current && currentTrack) {
+      const actualDuration = audioRef.current.duration;
+      // Only update if we have a valid duration and it's different from stored
+      if (actualDuration && isFinite(actualDuration) && actualDuration > 0) {
+        const durationMs = actualDuration * 1000;
+        const durationSeconds = actualDuration;
+        // Update store if duration was 0 or significantly different
+        if (duration === 0 || Math.abs(duration - durationMs) > 1000) {
+          console.log('[Player] Updating duration from audio metadata:', actualDuration, 'seconds');
+          setDuration(durationMs);
+          // Also update the track in library so playlist view shows correct duration
+          // Track.duration is in seconds, not ms
+          if (currentTrack.duration === 0 || Math.abs(currentTrack.duration - durationSeconds) > 1) {
+            updateTrackDuration(currentTrack.id, durationSeconds);
+          }
+        }
+      }
+    }
+  }, [duration, setDuration, currentTrack, updateTrackDuration]);
 
   // Sync audio element when position is changed externally (e.g., from lyrics click)
   const lastSyncedPosition = useRef<number>(0);
@@ -332,7 +357,6 @@ export const Player: React.FC = () => {
     }
   }, [isVideoActive, isVideoPlaying, isPlaying, setVideoPlaying, pause, resume]);
 
-  const { isLiked, toggleLike } = useLibraryStore();
   const trackIsLiked = currentTrack ? isLiked(currentTrack.id) : false;
   const [isDislikeModalOpen, setIsDislikeModalOpen] = useState(false);
 
@@ -388,7 +412,7 @@ export const Player: React.FC = () => {
     );
   }
 
-  const artistNames = currentTrack?.artists.map(a => a.name).join(', ') || '';
+  const artistNames = currentTrack?.artists?.map(a => a.name).join(', ') || '';
 
   // Display info - video title when video is active, track title otherwise
   const displayTitle = isVideoActive ? currentVideo?.title : currentTrack?.title;
@@ -401,6 +425,7 @@ export const Player: React.FC = () => {
         ref={audioRefCallback}
         crossOrigin="anonymous"
         onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
         onError={handleError}
       />
@@ -434,8 +459,8 @@ export const Player: React.FC = () => {
             {displayTitle}
           </div>
           <div
-            className={`player-track-artist ${!isVideoActive && currentTrack && currentTrack.artists.length > 0 ? 'clickable' : ''}`}
-            onClick={!isVideoActive && currentTrack && currentTrack.artists.length > 0 ? handleGoToArtist : undefined}
+            className={`player-track-artist ${!isVideoActive && currentTrack?.artists?.length ? 'clickable' : ''}`}
+            onClick={!isVideoActive && currentTrack?.artists?.length ? handleGoToArtist : undefined}
             title={!isVideoActive && currentTrack?.artists?.[0] ? `Go to ${currentTrack.artists[0].name}` : undefined}
           >
             {displayArtist}

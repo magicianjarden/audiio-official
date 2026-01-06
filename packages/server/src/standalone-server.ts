@@ -41,6 +41,14 @@ import { DiscoveryService, initDiscoveryService } from './services/discovery-ser
 import { registerAuthMiddleware } from './services/auth-middleware';
 import { PathAuthorizationService, initPathAuthService } from './services/path-authorization';
 import { initPluginSandbox, getPluginSandbox } from './services/plugin-sandbox';
+import { logService, log } from './services/log-service';
+import { signalPathService } from './services/signal-path';
+import { MediaFoldersService } from './services/media-folders';
+import { LocalScannerService } from './services/local-scanner';
+import { DownloadService } from './services/download-service';
+import { FolderWatcherService } from './services/folder-watcher';
+import { SearchService } from './services/search-service';
+import { AudioFeatureIndex } from './services/audio-feature-index';
 
 export interface StandaloneServerOptions {
   config: ServerConfig;
@@ -75,6 +83,12 @@ export class StandaloneServer {
   private authService: AuthService;
   private discoveryService: DiscoveryService | null = null;
   private pathAuthService: PathAuthorizationService;
+  private mediaFoldersService: MediaFoldersService;
+  private localScannerService: LocalScannerService;
+  private downloadService: DownloadService;
+  private folderWatcherService: FolderWatcherService;
+  private searchService: SearchService;
+  private audioFeatureIndex: AudioFeatureIndex;
 
   constructor(private options: StandaloneServerOptions) {
     this.config = options.config;
@@ -94,8 +108,17 @@ export class StandaloneServer {
       pluginsDir: this.config.plugins.directory
     });
 
+    // Set the same plugins directory on the installer
+    pluginInstaller.setPluginsDir(this.config.plugins.directory);
+
     // Initialize library database
     this.libraryDb = new LibraryDatabase(this.config.storage.database);
+
+    // Migrate smart playlists to unified playlist model if needed
+    if (this.libraryDb.needsSmartPlaylistMigration()) {
+      console.log('[Server] Migrating smart playlists to unified model...');
+      this.libraryDb.migrateSmartPlaylistsToUnified();
+    }
 
     // Initialize tracking and stats services (uses same db connection)
     this.trackingService = new TrackingService((this.libraryDb as any).db);
@@ -118,6 +141,67 @@ export class StandaloneServer {
       dataDir: join(dataDir, 'plugins'),
       logExecution: this.config.logging.level === 'debug'
     });
+
+    // Initialize media folders service (uses same db connection as library)
+    this.mediaFoldersService = new MediaFoldersService((this.libraryDb as any).db);
+
+    // Initialize local scanner service
+    this.localScannerService = new LocalScannerService(this.mediaFoldersService);
+
+    // Initialize download service
+    this.downloadService = new DownloadService(this.mediaFoldersService);
+
+    // Auto-rescan audio folder when downloads complete (for dual-purpose folders)
+    this.downloadService.on('download-progress', (progress: any) => {
+      console.log('[Server] Download progress event:', progress.status, progress.id);
+
+      if (progress.status === 'completed') {
+        console.log('[Server] Download completed! File path:', progress.filePath);
+
+        if (!progress.filePath) {
+          console.log('[Server] No file path in completed event - cannot rescan');
+          return;
+        }
+
+        // Check if this file is in an audio folder (dual-purpose folder)
+        const audioFolders = this.mediaFoldersService.getFolders('audio');
+        console.log('[Server] Audio folders:', audioFolders.map(f => f.path));
+
+        const containingAudioFolder = audioFolders.find(folder =>
+          progress.filePath.toLowerCase().startsWith(folder.path.toLowerCase())
+        );
+
+        if (containingAudioFolder) {
+          console.log('[Server] File in audio folder, triggering rescan:', containingAudioFolder.name);
+          // Trigger a rescan of the audio folder
+          this.localScannerService.scanFolder(containingAudioFolder.id, { forceRescan: false })
+            .then(result => {
+              console.log('[Server] Rescan complete:', result);
+              // Update the folder's track count
+              const tracks = this.mediaFoldersService.getLocalTracks(containingAudioFolder.id);
+              this.mediaFoldersService.updateTrackCount(containingAudioFolder.id, tracks.length);
+              console.log('[Server] Updated track count to:', tracks.length);
+            })
+            .catch(error => {
+              console.error('[Server] Rescan failed:', error);
+            });
+        } else {
+          console.log('[Server] File not in any audio folder');
+        }
+      }
+    });
+
+    // Initialize folder watcher service (for automatic scanning)
+    this.folderWatcherService = new FolderWatcherService(
+      this.mediaFoldersService,
+      this.localScannerService
+    );
+
+    // Initialize search service (uses same db connection)
+    this.searchService = new SearchService((this.libraryDb as any).db);
+
+    // Initialize audio feature index (uses same db connection)
+    this.audioFeatureIndex = new AudioFeatureIndex((this.libraryDb as any).db);
   }
 
   /**
@@ -136,6 +220,21 @@ export class StandaloneServer {
       const results = await this.pluginLoader.loadAllPlugins();
       const loaded = results.filter(r => r.success).length;
       console.log(`[Server] Loaded ${loaded}/${results.length} plugins`);
+
+      // Apply saved settings to plugins
+      this.applyPersistedPluginSettings();
+    }
+
+    // Initialize ML service (after plugins are loaded)
+    try {
+      console.log('[Server] Initializing ML service...');
+      await mlService.initialize({
+        storagePath: join(this.config.storage.database, '..', 'ml-data'),
+        enableAutoTraining: true,
+      });
+      console.log('[Server] ML service initialized');
+    } catch (error) {
+      console.error('[Server] ML service initialization failed (non-fatal):', error);
     }
 
     // Register Fastify plugins
@@ -255,6 +354,34 @@ export class StandaloneServer {
   }
 
   /**
+   * Apply persisted settings to all loaded plugins
+   */
+  private applyPersistedPluginSettings(): void {
+    console.log('[Server] Checking for persisted plugin settings...');
+    const allSettings = this.libraryDb.getAllPluginSettings();
+    console.log(`[Server] Found ${allSettings.length} plugins with saved settings`);
+
+    for (const { pluginId, settings, enabled } of allSettings) {
+      const addon = this.registry.get(pluginId) as any;
+      if (addon && addon.updateSettings && Object.keys(settings).length > 0) {
+        try {
+          // Log which settings are being applied (without exposing secrets)
+          const settingKeys = Object.keys(settings);
+          console.log(`[Server] Applying ${settingKeys.length} settings to ${pluginId}:`, settingKeys.join(', '));
+          addon.updateSettings(settings);
+        } catch (error) {
+          console.error(`[Server] Failed to apply settings to ${pluginId}:`, error);
+        }
+      }
+
+      // Apply enabled state
+      if (addon) {
+        this.registry.setEnabled(pluginId, enabled);
+      }
+    }
+  }
+
+  /**
    * Register Fastify plugins
    */
   private async registerPlugins(): Promise<void> {
@@ -269,7 +396,7 @@ export class StandaloneServer {
 
     // Rate limiting
     await this.fastify.register(rateLimit, {
-      max: 100,
+      max: 300,
       timeWindow: '1 minute'
     });
 
@@ -352,6 +479,431 @@ export class StandaloneServer {
       }
     });
 
+    // Natural language search
+    this.fastify.post('/api/search/natural', async (request, reply) => {
+      const { query } = request.body as { query?: string };
+
+      if (!query) {
+        return reply.code(400).send({ error: 'Query required' });
+      }
+
+      try {
+        // Parse natural language query
+        const parsedQuery = this.searchService.parseNaturalQuery(query);
+
+        // Execute search
+        const { trackIds, total } = this.searchService.searchTracks(parsedQuery, {
+          limit: 50,
+          offset: 0
+        });
+
+        // Resolve track IDs to full track data
+        const tracks = this.libraryDb.getTracksByIds(trackIds);
+
+        // Save search to history
+        this.searchService.saveSearch(query, total);
+
+        return {
+          parsedQuery,
+          tracks,
+          total,
+          suggestions: this.searchService.getSuggestions(query, 5).recentSearches
+        };
+      } catch (error) {
+        console.error('[Search/Natural] Error:', error);
+        return reply.code(500).send({ error: 'Search failed' });
+      }
+    });
+
+    // Advanced search with filters
+    this.fastify.get('/api/search/advanced', async (request) => {
+      const {
+        q,
+        artist,
+        album,
+        genre,
+        yearMin,
+        yearMax,
+        durationMin,
+        durationMax,
+        tags,
+        source,
+        sortBy,
+        sortDir,
+        limit,
+        offset
+      } = request.query as Record<string, string | undefined>;
+
+      // Build parsed query from parameters
+      const parsedQuery: any = {
+        text: q || '',
+        filters: [],
+        audioFeatures: undefined,
+        playBehavior: undefined
+      };
+
+      // Add filters based on query params
+      if (artist) {
+        parsedQuery.filters.push({ type: 'artist', operator: 'contains', value: artist });
+      }
+      if (album) {
+        parsedQuery.filters.push({ type: 'album', operator: 'contains', value: album });
+      }
+      if (genre) {
+        parsedQuery.filters.push({ type: 'genre', operator: 'contains', value: genre });
+      }
+      if (yearMin && yearMax) {
+        parsedQuery.filters.push({ type: 'year', operator: 'between', value: [parseInt(yearMin), parseInt(yearMax)] });
+      } else if (yearMin) {
+        parsedQuery.filters.push({ type: 'year', operator: 'gt', value: parseInt(yearMin) });
+      } else if (yearMax) {
+        parsedQuery.filters.push({ type: 'year', operator: 'lt', value: parseInt(yearMax) });
+      }
+      if (durationMin) {
+        parsedQuery.filters.push({ type: 'duration', operator: 'gt', value: parseInt(durationMin) });
+      }
+      if (durationMax) {
+        parsedQuery.filters.push({ type: 'duration', operator: 'lt', value: parseInt(durationMax) });
+      }
+      if (tags) {
+        const tagList = tags.split(',');
+        for (const tag of tagList) {
+          parsedQuery.filters.push({ type: 'tag', operator: 'is', value: tag.trim() });
+        }
+      }
+      if (source) {
+        parsedQuery.filters.push({ type: 'source', operator: 'is', value: source });
+      }
+
+      try {
+        const { trackIds, total } = this.searchService.searchTracks(parsedQuery, {
+          limit: parseInt(limit || '50', 10),
+          offset: parseInt(offset || '0', 10),
+          sortBy: (sortBy as any) || 'relevance',
+          sortDirection: (sortDir as any) || 'desc'
+        });
+
+        const tracks = this.libraryDb.getTracksByIds(trackIds);
+        return { tracks, total };
+      } catch (error) {
+        console.error('[Search/Advanced] Error:', error);
+        return { tracks: [], total: 0, error: 'Search failed' };
+      }
+    });
+
+    // Search suggestions
+    this.fastify.get('/api/search/suggestions', async (request) => {
+      const { q, limit } = request.query as { q?: string; limit?: string };
+
+      if (!q) {
+        return { tracks: [], artists: [], albums: [], tags: [], recentSearches: [] };
+      }
+
+      return this.searchService.getSuggestions(q, parseInt(limit || '10', 10));
+    });
+
+    // Search history
+    this.fastify.get('/api/search/history', async (request) => {
+      const { limit } = request.query as { limit?: string };
+      return this.searchService.getSearchHistory(parseInt(limit || '20', 10));
+    });
+
+    this.fastify.delete('/api/search/history/:id', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      this.searchService.deleteSearchHistory(id);
+      return { success: true };
+    });
+
+    this.fastify.delete('/api/search/history', async () => {
+      this.searchService.clearSearchHistory();
+      return { success: true };
+    });
+
+    // Plugin-provided search data routes
+
+    // Search for videos (from search-providers and artist-enrichment plugins)
+    this.fastify.get('/api/search/videos', async (request) => {
+      const { q, limit } = request.query as { q?: string; limit?: string };
+
+      if (!q) {
+        return { videos: [] };
+      }
+
+      try {
+        const maxResults = parseInt(limit || '8', 10);
+        const allVideos: any[] = [];
+
+        // Query search providers first (new interface)
+        const searchProviders = this.registry.getSearchProviders();
+        for (const provider of searchProviders) {
+          if (provider.searchVideos) {
+            try {
+              const videos = await provider.searchVideos(q, { limit: maxResults });
+              allVideos.push(...videos);
+            } catch (err) {
+              console.warn(`[Search/Videos] Provider ${provider.id} failed:`, err);
+            }
+          }
+        }
+
+        // Fall back to artist-enrichment providers (backward compatibility)
+        if (allVideos.length === 0) {
+          const enrichmentProviders = this.registry.getByRole<any>('artist-enrichment');
+          const videoProvider = enrichmentProviders.find(p => p.enrichmentType === 'videos');
+
+          if (videoProvider?.getArtistVideos) {
+            const videos = await videoProvider.getArtistVideos(q, maxResults);
+            allVideos.push(...videos);
+          }
+        }
+
+        // Deduplicate by ID and limit results
+        const seen = new Set<string>();
+        const uniqueVideos = allVideos.filter(v => {
+          if (seen.has(v.id)) return false;
+          seen.add(v.id);
+          return true;
+        }).slice(0, maxResults);
+
+        return { videos: uniqueVideos };
+      } catch (error) {
+        console.error('[Search/Videos] Error:', error);
+        return { videos: [], error: 'Video search failed' };
+      }
+    });
+
+    // Search for playlists (from search-providers, library, and import providers)
+    this.fastify.get('/api/search/playlists', async (request) => {
+      const { q, limit } = request.query as { q?: string; limit?: string };
+
+      if (!q) {
+        return { playlists: [] };
+      }
+
+      try {
+        const maxResults = parseInt(limit || '6', 10);
+        const queryLower = q.toLowerCase();
+        const allPlaylists: any[] = [];
+
+        // Query search providers first (new interface)
+        const searchProviders = this.registry.getSearchProviders();
+        for (const provider of searchProviders) {
+          if (provider.searchPlaylists) {
+            try {
+              const playlists = await provider.searchPlaylists(q, { limit: maxResults });
+              allPlaylists.push(...playlists.map(p => ({ ...p, source: provider.id })));
+            } catch (err) {
+              console.warn(`[Search/Playlists] Provider ${provider.id} failed:`, err);
+            }
+          }
+        }
+
+        // Search library playlists
+        const libraryPlaylists = this.libraryDb.getPlaylists();
+        const matchingLibraryPlaylists = libraryPlaylists
+          .filter(p =>
+            p.name.toLowerCase().includes(queryLower) ||
+            (p.description && p.description.toLowerCase().includes(queryLower))
+          )
+          .map(p => ({
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            trackCount: p.tracks?.length || 0,
+            isSmartPlaylist: Array.isArray(p.rules) && p.rules.length > 0,
+            source: 'library'
+          }));
+
+        allPlaylists.push(...matchingLibraryPlaylists);
+
+        // Deduplicate by ID and limit results
+        const seen = new Set<string>();
+        const uniquePlaylists = allPlaylists.filter(p => {
+          if (seen.has(p.id)) return false;
+          seen.add(p.id);
+          return true;
+        }).slice(0, maxResults);
+
+        return { playlists: uniquePlaylists };
+      } catch (error) {
+        console.error('[Search/Playlists] Error:', error);
+        return { playlists: [], error: 'Playlist search failed' };
+      }
+    });
+
+    // Search for concerts (from search-providers and artist-enrichment plugins)
+    this.fastify.get('/api/search/concerts', async (request) => {
+      const { q, limit } = request.query as { q?: string; limit?: string };
+
+      if (!q) {
+        return { concerts: [] };
+      }
+
+      try {
+        const maxResults = parseInt(limit || '4', 10);
+        const allConcerts: any[] = [];
+
+        // Query search providers first (new interface)
+        const searchProviders = this.registry.getSearchProviders();
+        for (const provider of searchProviders) {
+          if (provider.searchConcerts) {
+            try {
+              const concerts = await provider.searchConcerts(q, { limit: maxResults });
+              allConcerts.push(...concerts);
+            } catch (err) {
+              console.warn(`[Search/Concerts] Provider ${provider.id} failed:`, err);
+            }
+          }
+        }
+
+        // Fall back to artist-enrichment providers (backward compatibility)
+        if (allConcerts.length === 0) {
+          const enrichmentProviders = this.registry.getByRole<any>('artist-enrichment');
+          for (const provider of enrichmentProviders) {
+            if (provider.getUpcomingConcerts) {
+              try {
+                const concerts = await provider.getUpcomingConcerts(q);
+                if (concerts && concerts.length > 0) {
+                  allConcerts.push(...concerts);
+                  break; // Got results, stop searching
+                }
+              } catch (err) {
+                // Continue to next provider
+              }
+            }
+          }
+        }
+
+        // Deduplicate by ID and limit results
+        const seen = new Set<string>();
+        const uniqueConcerts = allConcerts.filter(c => {
+          if (seen.has(c.id)) return false;
+          seen.add(c.id);
+          return true;
+        }).slice(0, maxResults);
+
+        return { concerts: uniqueConcerts };
+      } catch (error) {
+        console.error('[Search/Concerts] Error:', error);
+        return { concerts: [], error: 'Concert search failed' };
+      }
+    });
+
+    // Audio Feature Index routes
+    this.fastify.get('/api/audio-features/:trackId', async (request, reply) => {
+      const { trackId } = request.params as { trackId: string };
+      const features = this.audioFeatureIndex.get(trackId);
+      if (!features) {
+        return reply.code(404).send({ error: 'Audio features not found' });
+      }
+      return features;
+    });
+
+    this.fastify.get('/api/audio-features/query', async (request) => {
+      const {
+        energyMin, energyMax,
+        tempoMin, tempoMax,
+        valenceMin, valenceMax,
+        danceabilityMin, danceabilityMax,
+        acousticnessMin, acousticnessMax,
+        instrumentalnessMin, instrumentalnessMax,
+        limit, offset
+      } = request.query as Record<string, string | undefined>;
+
+      const criteria: any = {};
+
+      if (energyMin || energyMax) {
+        criteria.energy = {};
+        if (energyMin) criteria.energy.min = parseFloat(energyMin);
+        if (energyMax) criteria.energy.max = parseFloat(energyMax);
+      }
+      if (tempoMin || tempoMax) {
+        criteria.tempo = {};
+        if (tempoMin) criteria.tempo.min = parseFloat(tempoMin);
+        if (tempoMax) criteria.tempo.max = parseFloat(tempoMax);
+      }
+      if (valenceMin || valenceMax) {
+        criteria.valence = {};
+        if (valenceMin) criteria.valence.min = parseFloat(valenceMin);
+        if (valenceMax) criteria.valence.max = parseFloat(valenceMax);
+      }
+      if (danceabilityMin || danceabilityMax) {
+        criteria.danceability = {};
+        if (danceabilityMin) criteria.danceability.min = parseFloat(danceabilityMin);
+        if (danceabilityMax) criteria.danceability.max = parseFloat(danceabilityMax);
+      }
+      if (acousticnessMin || acousticnessMax) {
+        criteria.acousticness = {};
+        if (acousticnessMin) criteria.acousticness.min = parseFloat(acousticnessMin);
+        if (acousticnessMax) criteria.acousticness.max = parseFloat(acousticnessMax);
+      }
+      if (instrumentalnessMin || instrumentalnessMax) {
+        criteria.instrumentalness = {};
+        if (instrumentalnessMin) criteria.instrumentalness.min = parseFloat(instrumentalnessMin);
+        if (instrumentalnessMax) criteria.instrumentalness.max = parseFloat(instrumentalnessMax);
+      }
+
+      const trackIds = this.audioFeatureIndex.query(
+        criteria,
+        parseInt(limit || '50', 10),
+        parseInt(offset || '0', 10)
+      );
+
+      const tracks = this.libraryDb.getTracksByIds(trackIds);
+      const total = this.audioFeatureIndex.count(criteria);
+
+      return { tracks, total };
+    });
+
+    this.fastify.get('/api/audio-features/similar/:trackId', async (request) => {
+      const { trackId } = request.params as { trackId: string };
+      const { limit } = request.query as { limit?: string };
+
+      const similarIds = this.audioFeatureIndex.findSimilar(
+        trackId,
+        parseInt(limit || '20', 10)
+      );
+
+      const tracks = this.libraryDb.getTracksByIds(similarIds);
+      return { tracks };
+    });
+
+    this.fastify.get('/api/audio-features/distributions', async () => {
+      return this.audioFeatureIndex.getAllDistributions();
+    });
+
+    this.fastify.get('/api/audio-features/moods', async () => {
+      return this.audioFeatureIndex.getAvailableMoods();
+    });
+
+    this.fastify.get('/api/audio-features/moods/clusters', async (request) => {
+      const { includeTracks, trackLimit } = request.query as {
+        includeTracks?: string;
+        trackLimit?: string;
+      };
+
+      return this.audioFeatureIndex.getMoodClusters(
+        includeTracks === 'true',
+        parseInt(trackLimit || '50', 10)
+      );
+    });
+
+    this.fastify.get('/api/audio-features/mood/:trackId', async (request, reply) => {
+      const { trackId } = request.params as { trackId: string };
+      const mood = this.audioFeatureIndex.getTrackMood(trackId);
+      if (!mood) {
+        return reply.code(404).send({ error: 'Track or features not found' });
+      }
+      return { trackId, mood };
+    });
+
+    this.fastify.get('/api/audio-features/stats', async () => {
+      return {
+        analyzedCount: this.audioFeatureIndex.getAnalyzedCount(),
+        unanalyzedSample: this.audioFeatureIndex.getUnanalyzedTracks(10)
+      };
+    });
+
     // Stream resolution
     this.fastify.get('/api/stream/resolve', async (request, reply) => {
       const { trackId, title, artist, isrc } = request.query as {
@@ -360,8 +912,6 @@ export class StandaloneServer {
         artist?: string;
         isrc?: string;
       };
-
-      console.log('[Stream] Resolve request:', { trackId, title, artist, isrc });
 
       if (!trackId && !title) {
         return reply.code(400).send({ error: 'trackId or title required' });
@@ -382,15 +932,11 @@ export class StandaloneServer {
           }
         };
 
-        console.log('[Stream] Calling trackResolver for:', track.title, 'by', track.artists[0]?.name);
         const stream = await this.trackResolver.resolveStream(track as any);
 
         if (!stream) {
-          console.log('[Stream] No stream found');
           return reply.code(404).send({ error: 'No stream found' });
         }
-
-        console.log('[Stream] Stream resolved:', stream.url?.slice(0, 50) + '...');
 
         // Return stream info with proxied URL
         const proxyUrl = `/api/stream/proxy?url=${encodeURIComponent(stream.url)}`;
@@ -400,7 +946,7 @@ export class StandaloneServer {
           originalUrl: stream.url
         };
       } catch (error) {
-        console.error('[Stream] Error:', error);
+        console.error('[Stream] Resolution failed:', error instanceof Error ? error.message : error);
         return reply.code(500).send({ error: 'Stream resolution failed' });
       }
     });
@@ -414,7 +960,6 @@ export class StandaloneServer {
       }
 
       try {
-        console.log('[StreamProxy] Proxying:', url.slice(0, 80) + '...');
 
         // Fetch the audio stream
         const response = await fetch(url, {
@@ -427,7 +972,6 @@ export class StandaloneServer {
         });
 
         if (!response.ok && response.status !== 206) {
-          console.error('[StreamProxy] Fetch failed:', response.status, response.statusText);
           return reply.code(response.status).send({ error: 'Stream fetch failed' });
         }
 
@@ -459,8 +1003,107 @@ export class StandaloneServer {
           return reply.send(Buffer.from(buffer));
         }
       } catch (error) {
-        console.error('[StreamProxy] Error:', error);
+        console.error('[StreamProxy] Failed:', error instanceof Error ? error.message : error);
         return reply.code(500).send({ error: 'Stream proxy failed' });
+      }
+    });
+
+    // Local file streaming - serves audio/video files from the local filesystem
+    this.fastify.get('/api/stream/local', async (request, reply) => {
+      const { path: filePath } = request.query as { path?: string };
+
+      if (!filePath) {
+        return reply.code(400).send({ error: 'File path required' });
+      }
+
+      // Decode the path (it comes URL-encoded)
+      const decodedPath = decodeURIComponent(filePath);
+
+      console.log('[LocalStream] Serving:', decodedPath);
+
+      // Security check: Only allow files from registered media folders
+      const folders = this.mediaFoldersService.getFolders();
+      const isInAllowedFolder = folders.some(folder =>
+        decodedPath.toLowerCase().startsWith(folder.path.toLowerCase())
+      );
+
+      if (!isInAllowedFolder) {
+        console.error('[LocalStream] Access denied - path not in registered folders:', decodedPath);
+        return reply.code(403).send({ error: 'Access denied - file not in registered media folder' });
+      }
+
+      // Check file exists
+      const fs = await import('fs');
+      const path = await import('path');
+
+      if (!fs.existsSync(decodedPath)) {
+        console.error('[LocalStream] File not found:', decodedPath);
+        return reply.code(404).send({ error: 'File not found' });
+      }
+
+      try {
+        const stat = fs.statSync(decodedPath);
+        const ext = path.extname(decodedPath).toLowerCase();
+
+        // Determine content type
+        const mimeTypes: Record<string, string> = {
+          '.mp3': 'audio/mpeg',
+          '.flac': 'audio/flac',
+          '.wav': 'audio/wav',
+          '.m4a': 'audio/mp4',
+          '.ogg': 'audio/ogg',
+          '.opus': 'audio/opus',
+          '.aac': 'audio/aac',
+          '.wma': 'audio/x-ms-wma',
+          '.mp4': 'video/mp4',
+          '.mkv': 'video/x-matroska',
+          '.avi': 'video/x-msvideo',
+          '.webm': 'video/webm',
+          '.mov': 'video/quicktime',
+        };
+
+        const contentType = mimeTypes[ext] || 'application/octet-stream';
+        const fileSize = stat.size;
+
+        // Handle range requests for seeking
+        const range = request.headers.range;
+
+        if (range) {
+          const parts = range.replace(/bytes=/, '').split('-');
+          const start = parseInt(parts[0], 10);
+          const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+          const chunkSize = end - start + 1;
+
+          reply.code(206);
+          reply.header('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+          reply.header('Accept-Ranges', 'bytes');
+          reply.header('Content-Length', chunkSize);
+          reply.header('Content-Type', contentType);
+
+          const stream = fs.createReadStream(decodedPath, { start, end });
+          return reply.send(stream);
+        } else {
+          reply.header('Content-Length', fileSize);
+          reply.header('Content-Type', contentType);
+          reply.header('Accept-Ranges', 'bytes');
+
+          const stream = fs.createReadStream(decodedPath);
+          return reply.send(stream);
+        }
+      } catch (error) {
+        console.error('[LocalStream] Error streaming file:', error);
+        return reply.code(500).send({ error: 'Failed to stream file' });
+      }
+    });
+
+    // Player State
+    this.fastify.get('/api/player/last-played', async () => {
+      try {
+        const state = this.trackingService.getLastPlaybackState();
+        return { success: true, state };
+      } catch (error) {
+        console.error('[PlayerState] Error:', error);
+        return { success: false, error: 'Failed to get last playback state' };
       }
     });
 
@@ -508,8 +1151,10 @@ export class StandaloneServer {
 
     // Library: Liked tracks
     this.fastify.get('/api/library/likes', async () => {
+      const tracks = this.libraryDb.getLikedTracks();
+      console.log('[Library] Returning', tracks.length, 'liked tracks');
       return {
-        tracks: this.libraryDb.getLikedTracks(),
+        tracks,
         synced: true
       };
     });
@@ -519,8 +1164,14 @@ export class StandaloneServer {
       if (!track) {
         return { success: false, error: 'Track required' };
       }
+      console.log('[Library] Liking track:', track.id, track.title);
       this.libraryDb.likeTrack(track);
-      return { success: true };
+
+      // Verify persistence
+      const isLiked = this.libraryDb.isTrackLiked(track.id);
+      console.log('[Library] Track liked successfully:', isLiked);
+
+      return { success: true, verified: isLiked };
     });
 
     this.fastify.delete('/api/library/likes/:trackId', async (request) => {
@@ -575,11 +1226,27 @@ export class StandaloneServer {
     });
 
     this.fastify.post('/api/library/playlists', async (request) => {
-      const { name, description } = request.body as { name: string; description?: string };
+      const { name, description, folderId, rules, combinator, orderBy, orderDirection, limit } = request.body as {
+        name: string;
+        description?: string;
+        folderId?: string;
+        rules?: Array<{ field: string; operator: string; value: unknown }>;
+        combinator?: 'and' | 'or';
+        orderBy?: string;
+        orderDirection?: 'asc' | 'desc';
+        limit?: number;
+      };
       if (!name) {
         return { success: false, error: 'Name required' };
       }
-      const playlist = this.libraryDb.createPlaylist(name, description);
+      const playlist = this.libraryDb.createPlaylist(name, description, {
+        folderId,
+        rules,
+        combinator,
+        orderBy,
+        orderDirection,
+        limit
+      });
       return { success: true, playlist };
     });
 
@@ -591,12 +1258,20 @@ export class StandaloneServer {
 
     this.fastify.put('/api/library/playlists/:playlistId', async (request) => {
       const { playlistId } = request.params as { playlistId: string };
-      const { name } = request.body as { name: string };
-      if (!name) {
-        return { success: false, error: 'Name required' };
-      }
-      this.libraryDb.renamePlaylist(playlistId, name);
-      return { success: true };
+      const data = request.body as Partial<{
+        name: string;
+        description: string;
+        folderId: string | null;
+        rules: Array<{ field: string; operator: string; value: unknown }> | null;
+        combinator: 'and' | 'or';
+        orderBy: string | null;
+        orderDirection: 'asc' | 'desc';
+        limit: number | null;
+      }>;
+
+      this.libraryDb.updatePlaylist(playlistId, data);
+      const updated = this.libraryDb.getPlaylist(playlistId);
+      return { success: true, playlist: updated };
     });
 
     this.fastify.post('/api/library/playlists/:playlistId/tracks', async (request) => {
@@ -615,6 +1290,74 @@ export class StandaloneServer {
       return { success: true };
     });
 
+    // Evaluate playlist rules (returns matching tracks for playlists with rules)
+    this.fastify.get('/api/library/playlists/:playlistId/evaluate', async (request, reply) => {
+      const { playlistId } = request.params as { playlistId: string };
+      const playlist = this.libraryDb.getPlaylist(playlistId);
+
+      if (!playlist) {
+        return reply.code(404).send({ error: 'Playlist not found' });
+      }
+
+      if (!playlist.rules || playlist.rules.length === 0) {
+        // No rules - return empty (manual tracks are in playlist.tracks)
+        return { trackIds: [], tracks: [], count: 0, source: 'local' };
+      }
+
+      const { trackIds, count, source } = this.libraryDb.evaluatePlaylistRules(playlistId);
+      const tracks = this.libraryDb.getTracksByIds(trackIds);
+
+      // TODO: For 'streams' or 'all' source, integrate with plugin search
+      // This would query streaming providers for tracks matching the rules
+      // For now, only local evaluation is fully implemented
+
+      return { trackIds, tracks, count, source };
+    });
+
+    // Preview playlist rules (without saving)
+    this.fastify.post('/api/library/playlists/preview', async (request) => {
+      const { rules, combinator, orderBy, orderDirection, limit, source } = request.body as {
+        rules: Array<{ field: string; operator: string; value: unknown }>;
+        combinator?: 'and' | 'or';
+        orderBy?: string;
+        orderDirection?: 'asc' | 'desc';
+        limit?: number;
+        source?: 'local' | 'streams' | 'all';
+      };
+
+      if (!rules || rules.length === 0) {
+        return { trackIds: [], tracks: [], count: 0, source: source || 'local' };
+      }
+
+      const effectiveSource = source || 'local';
+
+      // For 'local' and 'all', evaluate against local library
+      let trackIds: string[] = [];
+      if (effectiveSource === 'local' || effectiveSource === 'all') {
+        trackIds = this.libraryDb.evaluateSmartPlaylistRules(
+          rules,
+          combinator || 'and',
+          orderBy,
+          orderDirection,
+          effectiveSource === 'all' ? undefined : limit
+        );
+      }
+
+      // TODO: For 'streams' or 'all' source, integrate with plugin search
+      // This would query streaming providers for tracks matching the rules
+      // For now, only local evaluation is fully implemented
+
+      const tracks = this.libraryDb.getTracksByIds(trackIds);
+      return { trackIds, tracks, count: tracks.length, source: effectiveSource };
+    });
+
+    // Get available rule definitions for playlist rule builder
+    this.fastify.get('/api/library/playlists/rules', async () => {
+      return {
+        rules: this.libraryDb.getRuleDefinitions()
+      };
+    });
+
     // Recommendations
     this.fastify.get('/api/discover', async (request) => {
       const { limit } = request.query as { limit?: string };
@@ -628,6 +1371,146 @@ export class StandaloneServer {
       };
     });
 
+    // Dynamic Discovery Layout - personalized based on user activity
+    this.fastify.get('/api/discover/layout', async () => {
+      try {
+        // Get library stats to determine what sections to show
+        const stats = this.libraryDb.getStats();
+        const hasHistory = stats.historyCount > 0;
+        const hasLikes = stats.likedCount > 0;
+        const hasPlaylists = stats.playlistCount > 0;
+
+        // Build sections dynamically based on user activity
+        const sections: Array<{
+          id: string;
+          type: string;
+          title: string;
+          subtitle?: string;
+          isPersonalized: boolean;
+          priority: number;
+        }> = [];
+
+        let priority = 0;
+
+        // Hero section always shows
+        sections.push({
+          id: 'hero-1',
+          type: 'hero',
+          title: hasHistory ? 'Made For You' : 'Discover Music',
+          subtitle: hasHistory ? 'Personalized picks' : 'Start listening to get recommendations',
+          isPersonalized: hasHistory,
+          priority: priority++
+        });
+
+        // Quick picks - show if user has likes or history
+        if (hasLikes || hasHistory) {
+          sections.push({
+            id: 'quick-picks-1',
+            type: 'quick-picks',
+            title: '',
+            isPersonalized: true,
+            priority: priority++
+          });
+        }
+
+        // Jump Back In - only show if there's listening history
+        if (hasHistory) {
+          sections.push({
+            id: 'jump-back-in-1',
+            type: 'compact-list',
+            title: 'Jump Back In',
+            subtitle: 'Your recent listens',
+            isPersonalized: true,
+            priority: priority++
+          });
+        }
+
+        // Top Mix - only if enough likes/history to make it meaningful
+        if (hasLikes && stats.likedCount >= 5) {
+          sections.push({
+            id: 'top-mix-1',
+            type: 'top-mix',
+            title: 'Your Top Mix',
+            subtitle: 'Songs you love',
+            isPersonalized: true,
+            priority: priority++
+          });
+        }
+
+        // New Releases - always show
+        sections.push({
+          id: 'new-releases-1',
+          type: 'new-releases',
+          title: 'New Releases',
+          subtitle: 'Fresh music for you',
+          isPersonalized: false,
+          priority: priority++
+        });
+
+        // Trending - always show
+        sections.push({
+          id: 'trending-1',
+          type: 'trending-tracks',
+          title: 'Trending Now',
+          subtitle: 'What everyone is listening to',
+          isPersonalized: false,
+          priority: priority++
+        });
+
+        // Artists - always show
+        sections.push({
+          id: 'artists-1',
+          type: 'trending-artists',
+          title: 'Popular Artists',
+          isPersonalized: false,
+          priority: priority++
+        });
+
+        // Moods - always show
+        sections.push({
+          id: 'moods-1',
+          type: 'mood-playlist',
+          title: 'Vibe Check',
+          subtitle: 'Music for every mood',
+          isPersonalized: false,
+          priority: priority++
+        });
+
+        // Charts - always show at end
+        sections.push({
+          id: 'charts-1',
+          type: 'chart-list',
+          title: 'Top Charts',
+          isPersonalized: false,
+          priority: priority++
+        });
+
+        // If user has playlists, add a "Your Playlists" section
+        if (hasPlaylists) {
+          sections.push({
+            id: 'your-playlists-1',
+            type: 'user-playlists',
+            title: 'Your Playlists',
+            isPersonalized: true,
+            priority: priority++
+          });
+        }
+
+        return { sections, stats: { hasHistory, hasLikes, hasPlaylists } };
+      } catch (error) {
+        console.error('[Discover] Layout generation error:', error);
+        // Return a minimal fallback layout
+        return {
+          sections: [
+            { id: 'trending-1', type: 'trending-tracks', title: 'Trending Now', isPersonalized: false, priority: 0 },
+            { id: 'artists-1', type: 'trending-artists', title: 'Popular Artists', isPersonalized: false, priority: 1 },
+            { id: 'charts-1', type: 'chart-list', title: 'Top Charts', isPersonalized: false, priority: 2 }
+          ],
+          error: 'Failed to generate personalized layout'
+        };
+      }
+    });
+
     // Record play (for recommendations)
     this.fastify.post('/api/library/history', async (request) => {
       const { track, duration } = request.body as { track: any; duration?: number };
@@ -635,20 +1518,811 @@ export class StandaloneServer {
         return { success: false, error: 'Track required' };
       }
       this.libraryDb.recordPlay(track, duration || 0);
+      // Also update play stats
+      this.libraryDb.incrementPlayCount(track.id, duration || 0);
       return { success: true };
+    });
+
+    // Record skip
+    this.fastify.post('/api/library/skip', async (request) => {
+      const { trackId } = request.body as { trackId: string };
+      if (!trackId) {
+        return { success: false, error: 'trackId required' };
+      }
+      this.libraryDb.incrementSkipCount(trackId);
+      return { success: true };
+    });
+
+    // ========================================
+    // Smart Playlists
+    // ========================================
+
+    this.fastify.get('/api/library/smart-playlists', async () => {
+      return {
+        playlists: this.libraryDb.getSmartPlaylists(),
+        synced: true
+      };
+    });
+
+    this.fastify.get('/api/library/smart-playlists/:playlistId', async (request, reply) => {
+      const { playlistId } = request.params as { playlistId: string };
+      const playlist = this.libraryDb.getSmartPlaylist(playlistId);
+      if (!playlist) {
+        return reply.code(404).send({ error: 'Smart playlist not found' });
+      }
+      return playlist;
+    });
+
+    this.fastify.post('/api/library/smart-playlists', async (request) => {
+      const data = request.body as {
+        name: string;
+        description?: string;
+        rules: Array<{ field: string; operator: string; value: unknown; pluginId?: string }>;
+        combinator?: 'and' | 'or';
+        orderBy?: string;
+        orderDirection?: 'asc' | 'desc';
+        limit?: number;
+        folderId?: string;
+      };
+
+      if (!data.name || !data.rules || !Array.isArray(data.rules)) {
+        return { success: false, error: 'Name and rules required' };
+      }
+
+      const playlist = this.libraryDb.createSmartPlaylist(data);
+      return { success: true, playlist };
+    });
+
+    this.fastify.put('/api/library/smart-playlists/:playlistId', async (request) => {
+      const { playlistId } = request.params as { playlistId: string };
+      const data = request.body as Partial<{
+        name: string;
+        description: string;
+        rules: Array<{ field: string; operator: string; value: unknown; pluginId?: string }>;
+        combinator: 'and' | 'or';
+        orderBy: string;
+        orderDirection: 'asc' | 'desc';
+        limit: number;
+        folderId: string;
+      }>;
+
+      this.libraryDb.updateSmartPlaylist(playlistId, data);
+      return { success: true };
+    });
+
+    this.fastify.delete('/api/library/smart-playlists/:playlistId', async (request) => {
+      const { playlistId } = request.params as { playlistId: string };
+      this.libraryDb.deleteSmartPlaylist(playlistId);
+      return { success: true };
+    });
+
+    // Evaluate smart playlist (returns matching tracks)
+    this.fastify.get('/api/library/smart-playlists/:playlistId/tracks', async (request, reply) => {
+      const { playlistId } = request.params as { playlistId: string };
+      const playlist = this.libraryDb.getSmartPlaylist(playlistId);
+
+      if (!playlist) {
+        return reply.code(404).send({ error: 'Smart playlist not found' });
+      }
+
+      // Evaluate the rules
+      const trackIds = this.libraryDb.evaluateSmartPlaylistRules(
+        playlist.rules,
+        playlist.combinator,
+        playlist.orderBy,
+        playlist.orderDirection,
+        playlist.limit
+      );
+
+      // Update last evaluated timestamp and track count
+      this.libraryDb.updateSmartPlaylist(playlistId, {
+        lastEvaluated: Date.now(),
+        trackCount: trackIds.length
+      });
+
+      // Return track IDs (client can resolve them)
+      return {
+        playlistId,
+        trackIds,
+        count: trackIds.length,
+        evaluatedAt: Date.now()
+      };
+    });
+
+    // Preview smart playlist rules (without saving)
+    this.fastify.post('/api/library/smart-playlists/preview', async (request) => {
+      const { rules, combinator, orderBy, orderDirection, limit } = request.body as {
+        rules: Array<{ field: string; operator: string; value: unknown }>;
+        combinator: 'and' | 'or';
+        orderBy?: string;
+        orderDirection?: 'asc' | 'desc';
+        limit?: number;
+      };
+
+      if (!rules || !Array.isArray(rules) || rules.length === 0) {
+        return { tracks: [], count: 0 };
+      }
+
+      // Evaluate the rules
+      const trackIds = this.libraryDb.evaluateSmartPlaylistRules(
+        rules,
+        combinator || 'and',
+        orderBy,
+        orderDirection,
+        limit || 100
+      );
+
+      // Resolve track IDs to full track data
+      const tracks = this.libraryDb.getTracksByIds(trackIds);
+
+      return {
+        tracks,
+        count: trackIds.length,
+        evaluatedAt: Date.now()
+      };
+    });
+
+    // Get available smart playlist rule definitions
+    this.fastify.get('/api/library/smart-playlists/rules', async () => {
+      // Return built-in rules - plugins can add more via the registry
+      return {
+        rules: [
+          { field: 'title', label: 'Title', type: 'string', category: 'metadata', operators: ['contains', 'not_contains', 'is', 'is_not', 'starts_with', 'ends_with'] },
+          { field: 'artist', label: 'Artist', type: 'string', category: 'metadata', operators: ['contains', 'not_contains', 'is', 'is_not'] },
+          { field: 'album', label: 'Album', type: 'string', category: 'metadata', operators: ['contains', 'not_contains', 'is', 'is_not'] },
+          { field: 'genre', label: 'Genre', type: 'string', category: 'metadata', operators: ['contains', 'is'] },
+          { field: 'year', label: 'Year', type: 'number', category: 'metadata', operators: ['is', 'is_not', 'gt', 'lt', 'between'] },
+          { field: 'duration', label: 'Duration', type: 'duration', category: 'metadata', operators: ['gt', 'lt', 'between'] },
+          { field: 'addedAt', label: 'Date Added', type: 'date', category: 'library', operators: ['in_last', 'not_in_last', 'before', 'after'] },
+          { field: 'isLiked', label: 'Liked', type: 'boolean', category: 'library', operators: ['is'] },
+          { field: 'playCount', label: 'Play Count', type: 'number', category: 'playback', operators: ['is', 'gt', 'lt'] },
+          { field: 'lastPlayed', label: 'Last Played', type: 'date', category: 'playback', operators: ['in_last', 'not_in_last', 'never'] },
+          { field: 'skipCount', label: 'Skip Count', type: 'number', category: 'playback', operators: ['is', 'gt', 'lt'] }
+        ]
+      };
+    });
+
+    // ========================================
+    // Playlist Folders
+    // ========================================
+
+    this.fastify.get('/api/library/folders', async () => {
+      return {
+        folders: this.libraryDb.getPlaylistFolders(),
+        synced: true
+      };
+    });
+
+    this.fastify.get('/api/library/folders/:folderId', async (request, reply) => {
+      const { folderId } = request.params as { folderId: string };
+      const folder = this.libraryDb.getPlaylistFolder(folderId);
+      if (!folder) {
+        return reply.code(404).send({ error: 'Folder not found' });
+      }
+      return folder;
+    });
+
+    this.fastify.post('/api/library/folders', async (request) => {
+      const { name, parentId } = request.body as { name: string; parentId?: string };
+      if (!name) {
+        return { success: false, error: 'Name required' };
+      }
+      const folder = this.libraryDb.createPlaylistFolder(name, parentId);
+      return { success: true, folder };
+    });
+
+    this.fastify.put('/api/library/folders/:folderId', async (request) => {
+      const { folderId } = request.params as { folderId: string };
+      const data = request.body as Partial<{
+        name: string;
+        parentId: string;
+        position: number;
+        isExpanded: boolean;
+      }>;
+
+      this.libraryDb.updatePlaylistFolder(folderId, data);
+      return { success: true };
+    });
+
+    this.fastify.delete('/api/library/folders/:folderId', async (request) => {
+      const { folderId } = request.params as { folderId: string };
+      this.libraryDb.deletePlaylistFolder(folderId);
+      return { success: true };
+    });
+
+    // Move playlist to folder
+    this.fastify.post('/api/library/playlists/:playlistId/move', async (request) => {
+      const { playlistId } = request.params as { playlistId: string };
+      const { folderId } = request.body as { folderId: string | null };
+      this.libraryDb.movePlaylistToFolder(playlistId, folderId);
+      return { success: true };
+    });
+
+    // Move smart playlist to folder
+    this.fastify.post('/api/library/smart-playlists/:playlistId/move', async (request) => {
+      const { playlistId } = request.params as { playlistId: string };
+      const { folderId } = request.body as { folderId: string | null };
+      this.libraryDb.moveSmartPlaylistToFolder(playlistId, folderId);
+      return { success: true };
+    });
+
+    // ========================================
+    // Track Statistics
+    // ========================================
+
+    this.fastify.get('/api/library/stats', async () => {
+      return this.libraryDb.getStats();
+    });
+
+    this.fastify.get('/api/library/stats/track/:trackId', async (request, reply) => {
+      const { trackId } = request.params as { trackId: string };
+      const stats = this.libraryDb.getTrackPlayStats(trackId);
+      if (!stats) {
+        return { trackId, playCount: 0, skipCount: 0, totalListenTime: 0 };
+      }
+      return stats;
+    });
+
+    this.fastify.get('/api/library/stats/most-played', async (request) => {
+      const { limit } = request.query as { limit?: string };
+      const l = parseInt(limit || '50', 10);
+      return {
+        tracks: this.libraryDb.getMostPlayedTracks(l)
+      };
+    });
+
+    // ========================================
+    // Track Enrichment (via plugins)
+    // ========================================
+
+    this.fastify.get('/api/library/enrichment/:trackId', async (request, reply) => {
+      const { trackId } = request.params as { trackId: string };
+      const enrichment = this.libraryDb.getTrackEnrichment(trackId);
+      if (!enrichment) {
+        return reply.code(404).send({ error: 'No enrichment data found' });
+      }
+      return enrichment;
+    });
+
+    this.fastify.post('/api/library/enrichment/:trackId', async (request) => {
+      const { trackId } = request.params as { trackId: string };
+      const { enrichedData, providerId, confidence } = request.body as {
+        enrichedData: Record<string, unknown>;
+        providerId?: string;
+        confidence?: number;
+      };
+
+      if (!enrichedData) {
+        return { success: false, error: 'enrichedData required' };
+      }
+
+      this.libraryDb.saveTrackEnrichment(trackId, enrichedData, providerId, confidence);
+      return { success: true };
+    });
+
+    this.fastify.delete('/api/library/enrichment/:trackId', async (request) => {
+      const { trackId } = request.params as { trackId: string };
+      this.libraryDb.deleteTrackEnrichment(trackId);
+      return { success: true };
+    });
+
+    // ========================================
+    // Fingerprints (via plugins)
+    // ========================================
+
+    this.fastify.get('/api/library/fingerprint/:trackId', async (request, reply) => {
+      const { trackId } = request.params as { trackId: string };
+      const fingerprint = this.libraryDb.getCachedFingerprint(trackId);
+      if (!fingerprint) {
+        return reply.code(404).send({ error: 'No fingerprint cached' });
+      }
+      return fingerprint;
+    });
+
+    this.fastify.post('/api/library/fingerprint/:trackId', async (request) => {
+      const { trackId } = request.params as { trackId: string };
+      const { fingerprint, duration } = request.body as {
+        fingerprint: string;
+        duration: number;
+      };
+
+      if (!fingerprint || typeof duration !== 'number') {
+        return { success: false, error: 'fingerprint and duration required' };
+      }
+
+      this.libraryDb.cacheFingerprint(trackId, fingerprint, duration);
+      return { success: true };
+    });
+
+    this.fastify.delete('/api/library/fingerprint/:trackId', async (request) => {
+      const { trackId } = request.params as { trackId: string };
+      this.libraryDb.deleteCachedFingerprint(trackId);
+      return { success: true };
+    });
+
+    // ========================================
+    // Tags
+    // ========================================
+
+    this.fastify.get('/api/tags', async () => {
+      return { tags: this.libraryDb.getTags() };
+    });
+
+    this.fastify.post('/api/tags', async (request) => {
+      const { name, color } = request.body as { name: string; color?: string };
+      if (!name) {
+        return { success: false, error: 'Name required' };
+      }
+      const tag = this.libraryDb.createTag(name, color);
+      return { success: true, tag };
+    });
+
+    this.fastify.put('/api/tags/:tagId', async (request) => {
+      const { tagId } = request.params as { tagId: string };
+      const data = request.body as Partial<{ name: string; color: string }>;
+      this.libraryDb.updateTag(tagId, data);
+      return { success: true };
+    });
+
+    this.fastify.delete('/api/tags/:tagId', async (request) => {
+      const { tagId } = request.params as { tagId: string };
+      this.libraryDb.deleteTag(tagId);
+      return { success: true };
+    });
+
+    // Track tags
+    this.fastify.get('/api/tracks/:trackId/tags', async (request) => {
+      const { trackId } = request.params as { trackId: string };
+      return { tags: this.libraryDb.getTrackTags(trackId) };
+    });
+
+    this.fastify.post('/api/tracks/:trackId/tags', async (request) => {
+      const { trackId } = request.params as { trackId: string };
+      const { tagName, color } = request.body as { tagName: string; color?: string };
+      if (!tagName) {
+        return { success: false, error: 'tagName required' };
+      }
+      const trackTag = this.libraryDb.addTagToTrack(trackId, tagName, color);
+      return { success: true, trackTag };
+    });
+
+    this.fastify.delete('/api/tracks/:trackId/tags/:tagName', async (request) => {
+      const { trackId, tagName } = request.params as { trackId: string; tagName: string };
+      this.libraryDb.removeTagFromTrack(trackId, tagName);
+      return { success: true };
+    });
+
+    this.fastify.get('/api/tracks/by-tag/:tagName', async (request) => {
+      const { tagName } = request.params as { tagName: string };
+      return { trackIds: this.libraryDb.getTracksByTag(tagName) };
+    });
+
+    // Entity tags (albums, artists, playlists)
+    this.fastify.get('/api/entities/:entityType/:entityId/tags', async (request) => {
+      const { entityType, entityId } = request.params as { entityType: string; entityId: string };
+      return { tags: this.libraryDb.getEntityTags(entityType, entityId) };
+    });
+
+    this.fastify.post('/api/entities/:entityType/:entityId/tags', async (request) => {
+      const { entityType, entityId } = request.params as { entityType: string; entityId: string };
+      const { tagName } = request.body as { tagName: string };
+      if (!tagName) {
+        return { success: false, error: 'tagName required' };
+      }
+      const entityTag = this.libraryDb.addTagToEntity(entityType, entityId, tagName);
+      return { success: true, entityTag };
+    });
+
+    this.fastify.delete('/api/entities/:entityType/:entityId/tags/:tagName', async (request) => {
+      const { entityType, entityId, tagName } = request.params as { entityType: string; entityId: string; tagName: string };
+      this.libraryDb.removeTagFromEntity(entityType, entityId, tagName);
+      return { success: true };
+    });
+
+    // ========================================
+    // Collections
+    // ========================================
+
+    this.fastify.get('/api/collections', async () => {
+      return { collections: this.libraryDb.getCollections() };
+    });
+
+    this.fastify.get('/api/collections/:collectionId', async (request, reply) => {
+      const { collectionId } = request.params as { collectionId: string };
+      const collection = this.libraryDb.getCollection(collectionId);
+      if (!collection) {
+        return reply.code(404).send({ error: 'Collection not found' });
+      }
+      const items = this.libraryDb.getCollectionItems(collectionId);
+      return { ...collection, items };
+    });
+
+    this.fastify.post('/api/collections', async (request) => {
+      const { name, description } = request.body as { name: string; description?: string };
+      if (!name) {
+        return { success: false, error: 'Name required' };
+      }
+      const collection = this.libraryDb.createCollection(name, description);
+      return { success: true, collection };
+    });
+
+    this.fastify.put('/api/collections/:collectionId', async (request) => {
+      const { collectionId } = request.params as { collectionId: string };
+      const data = request.body as Partial<{ name: string; description: string; coverImage: string }>;
+      this.libraryDb.updateCollection(collectionId, data);
+      return { success: true };
+    });
+
+    this.fastify.delete('/api/collections/:collectionId', async (request) => {
+      const { collectionId } = request.params as { collectionId: string };
+      this.libraryDb.deleteCollection(collectionId);
+      return { success: true };
+    });
+
+    this.fastify.post('/api/collections/:collectionId/items', async (request) => {
+      const { collectionId } = request.params as { collectionId: string };
+      const { itemType, itemId, itemData, parentFolderId } = request.body as {
+        itemType: string;
+        itemId: string;
+        itemData?: Record<string, unknown>;
+        parentFolderId?: string | null;
+      };
+      if (!itemType || !itemId) {
+        return { success: false, error: 'itemType and itemId required' };
+      }
+      const item = this.libraryDb.addToCollection(collectionId, itemType, itemId, itemData, parentFolderId);
+      return { success: true, item };
+    });
+
+    this.fastify.delete('/api/collections/:collectionId/items/:itemId', async (request) => {
+      const { collectionId, itemId } = request.params as { collectionId: string; itemId: string };
+      this.libraryDb.removeFromCollection(collectionId, itemId);
+      return { success: true };
+    });
+
+    this.fastify.put('/api/collections/:collectionId/reorder', async (request) => {
+      const { collectionId } = request.params as { collectionId: string };
+      const { itemIds } = request.body as { itemIds: string[] };
+      if (!itemIds || !Array.isArray(itemIds)) {
+        return { success: false, error: 'itemIds array required' };
+      }
+      this.libraryDb.reorderCollectionItems(collectionId, itemIds);
+      return { success: true };
+    });
+
+    // Move item to folder within collection
+    this.fastify.put('/api/collections/:collectionId/items/:itemId/move', async (request) => {
+      const { collectionId, itemId } = request.params as { collectionId: string; itemId: string };
+      const { targetFolderId } = request.body as { targetFolderId: string | null };
+      this.libraryDb.moveCollectionItemToFolder(collectionId, itemId, targetFolderId);
+      return { success: true };
+    });
+
+    // Reorder collections in sidebar
+    this.fastify.put('/api/collections/reorder', async (request) => {
+      const { collectionIds } = request.body as { collectionIds: string[] };
+      if (!collectionIds || !Array.isArray(collectionIds)) {
+        return { success: false, error: 'collectionIds array required' };
+      }
+      this.libraryDb.reorderCollections(collectionIds);
+      return { success: true };
+    });
+
+    // ========================================
+    // Folders within Collections
+    // ========================================
+
+    // Create folder within collection
+    this.fastify.post('/api/collections/:collectionId/folders', async (request) => {
+      const { collectionId } = request.params as { collectionId: string };
+      const { name, parentFolderId } = request.body as { name: string; parentFolderId?: string | null };
+      if (!name) {
+        return { success: false, error: 'Name required' };
+      }
+      const item = this.libraryDb.createCollectionItemFolder(collectionId, name, parentFolderId);
+      return { success: true, item };
+    });
+
+    // Update folder within collection
+    this.fastify.put('/api/collections/:collectionId/folders/:folderId', async (request) => {
+      const { collectionId, folderId } = request.params as { collectionId: string; folderId: string };
+      const data = request.body as { name?: string; isExpanded?: boolean };
+      this.libraryDb.updateCollectionItemFolder(collectionId, folderId, data);
+      return { success: true };
+    });
+
+    // Delete folder within collection
+    this.fastify.delete('/api/collections/:collectionId/folders/:folderId', async (request) => {
+      const { collectionId, folderId } = request.params as { collectionId: string; folderId: string };
+      const { moveContentsToParent } = request.body as { moveContentsToParent?: boolean } || {};
+      this.libraryDb.deleteCollectionItemFolder(collectionId, folderId, moveContentsToParent ?? true);
+      return { success: true };
+    });
+
+    // ========================================
+    // Pinned Items
+    // ========================================
+
+    this.fastify.get('/api/pinned', async () => {
+      return { items: this.libraryDb.getPinnedItems() };
+    });
+
+    this.fastify.post('/api/pinned', async (request) => {
+      const { itemType, itemId, itemData } = request.body as {
+        itemType: string;
+        itemId: string;
+        itemData?: Record<string, unknown>;
+      };
+      if (!itemType || !itemId) {
+        return { success: false, error: 'itemType and itemId required' };
+      }
+      const item = this.libraryDb.pinItem(itemType, itemId, itemData);
+      return { success: true, item };
+    });
+
+    this.fastify.delete('/api/pinned/:itemType/:itemId', async (request) => {
+      const { itemType, itemId } = request.params as { itemType: string; itemId: string };
+      this.libraryDb.unpinItem(itemType, itemId);
+      return { success: true };
+    });
+
+    this.fastify.get('/api/pinned/:itemType/:itemId', async (request) => {
+      const { itemType, itemId } = request.params as { itemType: string; itemId: string };
+      return { pinned: this.libraryDb.isPinned(itemType, itemId) };
+    });
+
+    this.fastify.put('/api/pinned/reorder', async (request) => {
+      const { items } = request.body as { items: Array<{ type: string; id: string }> };
+      if (!items || !Array.isArray(items)) {
+        return { success: false, error: 'items array required' };
+      }
+      this.libraryDb.reorderPinnedItems(items);
+      return { success: true };
+    });
+
+    // ========================================
+    // Library Views
+    // ========================================
+
+    this.fastify.get('/api/library/views', async () => {
+      return { views: this.libraryDb.getLibraryViews() };
+    });
+
+    this.fastify.get('/api/library/views/:viewId', async (request, reply) => {
+      const { viewId } = request.params as { viewId: string };
+      const view = this.libraryDb.getLibraryView(viewId);
+      if (!view) {
+        return reply.code(404).send({ error: 'View not found' });
+      }
+      return view;
+    });
+
+    this.fastify.post('/api/library/views', async (request) => {
+      const data = request.body as {
+        name: string;
+        icon?: string;
+        filters: Record<string, unknown>;
+        sortBy?: string;
+        sortDirection?: 'asc' | 'desc';
+      };
+      if (!data.name || !data.filters) {
+        return { success: false, error: 'name and filters required' };
+      }
+      const view = this.libraryDb.createLibraryView(data);
+      return { success: true, view };
+    });
+
+    this.fastify.put('/api/library/views/:viewId', async (request) => {
+      const { viewId } = request.params as { viewId: string };
+      const data = request.body as Partial<{
+        name: string;
+        icon: string;
+        filters: Record<string, unknown>;
+        sortBy: string;
+        sortDirection: 'asc' | 'desc';
+      }>;
+      this.libraryDb.updateLibraryView(viewId, data);
+      return { success: true };
+    });
+
+    this.fastify.delete('/api/library/views/:viewId', async (request) => {
+      const { viewId } = request.params as { viewId: string };
+      this.libraryDb.deleteLibraryView(viewId);
+      return { success: true };
+    });
+
+    // ========================================
+    // Audio Features
+    // ========================================
+
+    this.fastify.get('/api/library/audio-features/:trackId', async (request, reply) => {
+      const { trackId } = request.params as { trackId: string };
+      const features = this.libraryDb.getAudioFeatures(trackId);
+      if (!features) {
+        return reply.code(404).send({ error: 'No audio features found' });
+      }
+      return features;
+    });
+
+    this.fastify.post('/api/library/audio-features', async (request) => {
+      const features = request.body as {
+        trackId: string;
+        energy: number;
+        tempo: number;
+        valence: number;
+        danceability: number;
+        acousticness: number;
+        instrumentalness: number;
+        speechiness: number;
+        loudness: number;
+        key: number;
+        mode: number;
+        timeSignature: number;
+      };
+      if (!features.trackId) {
+        return { success: false, error: 'trackId required' };
+      }
+      this.libraryDb.saveAudioFeatures({ ...features, analyzedAt: Date.now() });
+      return { success: true };
+    });
+
+    this.fastify.post('/api/library/audio-features/search', async (request) => {
+      const { criteria, limit } = request.body as {
+        criteria: {
+          energyMin?: number;
+          energyMax?: number;
+          tempoMin?: number;
+          tempoMax?: number;
+          valenceMin?: number;
+          valenceMax?: number;
+          danceabilityMin?: number;
+          danceabilityMax?: number;
+          acousticnessMin?: number;
+          acousticnessMax?: number;
+          instrumentalnessMin?: number;
+          instrumentalnessMax?: number;
+        };
+        limit?: number;
+      };
+      if (!criteria) {
+        return { success: false, error: 'criteria required' };
+      }
+      const trackIds = this.libraryDb.searchByAudioFeatures(criteria, limit);
+      return { trackIds };
+    });
+
+    // ========================================
+    // Plugin Capabilities for Library
+    // ========================================
+
+    this.fastify.get('/api/library/capabilities', async () => {
+      // Report which library management capabilities are available via plugins
+      const capabilities: Record<string, { available: boolean; providers: string[] }> = {
+        'metadata-enricher': { available: false, providers: [] },
+        'artwork-provider': { available: false, providers: [] },
+        'fingerprint-provider': { available: false, providers: [] },
+        'isrc-resolver': { available: false, providers: [] },
+        'analytics-provider': { available: false, providers: [] },
+        'smart-playlist-rules': { available: false, providers: [] },
+        'duplicate-detector': { available: false, providers: [] },
+        'import-provider': { available: false, providers: [] },
+        'export-provider': { available: false, providers: [] },
+        'library-hook': { available: false, providers: [] }
+      };
+
+      // Check registry for each capability
+      const enrichers = this.registry.getMetadataEnrichers?.() || [];
+      if (enrichers.length > 0) {
+        capabilities['metadata-enricher'] = { available: true, providers: enrichers.map(e => e.id) };
+      }
+
+      const artworkProviders = this.registry.getArtworkProviders?.() || [];
+      if (artworkProviders.length > 0) {
+        capabilities['artwork-provider'] = { available: true, providers: artworkProviders.map(p => p.id) };
+      }
+
+      const fingerprintProvider = this.registry.getFingerprintProvider?.();
+      if (fingerprintProvider) {
+        capabilities['fingerprint-provider'] = { available: true, providers: [fingerprintProvider.id] };
+      }
+
+      const isrcResolvers = this.registry.getISRCResolvers?.() || [];
+      if (isrcResolvers.length > 0) {
+        capabilities['isrc-resolver'] = { available: true, providers: isrcResolvers.map(r => r.id) };
+      }
+
+      const analyticsProviders = this.registry.getAnalyticsProviders?.() || [];
+      if (analyticsProviders.length > 0) {
+        capabilities['analytics-provider'] = { available: true, providers: analyticsProviders.map(p => p.id) };
+      }
+
+      const smartPlaylistProviders = this.registry.getSmartPlaylistRulesProviders?.() || [];
+      if (smartPlaylistProviders.length > 0) {
+        capabilities['smart-playlist-rules'] = { available: true, providers: smartPlaylistProviders.map(p => p.id) };
+      }
+
+      const duplicateDetector = this.registry.getDuplicateDetector?.();
+      if (duplicateDetector) {
+        capabilities['duplicate-detector'] = { available: true, providers: [duplicateDetector.id] };
+      }
+
+      const importProviders = this.registry.getImportProviders?.() || [];
+      if (importProviders.length > 0) {
+        capabilities['import-provider'] = { available: true, providers: importProviders.map(p => p.id) };
+      }
+
+      const exportProviders = this.registry.getExportProviders?.() || [];
+      if (exportProviders.length > 0) {
+        capabilities['export-provider'] = { available: true, providers: exportProviders.map(p => p.id) };
+      }
+
+      const libraryHooks = this.registry.getLibraryHooks?.() || [];
+      if (libraryHooks.length > 0) {
+        capabilities['library-hook'] = { available: true, providers: libraryHooks.map(h => h.id) };
+      }
+
+      return capabilities;
+    });
+
+    // Get available import providers
+    this.fastify.get('/api/library/import/providers', async () => {
+      const providers = this.registry.getImportProviders?.() || [];
+      return {
+        providers: providers.map(p => ({
+          id: p.id,
+          name: p.name,
+          source: p.source
+        }))
+      };
+    });
+
+    // Get available export formats
+    this.fastify.get('/api/library/export/formats', async () => {
+      const providers = this.registry.getExportProviders?.() || [];
+      const formats: Array<{ providerId: string; format: string; extension: string; name: string }> = [];
+
+      for (const provider of providers) {
+        for (const format of provider.formats) {
+          formats.push({
+            providerId: provider.id,
+            format: format.id,
+            extension: format.extension,
+            name: format.name
+          });
+        }
+      }
+
+      return { formats };
     });
 
     // Addons/Plugins - List loaded
     this.fastify.get('/api/addons', async () => {
       return {
-        addons: this.pluginLoader.getLoadedPlugins().map(p => ({
-          id: p.manifest.id,
-          name: p.manifest.name,
-          version: p.manifest.version,
-          description: p.manifest.description,
-          roles: p.manifest.roles,
-          source: p.source
-        }))
+        addons: this.pluginLoader.getLoadedPlugins().map(p => {
+          // Get settingsSchema and privacy from the plugin instance manifest
+          const instanceManifest = p.instance?.manifest as any;
+
+          // Debug: log privacy data for each plugin
+          if (instanceManifest?.privacy) {
+            console.log(`[Addons] Plugin ${p.manifest.id} has privacy manifest:`, JSON.stringify(instanceManifest.privacy, null, 2));
+          } else {
+            console.log(`[Addons] Plugin ${p.manifest.id} has NO privacy manifest. instanceManifest keys:`, instanceManifest ? Object.keys(instanceManifest) : 'null');
+          }
+
+          return {
+            id: p.manifest.id,
+            name: p.manifest.name,
+            version: p.manifest.version,
+            description: p.manifest.description,
+            author: instanceManifest?.author || p.manifest.author,
+            roles: p.manifest.roles,
+            source: p.source,
+            // Map settingsSchema to settingsDefinitions for the UI
+            settingsDefinitions: instanceManifest?.settingsSchema || [],
+            // Privacy transparency manifest
+            privacy: instanceManifest?.privacy
+          };
+        })
       };
     });
 
@@ -662,6 +2336,10 @@ export class StandaloneServer {
       }
 
       this.registry.setEnabled(addonId, enabled);
+
+      // Persist enabled state to database
+      this.libraryDb.setPluginEnabled(addonId, enabled);
+
       return { success: true, addonId, enabled };
     });
 
@@ -674,11 +2352,14 @@ export class StandaloneServer {
         return reply.code(404).send({ error: 'Addon not found' });
       }
 
-      if (!addon.getSettings) {
-        return { settings: null };
-      }
+      // Get settings from plugin (in-memory) and merge with persisted
+      const pluginSettings = addon.getSettings ? addon.getSettings() : {};
+      const persisted = this.libraryDb.getPluginSettings(addonId);
 
-      return { settings: addon.getSettings() };
+      // Merge: persisted settings take precedence (they're the source of truth)
+      const mergedSettings = { ...pluginSettings, ...(persisted?.settings || {}) };
+
+      return { settings: mergedSettings };
     });
 
     this.fastify.post('/api/addons/:addonId/settings', async (request, reply) => {
@@ -694,8 +2375,86 @@ export class StandaloneServer {
         return reply.code(400).send({ error: 'Addon does not support settings' });
       }
 
+      // Apply to plugin in-memory
       addon.updateSettings(settings);
+
+      // Persist to database (merge with existing settings)
+      const existing = this.libraryDb.getPluginSettings(addonId);
+      const mergedSettings = { ...(existing?.settings || {}), ...settings };
+      this.libraryDb.updatePluginSettings(addonId, mergedSettings);
+
+      // Log which settings were saved (keys only, not values for security)
+      const settingKeys = Object.keys(settings);
+      console.log(`[Server] Persisted settings for plugin ${addonId}:`, settingKeys.join(', '));
       return { success: true };
+    });
+
+    // ========================================
+    // Scrobbling API
+    // ========================================
+
+    // Submit a scrobble to a specific plugin
+    this.fastify.post('/api/scrobble/:pluginId/submit', async (request, reply) => {
+      const { pluginId } = request.params as { pluginId: string };
+      const { track, playedDuration, timestamp } = request.body as {
+        track: { title: string; artist: string; album?: string; duration: number };
+        playedDuration: number;
+        timestamp: number;
+      };
+
+      const addon = this.registry.get(pluginId) as any;
+      if (!addon) {
+        return reply.code(404).send({ error: 'Scrobbler plugin not found' });
+      }
+
+      if (!addon.scrobble) {
+        return reply.code(400).send({ error: 'Plugin does not support scrobbling' });
+      }
+
+      try {
+        const success = await addon.scrobble({
+          track,
+          playedDuration,
+          timestamp: new Date(timestamp * 1000)
+        });
+        return { success };
+      } catch (error) {
+        console.error(`[Scrobble] Error submitting to ${pluginId}:`, error);
+        return { success: false, error: String(error) };
+      }
+    });
+
+    // Update now playing status
+    this.fastify.post('/api/scrobble/:pluginId/now-playing', async (request, reply) => {
+      const { pluginId } = request.params as { pluginId: string };
+      const { track } = request.body as {
+        track: { title: string; artist: string; album?: string; duration: number };
+      };
+
+      console.log(`[Scrobble] Now playing request: ${pluginId} - ${track?.title}`);
+
+      const addon = this.registry.get(pluginId) as any;
+      if (!addon) {
+        console.log(`[Scrobble] Plugin not found: ${pluginId}`);
+        return reply.code(404).send({ error: 'Scrobbler plugin not found' });
+      }
+
+      if (!addon.updateNowPlaying) {
+        return reply.code(400).send({ error: 'Plugin does not support now playing' });
+      }
+
+      // Check if plugin has token set
+      if (addon.isAuthenticated && !addon.isAuthenticated()) {
+        return { success: false, error: 'Not authenticated - please set token in plugin settings' };
+      }
+
+      try {
+        const success = await addon.updateNowPlaying({ track });
+        return { success };
+      } catch (error) {
+        console.error(`[Scrobble] Error updating now playing for ${pluginId}:`, error);
+        return { success: false, error: String(error) };
+      }
     });
 
     // ========================================
@@ -809,6 +2568,37 @@ export class StandaloneServer {
     // ========================================
     // ML/Algorithm Routes
     // ========================================
+
+    // Debug endpoint for persistence verification
+    this.fastify.get('/api/debug/persistence', async () => {
+      try {
+        const libraryStats = this.libraryDb.getStats();
+        const mlStorageVerification = await mlService.verifyStorage();
+        const mlStatus = mlService.getStatus();
+
+        return {
+          timestamp: Date.now(),
+          library: {
+            status: 'ok',
+            stats: libraryStats,
+            databasePath: this.config.storage.database
+          },
+          ml: {
+            status: mlStorageVerification.success ? 'ok' : 'error',
+            storageVerification: mlStorageVerification,
+            serviceStatus: mlStatus
+          }
+        };
+      } catch (error) {
+        console.error('[Debug] Persistence check failed:', error);
+        return {
+          timestamp: Date.now(),
+          error: String(error),
+          library: { status: 'error' },
+          ml: { status: 'error' }
+        };
+      }
+    });
 
     this.fastify.get('/api/algo/status', async () => {
       return {
@@ -1132,9 +2922,84 @@ export class StandaloneServer {
       return this.statsService.getStreaks();
     });
 
+    // Listen history for stats page
+    this.fastify.get('/api/stats/history', async (request) => {
+      const { limit } = request.query as { limit?: string };
+      const entries = this.trackingService.getListenHistory(parseInt(limit || '50', 10));
+      return { entries };
+    });
+
     // Refresh stats
     this.fastify.post('/api/stats/refresh', async () => {
       this.statsService.refreshAggregates();
+      return { success: true };
+    });
+
+    // Combined stats by period (for UI StatsSnapshot)
+    this.fastify.get('/api/stats/:period', async (request) => {
+      const { period } = request.params as { period: 'week' | 'month' | 'year' | 'all' };
+      const validPeriods = ['week', 'month', 'year', 'all'];
+      if (!validPeriods.includes(period)) {
+        return { error: 'Invalid period' };
+      }
+
+      // Get listening stats for the period
+      const listening = this.statsService.getListeningStats(period);
+      const patterns = this.statsService.getListeningPatterns();
+      const streaks = this.statsService.getStreaks();
+      const topArtists = this.statsService.getTopArtists(10, period);
+      const topGenres = this.statsService.getTopGenres(10, period);
+
+      // Transform to StatsSnapshot format expected by UI
+      return {
+        period,
+        totalListenTime: Math.round(listening.listenTime / 1000), // Convert ms to seconds
+        totalTracks: listening.playCount,
+        uniqueTracks: listening.uniqueTracks,
+        uniqueArtists: listening.uniqueArtists,
+        topArtists: topArtists.map(a => ({
+          artistId: a.id,
+          artistName: a.name,
+          artwork: a.artwork,
+          playCount: a.count,
+          totalDuration: Math.round(a.duration / 1000),
+          lastPlayed: Date.now()
+        })),
+        topGenres: topGenres.map(g => ({
+          genre: g.name,
+          playCount: g.count,
+          totalDuration: 0
+        })),
+        dailyStats: listening.dailyData.map(d => ({
+          date: d.date,
+          playCount: d.plays,
+          totalDuration: Math.round(d.duration / 1000),
+          uniqueTracks: 0,
+          uniqueArtists: 0
+        })),
+        hourlyDistribution: patterns.hourlyDistribution.map((count, hour) => ({
+          hour,
+          playCount: count
+        })),
+        dayOfWeekDistribution: patterns.dailyDistribution.map((count, day) => ({
+          day,
+          playCount: count
+        })),
+        currentStreak: streaks.current,
+        longestStreak: streaks.longest
+      };
+    });
+
+    // Clear stats
+    this.fastify.delete('/api/stats', async () => {
+      // Clear tracking events (keep structure but remove data)
+      const db = (this.libraryDb as any).db;
+      db.prepare('DELETE FROM tracking_events').run();
+      db.prepare('DELETE FROM tracking_sessions').run();
+      db.prepare('DELETE FROM stats_daily').run();
+      db.prepare('DELETE FROM track_stats').run();
+      db.prepare('DELETE FROM artist_stats').run();
+      this.statsService.clearCache();
       return { success: true };
     });
 
@@ -1170,7 +3035,15 @@ export class StandaloneServer {
               duration: duration ? parseInt(duration, 10) : undefined
             });
             if (lyrics) {
-              return lyrics;
+              // Transform SDK LyricsResult to client format
+              // SDK uses: { plain, synced, _rawSynced, source }
+              // Client expects: { plainLyrics, syncedLyrics, duration }
+              return {
+                plainLyrics: lyrics.plain || null,
+                syncedLyrics: lyrics._rawSynced || null, // Raw LRC string for client parsing
+                duration: duration ? parseInt(duration, 10) : null,
+                source: lyrics.source
+              };
             }
           } catch {
             continue;
@@ -1203,10 +3076,12 @@ export class StandaloneServer {
 
       try {
         for (const provider of providers) {
-          if (provider.getVideos) {
-            const videos = await provider.getVideos(decodeURIComponent(artistName), parseInt(limit || '8', 10));
+          // Try getArtistVideos (SDK standard) or getVideos (legacy)
+          const videoMethod = provider.getArtistVideos || provider.getVideos;
+          if (videoMethod) {
+            const videos = await videoMethod.call(provider, decodeURIComponent(artistName), parseInt(limit || '10', 10));
             if (videos && videos.length > 0) {
-              return { success: true, data: videos, source: provider.manifest.id };
+              return { success: true, data: videos, source: provider.manifest?.id || provider.id };
             }
           }
         }
@@ -1214,6 +3089,70 @@ export class StandaloneServer {
       } catch (error) {
         console.error('[Enrichment] Videos error:', error);
         return reply.code(500).send({ success: false, error: 'Failed to fetch videos' });
+      }
+    });
+
+    // Album videos endpoint
+    this.fastify.get('/api/enrichment/album-videos/:artistName/:albumTitle', async (request, reply) => {
+      const { artistName, albumTitle } = request.params as { artistName: string; albumTitle: string };
+      const { limit, trackNames } = request.query as { limit?: string; trackNames?: string };
+
+      const providers = (this.registry as any).getArtistEnrichmentProvidersByType?.('videos') || [];
+      if (providers.length === 0) {
+        return { success: false, data: [], error: 'No video provider available' };
+      }
+
+      try {
+        const trackList = trackNames ? trackNames.split(',').map(t => t.trim()) : undefined;
+
+        for (const provider of providers) {
+          if (provider.getAlbumVideos) {
+            const videos = await provider.getAlbumVideos(
+              decodeURIComponent(albumTitle),
+              decodeURIComponent(artistName),
+              trackList,
+              parseInt(limit || '8', 10)
+            );
+            if (videos && videos.length > 0) {
+              return { success: true, data: videos, source: provider.manifest?.id || provider.id };
+            }
+          }
+        }
+        return { success: true, data: [] };
+      } catch (error) {
+        console.error('[Enrichment] Album videos error:', error);
+        return reply.code(500).send({ success: false, error: 'Failed to fetch album videos' });
+      }
+    });
+
+    // Video stream endpoint
+    this.fastify.get('/api/enrichment/video-stream/:videoId', async (request, reply) => {
+      const { videoId } = request.params as { videoId: string };
+      const { source, quality } = request.query as { source?: string; quality?: string };
+
+      const providers = (this.registry as any).getArtistEnrichmentProvidersByType?.('videos') || [];
+      if (providers.length === 0) {
+        return reply.code(404).send({ error: 'No video provider available' });
+      }
+
+      try {
+        for (const provider of providers) {
+          // If source specified, only use that provider
+          if (source && (provider.manifest?.id || provider.id) !== source) {
+            continue;
+          }
+
+          if (provider.getVideoStream) {
+            const stream = await provider.getVideoStream(decodeURIComponent(videoId), quality || '720p');
+            if (stream) {
+              return { success: true, data: stream, source: provider.manifest?.id || provider.id };
+            }
+          }
+        }
+        return reply.code(404).send({ error: 'Video stream not found' });
+      } catch (error) {
+        console.error('[Enrichment] Video stream error:', error);
+        return reply.code(500).send({ error: 'Failed to get video stream' });
       }
     });
 
@@ -1301,10 +3240,12 @@ export class StandaloneServer {
 
       try {
         for (const provider of providers) {
-          if (provider.getGallery) {
-            const gallery = await provider.getGallery(mbid, decodeURIComponent(artistName));
+          // Try getArtistGallery (SDK standard) or getGallery (legacy)
+          const galleryMethod = provider.getArtistGallery || provider.getGallery;
+          if (galleryMethod) {
+            const gallery = await galleryMethod.call(provider, mbid || '', decodeURIComponent(artistName));
             if (gallery) {
-              return { success: true, data: gallery, source: provider.manifest.id };
+              return { success: true, data: gallery, source: provider.manifest?.id || provider.id };
             }
           }
         }
@@ -1893,6 +3834,570 @@ export class StandaloneServer {
           error: 'Cannot read directory'
         };
       }
+    });
+
+    // ========================================
+    // Logs API (for admin dashboard)
+    // ========================================
+
+    // Get recent logs
+    this.fastify.get('/api/logs', async (request) => {
+      const { count, level, service } = request.query as {
+        count?: string;
+        level?: string;
+        service?: string;
+      };
+
+      const logs = logService.getRecent(
+        parseInt(count || '100', 10),
+        {
+          level: level as any,
+          service
+        }
+      );
+
+      return {
+        logs,
+        stats: logService.getStats()
+      };
+    });
+
+    // Clear logs
+    this.fastify.post('/api/logs/clear', async () => {
+      logService.clear();
+      return { success: true };
+    });
+
+    // WebSocket for real-time log streaming
+    this.fastify.get('/api/logs/stream', { websocket: true }, (socket) => {
+      const handler = (entry: any) => {
+        try {
+          socket.send(JSON.stringify({ type: 'log', data: entry }));
+        } catch {
+          // Socket closed
+        }
+      };
+
+      const clearHandler = () => {
+        try {
+          socket.send(JSON.stringify({ type: 'clear' }));
+        } catch {
+          // Socket closed
+        }
+      };
+
+      logService.on('log', handler);
+      logService.on('clear', clearHandler);
+
+      socket.on('close', () => {
+        logService.off('log', handler);
+        logService.off('clear', clearHandler);
+      });
+
+      // Send initial logs
+      const initialLogs = logService.getRecent(50);
+      socket.send(JSON.stringify({ type: 'initial', data: initialLogs }));
+    });
+
+    // ========================================
+    // Active Sessions API (for admin dashboard)
+    // ========================================
+
+    // Get active playback sessions
+    this.fastify.get('/api/sessions/active', async () => {
+      const sessions = this.trackingService.getActivePlaybackSessions();
+      return { sessions };
+    });
+
+    // Get specific active session
+    this.fastify.get('/api/sessions/active/:sessionId', async (request, reply) => {
+      const { sessionId } = request.params as { sessionId: string };
+      const session = this.trackingService.getActivePlayback(sessionId);
+
+      if (!session) {
+        return reply.code(404).send({ error: 'Session not found' });
+      }
+
+      return { session };
+    });
+
+    // Update playback position (heartbeat from client)
+    this.fastify.post('/api/sessions/active/:sessionId/position', async (request) => {
+      const { sessionId } = request.params as { sessionId: string };
+      const { position, isPlaying } = request.body as { position: number; isPlaying?: boolean };
+
+      this.trackingService.updatePlaybackPosition(sessionId, position, isPlaying);
+      return { success: true };
+    });
+
+    // WebSocket for real-time session updates
+    this.fastify.get('/api/sessions/live', { websocket: true }, (socket) => {
+      const updateHandler = (session: any) => {
+        try {
+          socket.send(JSON.stringify({ type: 'update', data: session }));
+        } catch {
+          // Socket closed
+        }
+      };
+
+      const endHandler = (data: any) => {
+        try {
+          socket.send(JSON.stringify({ type: 'end', data }));
+        } catch {
+          // Socket closed
+        }
+      };
+
+      this.trackingService.on('playback_update', updateHandler);
+      this.trackingService.on('playback_end', endHandler);
+
+      socket.on('close', () => {
+        this.trackingService.off('playback_update', updateHandler);
+        this.trackingService.off('playback_end', endHandler);
+      });
+
+      // Send initial active sessions
+      const sessions = this.trackingService.getActivePlaybackSessions();
+      socket.send(JSON.stringify({ type: 'initial', data: sessions }));
+    });
+
+    // ========================================
+    // Signal Path API (for admin dashboard)
+    // ========================================
+
+    // Get signal path traces
+    this.fastify.get('/api/signal-path/traces', async (request) => {
+      const { active, limit } = request.query as { active?: string; limit?: string };
+
+      if (active === 'true') {
+        return { traces: signalPathService.getActiveTraces() };
+      }
+
+      return {
+        traces: signalPathService.getAllTraces(parseInt(limit || '50', 10)),
+        stats: signalPathService.getStats()
+      };
+    });
+
+    // Get specific trace
+    this.fastify.get('/api/signal-path/trace/:traceId', async (request, reply) => {
+      const { traceId } = request.params as { traceId: string };
+      const trace = signalPathService.getTrace(traceId);
+
+      if (!trace) {
+        return reply.code(404).send({ error: 'Trace not found' });
+      }
+
+      return { trace };
+    });
+
+    // Get signal path stats
+    this.fastify.get('/api/signal-path/stats', async () => {
+      return signalPathService.getStats();
+    });
+
+    // Clear traces
+    this.fastify.post('/api/signal-path/clear', async () => {
+      signalPathService.clear();
+      return { success: true };
+    });
+
+    // WebSocket for real-time signal path updates
+    this.fastify.get('/api/signal-path/live', { websocket: true }, (socket) => {
+      const startHandler = (trace: any) => {
+        try {
+          socket.send(JSON.stringify({ type: 'trace_start', data: trace }));
+        } catch {
+          // Socket closed
+        }
+      };
+
+      const stepHandler = (data: any) => {
+        try {
+          socket.send(JSON.stringify({ type: 'step', data }));
+        } catch {
+          // Socket closed
+        }
+      };
+
+      const completeHandler = (trace: any) => {
+        try {
+          socket.send(JSON.stringify({ type: 'trace_complete', data: trace }));
+        } catch {
+          // Socket closed
+        }
+      };
+
+      const clearHandler = () => {
+        try {
+          socket.send(JSON.stringify({ type: 'clear' }));
+        } catch {
+          // Socket closed
+        }
+      };
+
+      signalPathService.on('trace_start', startHandler);
+      signalPathService.on('step', stepHandler);
+      signalPathService.on('trace_complete', completeHandler);
+      signalPathService.on('clear', clearHandler);
+
+      socket.on('close', () => {
+        signalPathService.off('trace_start', startHandler);
+        signalPathService.off('step', stepHandler);
+        signalPathService.off('trace_complete', completeHandler);
+        signalPathService.off('clear', clearHandler);
+      });
+
+      // Send initial state
+      const traces = signalPathService.getAllTraces(20);
+      socket.send(JSON.stringify({ type: 'initial', data: traces }));
+    });
+
+    // ========================================
+    // Media Folders API
+    // ========================================
+
+    // List all media folders
+    this.fastify.get('/api/media/folders', async (request) => {
+      const { type } = request.query as { type?: 'audio' | 'video' | 'downloads' };
+      return {
+        folders: this.mediaFoldersService.getFolders(type)
+      };
+    });
+
+    // Get single folder
+    this.fastify.get('/api/media/folders/:folderId', async (request, reply) => {
+      const { folderId } = request.params as { folderId: string };
+      const folder = this.mediaFoldersService.getFolder(folderId);
+      if (!folder) {
+        return reply.code(404).send({ error: 'Folder not found' });
+      }
+      return { folder };
+    });
+
+    // Add new folder
+    this.fastify.post('/api/media/folders', async (request) => {
+      const { path, type, name, watchEnabled, scanInterval } = request.body as {
+        path: string;
+        type: 'audio' | 'video' | 'downloads';
+        name?: string;
+        watchEnabled?: boolean;
+        scanInterval?: number | null;
+      };
+
+      if (!path || !type) {
+        return { success: false, error: 'Path and type are required' };
+      }
+
+      const result = this.mediaFoldersService.addFolder(path, type, {
+        name,
+        watchEnabled,
+        scanInterval
+      });
+
+      // Auto-scan if it's an audio or video folder
+      if (result.success && result.folder && (type === 'audio' || type === 'video')) {
+        // Start scan in background
+        this.localScannerService.scanFolder(result.folder.id, {
+          includeVideos: type === 'video'
+        }).catch(err => {
+          console.error('[MediaFolders] Auto-scan failed:', err);
+        });
+      }
+
+      return result;
+    });
+
+    // Update folder settings
+    this.fastify.patch('/api/media/folders/:folderId', async (request) => {
+      const { folderId } = request.params as { folderId: string };
+      const { name, watchEnabled, scanInterval } = request.body as {
+        name?: string;
+        watchEnabled?: boolean;
+        scanInterval?: number | null;
+      };
+
+      return this.mediaFoldersService.updateFolder(folderId, {
+        name,
+        watchEnabled,
+        scanInterval
+      });
+    });
+
+    // Remove folder
+    this.fastify.delete('/api/media/folders/:folderId', async (request) => {
+      const { folderId } = request.params as { folderId: string };
+      return this.mediaFoldersService.removeFolder(folderId);
+    });
+
+    // Browse filesystem (for folder picker)
+    this.fastify.get('/api/media/folders/browse', async (request) => {
+      const { path } = request.query as { path?: string };
+      return this.mediaFoldersService.browse(path);
+    });
+
+    // Get filesystem roots (drives on Windows, / on Unix)
+    this.fastify.get('/api/media/folders/roots', async () => {
+      return { roots: this.mediaFoldersService.getRoots() };
+    });
+
+    // Get tracks in folder
+    this.fastify.get('/api/media/folders/:folderId/tracks', async (request, reply) => {
+      const { folderId } = request.params as { folderId: string };
+      const { limit, offset, isVideo } = request.query as {
+        limit?: string;
+        offset?: string;
+        isVideo?: string;
+      };
+
+      const folder = this.mediaFoldersService.getFolder(folderId);
+      if (!folder) {
+        return reply.code(404).send({ error: 'Folder not found' });
+      }
+
+      const tracks = this.mediaFoldersService.getLocalTracks(folderId, {
+        limit: limit ? parseInt(limit, 10) : undefined,
+        offset: offset ? parseInt(offset, 10) : undefined,
+        isVideo: isVideo === 'true' ? true : isVideo === 'false' ? false : undefined
+      });
+
+      return { tracks, total: folder.trackCount };
+    });
+
+    // ========================================
+    // Local Scanning API
+    // ========================================
+
+    // Trigger folder scan
+    this.fastify.post('/api/media/folders/:folderId/scan', async (request) => {
+      const { folderId } = request.params as { folderId: string };
+      const { forceRescan, includeVideos, waitForCompletion } = request.body as {
+        forceRescan?: boolean;
+        includeVideos?: boolean;
+        waitForCompletion?: boolean;
+      };
+
+      const folder = this.mediaFoldersService.getFolder(folderId);
+      if (!folder) {
+        return { success: false, error: 'Folder not found' };
+      }
+
+      const scanOptions = {
+        forceRescan,
+        includeVideos: includeVideos ?? (folder.type === 'video')
+      };
+
+      // If waitForCompletion is true (default), await the scan
+      // Otherwise start in background and return immediately
+      if (waitForCompletion !== false) {
+        const result = await this.localScannerService.scanFolder(folderId, scanOptions);
+        return result;
+      } else {
+        // Start scan in background, return immediately
+        this.localScannerService.scanFolder(folderId, scanOptions).catch(err => {
+          console.error('[LocalScanner] Scan failed:', err);
+        });
+        return { success: true, message: 'Scan started' };
+      }
+    });
+
+    // Get scan status
+    this.fastify.get('/api/media/scan/status', async () => {
+      return this.localScannerService.getScanStatus();
+    });
+
+    // Abort current scan
+    this.fastify.post('/api/media/scan/abort', async () => {
+      const aborted = this.localScannerService.abortScan();
+      return { success: aborted };
+    });
+
+    // Get embedded artwork for track
+    this.fastify.get('/api/media/tracks/:trackId/artwork', async (request, reply) => {
+      const { trackId } = request.params as { trackId: string };
+
+      const artwork = await this.localScannerService.getEmbeddedArtwork(trackId);
+      if (!artwork) {
+        return reply.code(404).send({ error: 'Artwork not found' });
+      }
+
+      reply.header('Content-Type', artwork.mimeType);
+      reply.header('Cache-Control', 'public, max-age=86400');
+      return reply.send(artwork.data);
+    });
+
+    // WebSocket for real-time scan progress
+    this.fastify.get('/api/media/scan/live', { websocket: true }, (socket) => {
+      const progressHandler = (progress: any) => {
+        try {
+          socket.send(JSON.stringify({ type: 'progress', data: progress }));
+        } catch {
+          // Socket closed
+        }
+      };
+
+      this.localScannerService.on('scan-progress', progressHandler);
+
+      socket.on('close', () => {
+        this.localScannerService.off('scan-progress', progressHandler);
+      });
+
+      // Send current status
+      const status = this.localScannerService.getScanStatus();
+      socket.send(JSON.stringify({ type: 'status', data: status }));
+    });
+
+    // ========================================
+    // Download API
+    // ========================================
+
+    // Start download
+    this.fastify.post('/api/media/download', async (request) => {
+      const { url, folderId, filename, extension, metadata, sourceType, trackData } = request.body as {
+        url: string;
+        folderId?: string;
+        filename: string;
+        extension: string;
+        metadata?: {
+          title?: string;
+          artists?: string[];
+          album?: string;
+          genre?: string[];
+          year?: number;
+          artworkUrl?: string;
+        };
+        sourceType: 'audio' | 'video';
+        trackData?: unknown;
+      };
+
+      console.log('[API] Download request:', { filename, extension, sourceType, hasUrl: !!url, folderId });
+
+      if (!url || !filename || !extension || !sourceType) {
+        console.error('[API] Download missing required fields:', { url: !!url, filename: !!filename, extension: !!extension, sourceType: !!sourceType });
+        return { success: false, error: 'Missing required fields' };
+      }
+
+      const result = await this.downloadService.startDownload({
+        url,
+        folderId,
+        filename,
+        extension,
+        metadata,
+        sourceType,
+        trackData
+      });
+
+      console.log('[API] Download result:', result);
+      return result;
+    });
+
+    // Get active downloads
+    this.fastify.get('/api/media/downloads', async () => {
+      return {
+        active: this.downloadService.getActiveDownloads(),
+        queued: this.downloadService.getQueuedDownloads()
+      };
+    });
+
+    // Get download history
+    this.fastify.get('/api/media/downloads/history', async (request) => {
+      const { status } = request.query as { status?: string };
+      return {
+        downloads: this.mediaFoldersService.getDownloads(status)
+      };
+    });
+
+    // Cancel download
+    this.fastify.delete('/api/media/downloads/:downloadId', async (request) => {
+      const { downloadId } = request.params as { downloadId: string };
+      const cancelled = this.downloadService.cancelDownload(downloadId);
+      return { success: cancelled };
+    });
+
+    // WebSocket for real-time download progress
+    this.fastify.get('/api/media/downloads/live', { websocket: true }, (socket) => {
+      const progressHandler = (progress: any) => {
+        try {
+          socket.send(JSON.stringify({ type: 'progress', data: progress }));
+        } catch {
+          // Socket closed
+        }
+      };
+
+      this.downloadService.on('download-progress', progressHandler);
+
+      socket.on('close', () => {
+        this.downloadService.off('download-progress', progressHandler);
+      });
+
+      // Send current active downloads
+      const active = this.downloadService.getActiveDownloads();
+      const queued = this.downloadService.getQueuedDownloads();
+      socket.send(JSON.stringify({ type: 'initial', data: { active, queued } }));
+    });
+
+    // ========================================
+    // Folder Watcher API
+    // ========================================
+
+    // Get watcher status
+    this.fastify.get('/api/media/watcher/status', async () => {
+      return {
+        ...this.folderWatcherService.getStatus(),
+        watchedFolders: this.folderWatcherService.getWatchedFolders()
+      };
+    });
+
+    // WebSocket for real-time file change events
+    this.fastify.get('/api/media/watcher/live', { websocket: true }, (socket) => {
+      const changeHandler = (event: any) => {
+        try {
+          socket.send(JSON.stringify({ type: 'file-change', data: event }));
+        } catch {
+          // Socket closed
+        }
+      };
+
+      const errorHandler = (event: any) => {
+        try {
+          socket.send(JSON.stringify({ type: 'error', data: event }));
+        } catch {
+          // Socket closed
+        }
+      };
+
+      this.folderWatcherService.on('file-change', changeHandler);
+      this.folderWatcherService.on('watcher-error', errorHandler);
+
+      socket.on('close', () => {
+        this.folderWatcherService.off('file-change', changeHandler);
+        this.folderWatcherService.off('watcher-error', errorHandler);
+      });
+
+      // Send initial status
+      const status = this.folderWatcherService.getStatus();
+      socket.send(JSON.stringify({ type: 'status', data: status }));
+    });
+
+    // ========================================
+    // Setup Wizard API
+    // ========================================
+
+    // Check setup status
+    this.fastify.get('/api/setup/status', async () => {
+      const identity = this.authService.getPublicIdentity();
+      // Setup is complete if server has been named (not default)
+      const isComplete = (identity as any).setupCompleted === true;
+      return {
+        completed: isComplete,
+        serverName: identity.serverName
+      };
+    });
+
+    // Mark setup as complete
+    this.fastify.post('/api/setup/complete', async () => {
+      this.authService.markSetupComplete();
+      return { success: true };
     });
 
     console.log('[Server] Routes registered');

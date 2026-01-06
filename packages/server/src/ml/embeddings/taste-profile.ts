@@ -13,6 +13,7 @@ import type {
   TrackEmbedding,
 } from './types';
 import { EmbeddingEngine, type TrackData } from './embedding-engine';
+import { normalizeVector, cosineSimilarity } from '../utils/vector-utils';
 
 /**
  * Configuration for taste profile generation
@@ -247,7 +248,7 @@ export class TasteProfileManager {
     }
 
     // Normalize to unit length
-    const normalized = this.normalizeVector(aggregated);
+    const normalized = normalizeVector(aggregated);
 
     // Normalize contextual profiles
     const contextProfiles: ContextualProfiles = {};
@@ -256,7 +257,7 @@ export class TasteProfileManager {
         for (let i = 0; i < dims; i++) {
           ctx.vector[i] /= ctx.weight;
         }
-        (contextProfiles as Record<string, Float32Array>)[key] = this.normalizeVector(ctx.vector);
+        (contextProfiles as Record<string, Float32Array>)[key] = normalizeVector(ctx.vector);
       }
     }
 
@@ -323,7 +324,7 @@ export class TasteProfileManager {
       blended[i] /= totalWeight;
     }
 
-    return this.normalizeVector(blended);
+    return normalizeVector(blended);
   }
 
   /**
@@ -366,7 +367,7 @@ export class TasteProfileManager {
     const profile = this.getProfile();
     if (!profile) return 0.5; // Neutral for new users
 
-    return this.cosineSimilarity(profile.vector, trackEmbedding);
+    return cosineSimilarity(profile.vector, trackEmbedding);
   }
 
   /**
@@ -380,7 +381,7 @@ export class TasteProfileManager {
     if (!this.isProfileValid()) return 0.5;
 
     const contextVector = this.getContextualVector(hour, dayOfWeek);
-    return this.cosineSimilarity(contextVector, trackEmbedding);
+    return cosineSimilarity(contextVector, trackEmbedding);
   }
 
   /**
@@ -427,7 +428,7 @@ export class TasteProfileManager {
       exploration[i] = profile.vector[i] * 0.3 + (Math.random() - 0.5) * 0.7;
     }
 
-    return this.normalizeVector(exploration);
+    return normalizeVector(exploration);
   }
 
   /**
@@ -448,46 +449,7 @@ export class TasteProfileManager {
       blended[i] = profile.vector[i] * tasteWeight + moodVector[i] * moodWeight;
     }
 
-    return this.normalizeVector(blended);
-  }
-
-  /**
-   * Normalize vector to unit length
-   */
-  private normalizeVector(vector: Float32Array): Float32Array {
-    let magnitude = 0;
-    for (let i = 0; i < vector.length; i++) {
-      magnitude += vector[i] * vector[i];
-    }
-    magnitude = Math.sqrt(magnitude);
-
-    if (magnitude === 0) return vector;
-
-    const normalized = new Float32Array(vector.length);
-    for (let i = 0; i < vector.length; i++) {
-      normalized[i] = vector[i] / magnitude;
-    }
-
-    return normalized;
-  }
-
-  /**
-   * Calculate cosine similarity
-   */
-  private cosineSimilarity(a: Float32Array, b: Float32Array): number {
-    let dot = 0;
-    let normA = 0;
-    let normB = 0;
-    const len = Math.min(a.length, b.length);
-
-    for (let i = 0; i < len; i++) {
-      dot += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-
-    if (normA === 0 || normB === 0) return 0;
-    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+    return normalizeVector(blended);
   }
 
   /**

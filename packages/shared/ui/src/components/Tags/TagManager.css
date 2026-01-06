@@ -1,0 +1,345 @@
+/* TagManager Styles */
+
+.tag-manager {
+  max-width: 900px;
+  margin: 0 auto;
+  position: relative;
+}
+
+/* Tags list - add padding for floating search */
+.tag-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 140px;
+}
+
+.tag-manager-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  transition: background 0.15s, transform 0.2s ease;
+}
+
+.tag-manager-item:hover {
+  background: var(--bg-tertiary);
+  transform: translateX(4px);
+}
+
+.tag-manager-item-count {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.tag-manager-item-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.tag-manager-item:hover .tag-manager-item-actions {
+  opacity: 1;
+}
+
+.tag-manager-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.15s;
+}
+
+.tag-manager-icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  transform: scale(1.1);
+}
+
+.tag-manager-icon-btn:active {
+  transform: scale(0.95);
+}
+
+.tag-manager-icon-btn.danger:hover {
+  background: var(--color-error-soft);
+  color: var(--color-error);
+}
+
+.tag-manager-icon-btn.save {
+  color: var(--color-success);
+}
+
+.tag-manager-icon-btn.save:hover {
+  background: var(--color-success-soft);
+}
+
+/* Edit mode */
+.tag-manager-item-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.tag-manager-item-edit input {
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.tag-manager-item-edit input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.tag-manager-item-edit-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+/* Create Overlay */
+.tag-manager-create-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+  animation: overlayFadeIn 0.2s ease;
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Create form */
+.tag-manager-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 400px;
+  box-shadow: var(--shadow-xl);
+  animation: formSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes formSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.tag-manager-create-form h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tag-manager-create-form input {
+  padding: 12px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.tag-manager-create-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.tag-manager-color-select {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tag-manager-color {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.tag-manager-color:hover {
+  transform: scale(1.15);
+}
+
+.tag-manager-color.selected {
+  border-color: white;
+  box-shadow: 0 0 0 2px var(--bg-tertiary), 0 0 12px currentColor;
+}
+
+.tag-manager-create-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.tag-manager-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.tag-manager-btn:active {
+  transform: scale(0.97);
+}
+
+.tag-manager-btn.secondary {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.tag-manager-btn.secondary:hover {
+  background: var(--bg-hover);
+}
+
+.tag-manager-btn.primary {
+  background: var(--accent);
+  border: none;
+  color: var(--text-on-accent);
+  box-shadow: 0 2px 12px var(--accent-glow);
+}
+
+.tag-manager-btn.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: 0 4px 16px var(--accent-glow);
+}
+
+.tag-manager-btn.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Empty state */
+.tag-manager-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 64px 24px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.tag-manager-empty svg {
+  color: var(--text-muted);
+  opacity: 0.4;
+}
+
+.tag-manager-empty p {
+  margin: 0;
+}
+
+.tag-manager-empty-hint {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.tag-manager-empty button {
+  padding: 10px 20px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  margin-top: 12px;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.tag-manager-empty button:hover {
+  background: var(--bg-hover);
+}
+
+.tag-manager-empty button:active {
+  transform: scale(0.97);
+}
+
+/* ========================================
+   Tag Detail View Styles
+   ======================================== */
+
+.tag-detail-view {
+  max-width: 900px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.tag-detail-content {
+  padding-top: 140px;
+}
+
+.tag-detail-tracks {
+  display: flex;
+  flex-direction: column;
+}
+
+.tag-detail-loading,
+.tag-detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 64px 24px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.tag-detail-empty svg {
+  color: var(--text-muted);
+  opacity: 0.4;
+}
+
+.tag-detail-empty p {
+  margin: 0;
+}
+
+.tag-detail-empty-hint {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}

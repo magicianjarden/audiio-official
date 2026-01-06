@@ -38,7 +38,9 @@ import { RadioGenerator } from '../algorithm/radio-generator';
 // Core providers (browser-safe)
 import { EmotionProvider } from '../providers/emotion-provider';
 import { EmbeddingProvider } from '../providers/embedding-provider';
-import { LyricsProvider } from '../providers/lyrics-provider';
+import { LyricsSentimentProvider } from '../providers/lyrics-provider';
+import { GenreProvider } from '../providers/genre-provider';
+import { FeatureStore } from '../storage/feature-store';
 
 // EssentiaProvider is loaded dynamically (requires Node.js)
 type EssentiaProviderType = import('../providers/essentia-provider').EssentiaProvider;
@@ -54,6 +56,8 @@ export interface MLEngineConfig {
   useCoreAlgorithm?: boolean;
   /** Core algorithm settings */
   coreSettings?: Record<string, unknown>;
+  /** Storage path for persistent features (Node.js only) */
+  storagePath?: string;
 }
 
 export class MLEngine {
@@ -77,7 +81,9 @@ export class MLEngine {
   private essentiaProvider: EssentiaProviderType | null = null;
   private emotionProvider: EmotionProvider | null = null;
   private embeddingProvider: EmbeddingProvider | null = null;
-  private lyricsProvider: LyricsProvider | null = null;
+  private lyricsProvider: LyricsSentimentProvider | null = null;
+  private genreProvider: GenreProvider | null = null;
+  private featureStore: FeatureStore | null = null;
 
   constructor(config: MLEngineConfig = {}) {
     this.config = {
@@ -207,6 +213,27 @@ export class MLEngine {
     console.log('[MLEngine] Initializing core providers...');
 
     try {
+      // Initialize persistent feature store (Node.js only)
+      if (typeof window === 'undefined' && this.config.storagePath) {
+        try {
+          const { NodeStorage } = await import('../storage/node-storage');
+          const storage = new NodeStorage(this.config.storagePath, 'feature-store.json');
+
+          // Create FeatureStore adapter
+          this.featureStore = new FeatureStore({
+            get: <T>(key: string) => storage.get<T>(key),
+            set: <T>(key: string, value: T) => storage.set(key, value),
+            persist: () => storage.persist(),
+          });
+
+          // Connect to feature aggregator
+          this.featureAggregator.setFeatureStore(this.featureStore);
+          console.log('[MLEngine] FeatureStore initialized with persistent storage');
+        } catch (error) {
+          console.warn('[MLEngine] Failed to initialize FeatureStore:', error);
+        }
+      }
+
       // Essentia provider (priority 30 - core) - only in Node.js environment
       if (typeof window === 'undefined') {
         try {
@@ -223,6 +250,7 @@ export class MLEngine {
               audioAnalysis: true,
               emotionDetection: false,
               lyricsAnalysis: false,
+              genreClassification: false,
               embeddings: false,
               similarity: false,
               fingerprinting: false,
@@ -254,6 +282,7 @@ export class MLEngine {
           audioAnalysis: false,
           emotionDetection: true,
           lyricsAnalysis: false,
+          genreClassification: false,
           embeddings: false,
           similarity: false,
           fingerprinting: false,
@@ -277,6 +306,7 @@ export class MLEngine {
           audioAnalysis: false,
           emotionDetection: false,
           lyricsAnalysis: false,
+          genreClassification: false,
           embeddings: true,
           similarity: true,
           fingerprinting: false,
@@ -289,8 +319,35 @@ export class MLEngine {
         getEmbedding: async (trackId: string) => this.embeddingProvider?.getEmbedding(trackId) ?? null,
       }, 'supplement');
 
+      // Genre provider (priority 28 - core, supplements missing genre tags)
+      // Uses plugin-first approach: checks plugin metadata, then falls back to embedding similarity
+      this.genreProvider = new GenreProvider();
+      await this.genreProvider.initialize(this.endpoints);
+
+      this.featureAggregator.register({
+        id: 'core-genre',
+        priority: 28,
+        capabilities: {
+          audioAnalysis: false,
+          emotionDetection: false,
+          lyricsAnalysis: false,
+          genreClassification: true,
+          embeddings: false,
+          similarity: false,
+          fingerprinting: false,
+          canAnalyzeUrl: false,
+          canAnalyzeFile: false,
+          canAnalyzeBuffer: false,
+          supportsRealtime: false,
+          requiresWasm: false,
+        },
+        getGenreFeatures: async (trackId: string) => this.genreProvider?.getGenreFeatures(trackId) ?? null,
+      }, 'supplement');
+
+      console.log('[MLEngine] GenreProvider initialized');
+
       // Lyrics provider (priority 15 - core)
-      this.lyricsProvider = new LyricsProvider();
+      this.lyricsProvider = new LyricsSentimentProvider();
       await this.lyricsProvider.initialize(this.endpoints);
 
       this.featureAggregator.register({
@@ -300,6 +357,7 @@ export class MLEngine {
           audioAnalysis: false,
           emotionDetection: false,
           lyricsAnalysis: true,
+          genreClassification: false,
           embeddings: false,
           similarity: false,
           fingerprinting: false,
@@ -347,6 +405,14 @@ export class MLEngine {
     if (this.lyricsProvider) {
       await this.lyricsProvider.dispose();
       this.lyricsProvider = null;
+    }
+    if (this.genreProvider) {
+      await this.genreProvider.dispose();
+      this.genreProvider = null;
+    }
+    if (this.featureStore) {
+      this.featureStore.dispose();
+      this.featureStore = null;
     }
 
     this.hybridScorer = null;
@@ -575,7 +641,7 @@ export class MLEngine {
 
     const candidates = await this.smartQueue.getCandidates({
       count: count * 3, // Get more candidates for better selection
-      sources: ['library', 'liked', 'similar', 'discovery'],
+      sources: ['library', 'similar'],
       scoringContext: context,
     });
 
@@ -743,22 +809,39 @@ export class MLEngine {
    */
   async findSimilar(trackId: string, limit: number): Promise<ScoredTrack[]> {
     const algorithm = this.registry.getActive();
-    if (!algorithm) {
-      return [];
+
+    // Try algorithm's findSimilar first
+    if (algorithm?.findSimilar) {
+      const results = await algorithm.findSimilar(trackId, limit);
+      if (results.length > 0) {
+        return results;
+      }
     }
 
-    if (algorithm.findSimilar) {
-      return algorithm.findSimilar(trackId, limit);
-    }
-
-    // Fallback: use embedding similarity if available
+    // Fallback: use embedding similarity
     const embedding = await this.featureAggregator.getEmbedding(trackId);
     if (!embedding) {
       return [];
     }
 
-    // TODO: Implement embedding search in feature aggregator
-    return [];
+    // Find similar tracks using cosine similarity on embeddings
+    const excludeIds = new Set([trackId]);
+    const similar = this.featureAggregator.findSimilarByEmbedding(embedding, limit, excludeIds);
+
+    // Convert to ScoredTrack format
+    return similar.map(({ trackId: id, similarity }) => ({
+      id,
+      title: '', // Will be resolved by caller
+      artist: '',
+      duration: 0,
+      score: {
+        trackId: id,
+        finalScore: similarity * 100, // Convert 0-1 to 0-100
+        confidence: similarity,
+        components: { embeddingSimilarity: similarity },
+        explanation: ['Similar by embedding'],
+      },
+    }));
   }
 }
 

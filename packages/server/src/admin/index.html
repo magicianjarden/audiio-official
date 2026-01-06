@@ -728,6 +728,380 @@
     .modal-close:hover {
       color: var(--text);
     }
+
+    /* Logs Viewer */
+    .log-viewer {
+      background: #0d0d0d;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+      font-size: 12px;
+      height: 500px;
+      overflow-y: auto;
+      padding: 12px;
+    }
+
+    .log-entry {
+      padding: 4px 8px;
+      border-radius: 4px;
+      margin-bottom: 2px;
+      display: flex;
+      gap: 12px;
+    }
+
+    .log-entry:hover {
+      background: rgba(255,255,255,0.05);
+    }
+
+    .log-time {
+      color: var(--text-secondary);
+      flex-shrink: 0;
+      width: 80px;
+    }
+
+    .log-level {
+      width: 50px;
+      flex-shrink: 0;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .log-level.debug { color: #6b7280; }
+    .log-level.info { color: #3b82f6; }
+    .log-level.warn { color: #f59e0b; }
+    .log-level.error { color: #ef4444; }
+
+    .log-service {
+      color: #a855f7;
+      flex-shrink: 0;
+      width: 120px;
+    }
+
+    .log-message {
+      color: var(--text);
+      flex: 1;
+    }
+
+    .log-data {
+      color: var(--text-secondary);
+      font-size: 11px;
+      margin-left: 250px;
+      padding: 4px 0;
+    }
+
+    .log-filters {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .log-filters select, .log-filters input {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+
+    /* Active Streams */
+    .stream-item {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px;
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+
+    .stream-artwork {
+      width: 56px;
+      height: 56px;
+      background: var(--border);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+
+    .stream-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .stream-track {
+      font-weight: 500;
+      font-size: 15px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .stream-artist {
+      color: var(--text-secondary);
+      font-size: 13px;
+    }
+
+    .stream-device {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .stream-progress {
+      width: 200px;
+      flex-shrink: 0;
+    }
+
+    .stream-progress-bar {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+
+    .stream-progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 1s linear;
+    }
+
+    .stream-time {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .stream-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stream-playing {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: pulse 1.5s infinite;
+    }
+
+    .stream-paused {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--warning);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* Signal Path */
+    .trace-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .trace-item {
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      padding: 16px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .trace-item:hover {
+      background: var(--border);
+    }
+
+    .trace-item.active {
+      border: 1px solid var(--accent);
+    }
+
+    .trace-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .trace-track {
+      font-weight: 500;
+    }
+
+    .trace-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .trace-badge {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .trace-badge.success { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+    .trace-badge.error { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+    .trace-badge.pending { background: rgba(99, 102, 241, 0.2); color: var(--accent); }
+
+    .trace-meta {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .trace-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-top: 16px;
+      padding-left: 20px;
+      border-left: 2px solid var(--border);
+    }
+
+    .trace-step {
+      position: relative;
+      padding: 8px 12px;
+      margin-left: 12px;
+    }
+
+    .trace-step::before {
+      content: '';
+      position: absolute;
+      left: -20px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .trace-step.success::before { background: var(--success); }
+    .trace-step.error::before { background: var(--danger); }
+
+    .trace-step-phase {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin-bottom: 2px;
+    }
+
+    .trace-step-action {
+      font-weight: 500;
+      font-size: 13px;
+    }
+
+    .trace-step-provider {
+      font-size: 12px;
+      color: var(--accent);
+    }
+
+    .trace-step-duration {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    .trace-step-error {
+      font-size: 12px;
+      color: var(--danger);
+      margin-top: 4px;
+    }
+
+    /* Setup Wizard */
+    .wizard-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--bg);
+      z-index: 3000;
+      display: none;
+    }
+
+    .wizard-overlay.show {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .wizard-container {
+      width: 90%;
+      max-width: 600px;
+      text-align: center;
+    }
+
+    .wizard-step {
+      display: none;
+    }
+
+    .wizard-step.active {
+      display: block;
+    }
+
+    .wizard-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .wizard-subtitle {
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+      font-size: 16px;
+    }
+
+    .wizard-content {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      margin-bottom: 24px;
+    }
+
+    .wizard-progress {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 32px;
+    }
+
+    .wizard-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--border);
+    }
+
+    .wizard-dot.active {
+      background: var(--accent);
+    }
+
+    .wizard-dot.done {
+      background: var(--success);
+    }
+
+    .wizard-actions {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+    }
   </style>
 </head>
 <body>
@@ -745,6 +1119,9 @@
 
     <nav>
       <button class="active" data-section="overview">Overview</button>
+      <button data-section="streams">Streams</button>
+      <button data-section="logs">Logs</button>
+      <button data-section="signal-path">Signal Path</button>
       <button data-section="devices">Devices</button>
       <button data-section="plugins">Plugins</button>
       <button data-section="libraries">Libraries</button>
@@ -837,6 +1214,141 @@
         <div class="card stat stat-small">
           <div class="stat-value" id="stat-videos">0</div>
           <div class="stat-label">Videos</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Active Streams Section -->
+    <section id="streams" class="section">
+      <div class="card">
+        <h2>&#127926; Active Streams</h2>
+        <p style="color: var(--text-secondary); margin-bottom: 20px;">
+          Currently playing sessions across all connected devices. Updates in real-time.
+        </p>
+        <div id="streams-list">
+          <div class="empty-state">
+            <p>No active streams</p>
+            <p style="font-size: 12px; margin-top: 8px;">Start playing on a connected device to see it here</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-3">
+        <div class="card stat stat-small">
+          <div class="stat-value" id="streams-active-count">0</div>
+          <div class="stat-label">Active Streams</div>
+        </div>
+        <div class="card stat stat-small">
+          <div class="stat-value" id="streams-devices-count">0</div>
+          <div class="stat-label">Devices Playing</div>
+        </div>
+        <div class="card stat stat-small">
+          <div class="stat-value" id="streams-total-time">0m</div>
+          <div class="stat-label">Total Listening</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Logs Section -->
+    <section id="logs" class="section">
+      <div class="card">
+        <h2>&#128221; Server Logs</h2>
+        <div class="log-filters">
+          <select id="log-level-filter">
+            <option value="">All Levels</option>
+            <option value="debug">Debug</option>
+            <option value="info">Info</option>
+            <option value="warn">Warning</option>
+            <option value="error">Error</option>
+          </select>
+          <input type="text" id="log-service-filter" placeholder="Filter by service..." style="width: 200px;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="log-auto-scroll" checked> Auto-scroll
+          </label>
+          <button class="btn btn-secondary btn-sm" id="clear-logs">Clear Logs</button>
+        </div>
+        <div class="log-viewer" id="log-viewer">
+          <div class="empty-state">
+            <p>Connecting to log stream...</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-4">
+        <div class="card stat stat-small">
+          <div class="stat-value" id="log-total">0</div>
+          <div class="stat-label">Total Logs</div>
+        </div>
+        <div class="card stat stat-small">
+          <div class="stat-value" id="log-errors" style="color: var(--danger);">0</div>
+          <div class="stat-label">Errors</div>
+        </div>
+        <div class="card stat stat-small">
+          <div class="stat-value" id="log-warnings" style="color: var(--warning);">0</div>
+          <div class="stat-label">Warnings</div>
+        </div>
+        <div class="card stat stat-small">
+          <div class="stat-value" id="log-buffer-size">0</div>
+          <div class="stat-label">Buffer Size</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Signal Path Section -->
+    <section id="signal-path" class="section">
+      <div class="grid grid-2">
+        <div class="card">
+          <h2>&#128269; Signal Path Traces</h2>
+          <p style="color: var(--text-secondary); margin-bottom: 16px;">
+            Track the complete journey from request to playback. Click a trace to see details.
+          </p>
+          <div class="trace-list" id="trace-list">
+            <div class="empty-state">
+              <p>No traces yet</p>
+              <p style="font-size: 12px; margin-top: 8px;">Play a track to see the signal path</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>&#128200; Trace Details</h2>
+          <div id="trace-details">
+            <div class="empty-state">
+              <p>Select a trace to view details</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-4">
+        <div class="card stat stat-small">
+          <div class="stat-value" id="trace-active">0</div>
+          <div class="stat-label">Active Traces</div>
+        </div>
+        <div class="card stat stat-small">
+          <div class="stat-value" id="trace-completed">0</div>
+          <div class="stat-label">Completed</div>
+        </div>
+        <div class="card stat stat-small">
+          <div class="stat-value" id="trace-success-rate">0%</div>
+          <div class="stat-label">Success Rate</div>
+        </div>
+        <div class="card stat stat-small">
+          <div class="stat-value" id="trace-avg-duration">0ms</div>
+          <div class="stat-label">Avg Duration</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>&#9881; Signal Path Legend</h2>
+        <div style="display: flex; gap: 24px; flex-wrap: wrap; color: var(--text-secondary); font-size: 13px;">
+          <span><strong style="color: var(--accent);">request</strong> - Initial track request</span>
+          <span><strong style="color: #22c55e;">metadata</strong> - Metadata enrichment</span>
+          <span><strong style="color: #f59e0b;">ml</strong> - ML scoring/ranking</span>
+          <span><strong style="color: #8b5cf6;">resolve</strong> - Stream resolution</span>
+          <span><strong style="color: #3b82f6;">stream</strong> - Stream provider</span>
+          <span><strong style="color: #ec4899;">playback</strong> - Playback started</span>
+          <span><strong style="color: #ef4444;">error</strong> - Error occurred</span>
         </div>
       </div>
     </section>
@@ -1148,6 +1660,73 @@
     <span id="toast-message">Saved successfully</span>
   </div>
 
+  <!-- Setup Wizard Overlay -->
+  <div class="wizard-overlay" id="setup-wizard">
+    <div class="wizard-container">
+      <div class="wizard-progress">
+        <div class="wizard-dot active" data-step="0"></div>
+        <div class="wizard-dot" data-step="1"></div>
+        <div class="wizard-dot" data-step="2"></div>
+        <div class="wizard-dot" data-step="3"></div>
+      </div>
+
+      <!-- Step 1: Welcome -->
+      <div class="wizard-step active" data-step="0">
+        <div class="logo-icon" style="width: 80px; height: 80px; font-size: 40px; margin: 0 auto 24px;">&#127925;</div>
+        <h1 class="wizard-title">Welcome to Audiio</h1>
+        <p class="wizard-subtitle">Let's get your music server set up in just a few steps.</p>
+        <div class="wizard-actions">
+          <button class="btn btn-primary" onclick="wizardNext()">Get Started</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Name Server -->
+      <div class="wizard-step" data-step="1">
+        <h1 class="wizard-title">Name Your Server</h1>
+        <p class="wizard-subtitle">Give your server a name that you'll recognize on your devices.</p>
+        <div class="wizard-content">
+          <div class="input-group" style="text-align: left;">
+            <label>Server Name</label>
+            <input type="text" class="input" id="wizard-server-name" placeholder="e.g., Living Room Server">
+          </div>
+        </div>
+        <div class="wizard-actions">
+          <button class="btn btn-secondary" onclick="wizardPrev()">Back</button>
+          <button class="btn btn-primary" onclick="wizardSaveName()">Continue</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Add Plugins -->
+      <div class="wizard-step" data-step="2">
+        <h1 class="wizard-title">Add Plugin Repository</h1>
+        <p class="wizard-subtitle">Plugin repositories contain streaming and metadata providers.</p>
+        <div class="wizard-content">
+          <div class="input-group" style="text-align: left;">
+            <label>Repository URL (optional)</label>
+            <input type="text" class="input" id="wizard-repo-url" placeholder="https://example.com/plugins/registry.json">
+          </div>
+          <p style="font-size: 12px; color: var(--text-secondary); margin-top: 12px;">
+            You can add repositories later from the Plugins page. Each repository provides different streaming services.
+          </p>
+        </div>
+        <div class="wizard-actions">
+          <button class="btn btn-secondary" onclick="wizardPrev()">Back</button>
+          <button class="btn btn-primary" onclick="wizardAddRepo()">Continue</button>
+        </div>
+      </div>
+
+      <!-- Step 4: All Done -->
+      <div class="wizard-step" data-step="3">
+        <div style="font-size: 64px; margin-bottom: 24px;">&#10003;</div>
+        <h1 class="wizard-title">You're All Set!</h1>
+        <p class="wizard-subtitle">Your server is ready. Install plugins and connect your devices to start streaming.</p>
+        <div class="wizard-actions">
+          <button class="btn btn-primary" onclick="wizardComplete()">Go to Dashboard</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // State
     let serverInfo = null;
@@ -1167,6 +1746,9 @@
         // Load section-specific data
         if (btn.dataset.section === 'libraries') loadLibraryData();
         if (btn.dataset.section === 'stats') loadStatsData();
+        if (btn.dataset.section === 'streams') renderStreams();
+        if (btn.dataset.section === 'logs') renderLogs();
+        if (btn.dataset.section === 'signal-path') renderTraces();
       });
     });
 
@@ -1776,6 +2358,372 @@
       return `${minutes}m`;
     }
 
+    // ========== Active Streams Functions ==========
+
+    let streamsWs = null;
+    let activeStreams = [];
+
+    function connectStreamsWs() {
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      streamsWs = new WebSocket(`${wsProtocol}//${window.location.host}/api/sessions/live`);
+
+      streamsWs.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'initial') {
+          activeStreams = msg.data || [];
+          renderStreams();
+        } else if (msg.type === 'update') {
+          const idx = activeStreams.findIndex(s => s.sessionId === msg.data.sessionId);
+          if (idx >= 0) {
+            activeStreams[idx] = msg.data;
+          } else {
+            activeStreams.push(msg.data);
+          }
+          renderStreams();
+        } else if (msg.type === 'end') {
+          activeStreams = activeStreams.filter(s => s.sessionId !== msg.data.sessionId);
+          renderStreams();
+        }
+      };
+
+      streamsWs.onclose = () => {
+        setTimeout(connectStreamsWs, 3000);
+      };
+    }
+
+    function renderStreams() {
+      const list = document.getElementById('streams-list');
+      const playingStreams = activeStreams.filter(s => s.currentTrack);
+
+      document.getElementById('streams-active-count').textContent = playingStreams.length;
+      document.getElementById('streams-devices-count').textContent = new Set(playingStreams.map(s => s.deviceId)).size;
+
+      if (playingStreams.length === 0) {
+        list.innerHTML = '<div class="empty-state"><p>No active streams</p><p style="font-size: 12px; margin-top: 8px;">Start playing on a connected device to see it here</p></div>';
+        return;
+      }
+
+      list.innerHTML = playingStreams.map(s => {
+        const track = s.currentTrack || {};
+        const progress = s.duration > 0 ? (s.position / s.duration) * 100 : 0;
+        return `
+          <div class="stream-item">
+            <div class="stream-artwork">&#127925;</div>
+            <div class="stream-info">
+              <div class="stream-track">${escapeHtml(track.title || 'Unknown Track')}</div>
+              <div class="stream-artist">${escapeHtml(track.artist || 'Unknown Artist')}</div>
+              <div class="stream-device">
+                ${s.deviceType === 'mobile' ? '&#128241;' : '&#128187;'}
+                ${escapeHtml(s.deviceName || 'Unknown Device')}
+              </div>
+            </div>
+            <div class="stream-progress">
+              <div class="stream-progress-bar">
+                <div class="stream-progress-fill" style="width: ${progress}%;"></div>
+              </div>
+              <div class="stream-time">
+                <span>${formatTime(s.position)}</span>
+                <span>${formatTime(s.duration)}</span>
+              </div>
+            </div>
+            <div class="stream-status">
+              <div class="${s.isPlaying ? 'stream-playing' : 'stream-paused'}"></div>
+              <span style="font-size: 12px; color: var(--text-secondary);">${s.isPlaying ? 'Playing' : 'Paused'}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function formatTime(ms) {
+      if (!ms || ms < 0) return '0:00';
+      const secs = Math.floor(ms / 1000);
+      const mins = Math.floor(secs / 60);
+      const remSecs = secs % 60;
+      return `${mins}:${remSecs.toString().padStart(2, '0')}`;
+    }
+
+    // ========== Logs Functions ==========
+
+    let logsWs = null;
+    let logEntries = [];
+    let logStats = { errors: 0, warnings: 0 };
+
+    function connectLogsWs() {
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      logsWs = new WebSocket(`${wsProtocol}//${window.location.host}/api/logs/stream`);
+
+      logsWs.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'initial') {
+          logEntries = msg.data || [];
+          renderLogs();
+        } else if (msg.type === 'log') {
+          logEntries.push(msg.data);
+          if (logEntries.length > 500) logEntries.shift();
+          if (msg.data.level === 'error') logStats.errors++;
+          if (msg.data.level === 'warn') logStats.warnings++;
+          renderLogs();
+        } else if (msg.type === 'clear') {
+          logEntries = [];
+          logStats = { errors: 0, warnings: 0 };
+          renderLogs();
+        }
+      };
+
+      logsWs.onclose = () => {
+        setTimeout(connectLogsWs, 3000);
+      };
+    }
+
+    function renderLogs() {
+      const viewer = document.getElementById('log-viewer');
+      const levelFilter = document.getElementById('log-level-filter').value;
+      const serviceFilter = document.getElementById('log-service-filter').value.toLowerCase();
+      const autoScroll = document.getElementById('log-auto-scroll').checked;
+
+      let filtered = logEntries;
+      if (levelFilter) {
+        filtered = filtered.filter(e => e.level === levelFilter);
+      }
+      if (serviceFilter) {
+        filtered = filtered.filter(e => e.service.toLowerCase().includes(serviceFilter));
+      }
+
+      document.getElementById('log-total').textContent = logEntries.length;
+      document.getElementById('log-errors').textContent = logStats.errors;
+      document.getElementById('log-warnings').textContent = logStats.warnings;
+      document.getElementById('log-buffer-size').textContent = logEntries.length + '/1000';
+
+      if (filtered.length === 0) {
+        viewer.innerHTML = '<div class="empty-state"><p>No logs matching filters</p></div>';
+        return;
+      }
+
+      viewer.innerHTML = filtered.map(e => {
+        const time = new Date(e.timestamp).toLocaleTimeString();
+        const dataStr = e.data && Object.keys(e.data).length > 0
+          ? `<div class="log-data">${escapeHtml(JSON.stringify(e.data))}</div>`
+          : '';
+        return `
+          <div class="log-entry">
+            <span class="log-time">${time}</span>
+            <span class="log-level ${e.level}">${e.level}</span>
+            <span class="log-service">[${escapeHtml(e.service)}]</span>
+            <span class="log-message">${escapeHtml(e.message)}</span>
+          </div>
+          ${dataStr}
+        `;
+      }).join('');
+
+      if (autoScroll) {
+        viewer.scrollTop = viewer.scrollHeight;
+      }
+    }
+
+    async function clearLogs() {
+      await fetchApi('/api/logs/clear', { method: 'POST' });
+      logEntries = [];
+      logStats = { errors: 0, warnings: 0 };
+      renderLogs();
+      showToast('Logs cleared');
+    }
+
+    // ========== Signal Path Functions ==========
+
+    let signalWs = null;
+    let traces = [];
+    let selectedTraceId = null;
+
+    function connectSignalWs() {
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      signalWs = new WebSocket(`${wsProtocol}//${window.location.host}/api/signal-path/live`);
+
+      signalWs.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'initial') {
+          traces = msg.data || [];
+          renderTraces();
+        } else if (msg.type === 'trace_start') {
+          traces.unshift(msg.data);
+          if (traces.length > 50) traces.pop();
+          renderTraces();
+        } else if (msg.type === 'step') {
+          const trace = traces.find(t => t.traceId === msg.data.traceId);
+          if (trace) {
+            trace.steps.push(msg.data.step);
+            if (selectedTraceId === trace.traceId) {
+              renderTraceDetails(trace);
+            }
+          }
+        } else if (msg.type === 'trace_complete') {
+          const idx = traces.findIndex(t => t.traceId === msg.data.traceId);
+          if (idx >= 0) {
+            traces[idx] = msg.data;
+          }
+          renderTraces();
+          if (selectedTraceId === msg.data.traceId) {
+            renderTraceDetails(msg.data);
+          }
+        } else if (msg.type === 'clear') {
+          traces = [];
+          selectedTraceId = null;
+          renderTraces();
+        }
+      };
+
+      signalWs.onclose = () => {
+        setTimeout(connectSignalWs, 3000);
+      };
+    }
+
+    function renderTraces() {
+      const list = document.getElementById('trace-list');
+
+      // Update stats
+      const active = traces.filter(t => !t.endTime).length;
+      const completed = traces.filter(t => t.endTime).length;
+      const successful = traces.filter(t => t.success).length;
+      const totalDuration = traces.filter(t => t.totalDuration).reduce((sum, t) => sum + t.totalDuration, 0);
+
+      document.getElementById('trace-active').textContent = active;
+      document.getElementById('trace-completed').textContent = completed;
+      document.getElementById('trace-success-rate').textContent = completed > 0 ? Math.round((successful / completed) * 100) + '%' : '0%';
+      document.getElementById('trace-avg-duration').textContent = completed > 0 ? Math.round(totalDuration / completed) + 'ms' : '0ms';
+
+      if (traces.length === 0) {
+        list.innerHTML = '<div class="empty-state"><p>No traces yet</p><p style="font-size: 12px; margin-top: 8px;">Play a track to see the signal path</p></div>';
+        return;
+      }
+
+      list.innerHTML = traces.slice(0, 20).map(t => {
+        const status = !t.endTime ? 'pending' : (t.success ? 'success' : 'error');
+        const statusText = !t.endTime ? 'In Progress' : (t.success ? 'Success' : 'Failed');
+        return `
+          <div class="trace-item ${selectedTraceId === t.traceId ? 'active' : ''}" onclick="selectTrace('${t.traceId}')">
+            <div class="trace-header">
+              <span class="trace-track">${escapeHtml(t.trackTitle || 'Unknown')} - ${escapeHtml(t.trackArtist || 'Unknown')}</span>
+              <div class="trace-status">
+                <span class="trace-badge ${status}">${statusText}</span>
+                ${t.totalDuration ? `<span style="font-size: 11px; color: var(--text-secondary);">${t.totalDuration}ms</span>` : ''}
+              </div>
+            </div>
+            <div class="trace-meta">
+              ${t.finalProvider ? `Provider: ${t.finalProvider} • ` : ''}
+              ${t.steps?.length || 0} steps • ${new Date(t.startTime).toLocaleTimeString()}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selectTrace(traceId) {
+      selectedTraceId = traceId;
+      const trace = traces.find(t => t.traceId === traceId);
+      renderTraces();
+      if (trace) {
+        renderTraceDetails(trace);
+      }
+    }
+
+    function renderTraceDetails(trace) {
+      const details = document.getElementById('trace-details');
+
+      if (!trace.steps || trace.steps.length === 0) {
+        details.innerHTML = `
+          <div style="margin-bottom: 16px;">
+            <strong>${escapeHtml(trace.trackTitle)}</strong><br>
+            <span style="color: var(--text-secondary);">${escapeHtml(trace.trackArtist)}</span>
+          </div>
+          <p style="color: var(--text-secondary);">No steps recorded yet...</p>
+        `;
+        return;
+      }
+
+      const phaseColors = {
+        request: 'var(--accent)',
+        metadata: '#22c55e',
+        ml: '#f59e0b',
+        resolve: '#8b5cf6',
+        stream: '#3b82f6',
+        playback: '#ec4899',
+        error: '#ef4444'
+      };
+
+      details.innerHTML = `
+        <div style="margin-bottom: 16px;">
+          <strong>${escapeHtml(trace.trackTitle)}</strong><br>
+          <span style="color: var(--text-secondary);">${escapeHtml(trace.trackArtist)}</span>
+          ${trace.finalStreamUrl ? `<br><span style="font-size: 11px; color: var(--accent);">Stream: ${trace.finalProvider || 'Unknown'}</span>` : ''}
+        </div>
+        <div class="trace-timeline">
+          ${trace.steps.map(step => `
+            <div class="trace-step ${step.success ? 'success' : 'error'}">
+              <div class="trace-step-phase" style="color: ${phaseColors[step.phase] || 'var(--text-secondary)'};">${step.phase}</div>
+              <div class="trace-step-action">${escapeHtml(step.action)}</div>
+              ${step.provider ? `<div class="trace-step-provider">${escapeHtml(step.provider)}</div>` : ''}
+              ${step.duration ? `<div class="trace-step-duration">+${step.duration}ms</div>` : ''}
+              ${step.error ? `<div class="trace-step-error">${escapeHtml(step.error)}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // ========== Setup Wizard Functions ==========
+
+    let wizardStep = 0;
+
+    async function checkSetupStatus() {
+      const status = await fetchApi('/api/setup/status');
+      if (status && !status.completed) {
+        document.getElementById('setup-wizard').classList.add('show');
+      }
+    }
+
+    function wizardNext() {
+      wizardStep++;
+      updateWizardUI();
+    }
+
+    function wizardPrev() {
+      wizardStep--;
+      updateWizardUI();
+    }
+
+    function updateWizardUI() {
+      document.querySelectorAll('.wizard-step').forEach((el, i) => {
+        el.classList.toggle('active', i === wizardStep);
+      });
+      document.querySelectorAll('.wizard-dot').forEach((el, i) => {
+        el.classList.remove('active', 'done');
+        if (i < wizardStep) el.classList.add('done');
+        if (i === wizardStep) el.classList.add('active');
+      });
+    }
+
+    async function wizardSaveName() {
+      const name = document.getElementById('wizard-server-name').value.trim();
+      if (name) {
+        await fetchApi('/api/settings/server', { method: 'POST', body: { name } });
+      }
+      wizardNext();
+    }
+
+    async function wizardAddRepo() {
+      const url = document.getElementById('wizard-repo-url').value.trim();
+      if (url) {
+        await fetchApi('/api/plugins/repositories', { method: 'POST', body: { url } });
+      }
+      wizardNext();
+    }
+
+    async function wizardComplete() {
+      await fetchApi('/api/setup/complete', { method: 'POST' });
+      document.getElementById('setup-wizard').classList.remove('show');
+      loadServerInfo();
+    }
+
     // ========== Event Listeners ==========
 
     document.getElementById('refresh-qr').addEventListener('click', loadQrCode);
@@ -1795,11 +2743,24 @@
 
     document.getElementById('add-repo').addEventListener('click', addRepo);
 
+    // Log filters
+    document.getElementById('log-level-filter').addEventListener('change', renderLogs);
+    document.getElementById('log-service-filter').addEventListener('input', renderLogs);
+    document.getElementById('clear-logs').addEventListener('click', clearLogs);
+
     // ========== Initialize ==========
 
     loadServerInfo();
     loadDevices();
     loadQrCode();
+
+    // Connect WebSockets
+    connectStreamsWs();
+    connectLogsWs();
+    connectSignalWs();
+
+    // Check setup status
+    checkSetupStatus();
   </script>
 </body>
 </html>

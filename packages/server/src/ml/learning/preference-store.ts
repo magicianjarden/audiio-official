@@ -12,7 +12,7 @@ import type {
   LikeEvent,
 } from '../types';
 import { getEventWeight, DISLIKE_REASON_WEIGHTS } from '../utils';
-import type { StorageAdapter } from '../storage/node-storage';
+import { StorageHelper } from './storage-helper';
 
 const STORAGE_KEY = 'audiio-ml-preferences';
 const DECAY_FACTOR = 0.98; // Daily decay
@@ -51,7 +51,7 @@ interface PreferenceState {
   lastDecayApplied: number;
 }
 
-export class PreferenceStore {
+export class PreferenceStore extends StorageHelper {
   private artists = new Map<string, ArtistStats>();
   private genres = new Map<string, GenreStats>();
   private dislikedTracks = new Map<string, { reason: string; timestamp: number; artistId?: string }>();
@@ -62,32 +62,8 @@ export class PreferenceStore {
   private genresByHour: Record<number, Record<string, number>> = {};
   private totalListens = 0;
   private lastDecayApplied = Date.now();
-  private storage: StorageAdapter | null = null;
   private explorationLevel = 0.3;
   private diversityWeight = 0.5;
-
-  /**
-   * Set storage adapter (call before load)
-   */
-  setStorage(storage: StorageAdapter): void {
-    this.storage = storage;
-  }
-
-  /**
-   * Get storage adapter (falls back to localStorage if available)
-   */
-  private getStorage(): StorageAdapter | null {
-    if (this.storage) return this.storage;
-    if (typeof localStorage !== 'undefined') {
-      return {
-        getItem: (key) => localStorage.getItem(key),
-        setItem: (key, value) => localStorage.setItem(key, value),
-        removeItem: (key) => localStorage.removeItem(key),
-        clear: () => localStorage.clear(),
-      };
-    }
-    return null;
-  }
 
   /**
    * Load preferences from storage

@@ -7,6 +7,7 @@ import { persist } from 'zustand/middleware';
 import type { UnifiedTrack } from '@audiio/core';
 
 type PlayerMode = 'mini' | 'full';
+type SidebarTab = 'playlists' | 'collections' | 'tags';
 
 interface UIState {
   // State
@@ -21,9 +22,18 @@ interface UIState {
   // Sidebar state
   isSidebarCollapsed: boolean;
   sidebarWidth: number;
+  sidebarActiveTab: SidebarTab;
+  // Legacy - kept for backwards compatibility
   isPlaylistsExpanded: boolean;
+  isTagsExpanded: boolean;
+  isCollectionsExpanded: boolean;
 
-  // Create modal state
+  // Inline creation state
+  isCreatingPlaylist: boolean;
+  isCreatingTag: boolean;
+  isCreatingCollection: boolean;
+
+  // Create modal state (legacy - for folder creation)
   isCreatePlaylistModalOpen: boolean;
   isCreateFolderModalOpen: boolean;
 
@@ -54,10 +64,21 @@ interface UIState {
   collapseSidebar: () => void;
   expandSidebar: () => void;
   setSidebarWidth: (width: number) => void;
+  setSidebarActiveTab: (tab: SidebarTab) => void;
   togglePlaylistsExpanded: () => void;
+  toggleTagsExpanded: () => void;
+  toggleCollectionsExpanded: () => void;
+
+  // Inline creation actions
+  startCreatingPlaylist: () => void;
+  stopCreatingPlaylist: () => void;
+  startCreatingTag: () => void;
+  stopCreatingTag: () => void;
+  startCreatingCollection: () => void;
+  stopCreatingCollection: () => void;
 }
 
-export type { PlayerMode };
+export type { PlayerMode, SidebarTab };
 
 export const useUIStore = create<UIState>()(
   persist(
@@ -74,9 +95,18 @@ export const useUIStore = create<UIState>()(
       // Sidebar state
       isSidebarCollapsed: false,
       sidebarWidth: 260,
+      sidebarActiveTab: 'playlists',
+      // Legacy - kept for backwards compatibility
       isPlaylistsExpanded: true,
+      isTagsExpanded: false,
+      isCollectionsExpanded: false,
 
-      // Create modal state
+      // Inline creation state
+      isCreatingPlaylist: false,
+      isCreatingTag: false,
+      isCreatingCollection: false,
+
+      // Create modal state (legacy - for folder creation)
       isCreatePlaylistModalOpen: false,
       isCreateFolderModalOpen: false,
 
@@ -182,8 +212,45 @@ export const useUIStore = create<UIState>()(
         set({ sidebarWidth: Math.max(200, Math.min(400, width)) });
       },
 
+      setSidebarActiveTab: (tab) => {
+        set({ sidebarActiveTab: tab });
+      },
+
       togglePlaylistsExpanded: () => {
         set(state => ({ isPlaylistsExpanded: !state.isPlaylistsExpanded }));
+      },
+
+      toggleTagsExpanded: () => {
+        set(state => ({ isTagsExpanded: !state.isTagsExpanded }));
+      },
+
+      toggleCollectionsExpanded: () => {
+        set(state => ({ isCollectionsExpanded: !state.isCollectionsExpanded }));
+      },
+
+      // Inline creation actions
+      startCreatingPlaylist: () => {
+        set({ isCreatingPlaylist: true, isPlaylistsExpanded: true, sidebarActiveTab: 'playlists' });
+      },
+
+      stopCreatingPlaylist: () => {
+        set({ isCreatingPlaylist: false });
+      },
+
+      startCreatingTag: () => {
+        set({ isCreatingTag: true, isTagsExpanded: true, sidebarActiveTab: 'tags' });
+      },
+
+      stopCreatingTag: () => {
+        set({ isCreatingTag: false });
+      },
+
+      startCreatingCollection: () => {
+        set({ isCreatingCollection: true, isCollectionsExpanded: true, sidebarActiveTab: 'collections' });
+      },
+
+      stopCreatingCollection: () => {
+        set({ isCreatingCollection: false });
       }
     }),
     {
@@ -191,7 +258,10 @@ export const useUIStore = create<UIState>()(
       partialize: (state) => ({
         sidebarWidth: state.sidebarWidth,
         isSidebarCollapsed: state.isSidebarCollapsed,
+        sidebarActiveTab: state.sidebarActiveTab,
         isPlaylistsExpanded: state.isPlaylistsExpanded,
+        isTagsExpanded: state.isTagsExpanded,
+        isCollectionsExpanded: state.isCollectionsExpanded,
       })
     }
   )

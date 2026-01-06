@@ -10,6 +10,7 @@ import type {
   MoodCategory,
 } from '../types';
 import type { HybridScorer } from './hybrid-scorer';
+import { weightedRandomSelect } from '../utils';
 
 const SEED_WEIGHT_INITIAL = 0.7;
 const SEED_WEIGHT_DECAY = 0.02;
@@ -116,7 +117,7 @@ export class RadioGenerator {
         // Get similar tracks
         const queueContext = {
           count: limit,
-          sources: ['similar' as const, 'discovery' as const],
+          sources: ['similar' as const, 'library' as const],
           radioSeed: seed,
           scoringContext: context,
         };
@@ -129,14 +130,14 @@ export class RadioGenerator {
         const artistTracks = await this.endpoints.library.getTracksByArtist(seed.id);
         candidates.push(...artistTracks.slice(0, limit / 2));
 
-        // Also get discovery tracks
-        const discoveryContext = {
+        // Also get library tracks for variety
+        const libraryContext = {
           count: limit / 2,
-          sources: ['discovery' as const],
+          sources: ['library' as const],
           scoringContext: context,
         };
-        const discovery = await this.endpoints.queue.getCandidates(discoveryContext);
-        candidates.push(...discovery);
+        const libraryTracks = await this.endpoints.queue.getCandidates(libraryContext);
+        candidates.push(...libraryTracks);
         break;
 
       case 'genre':
@@ -146,10 +147,10 @@ export class RadioGenerator {
         break;
 
       case 'mood':
-        // Get tracks matching mood (via discovery)
+        // Get tracks matching mood from library
         const moodContext = {
           count: limit,
-          sources: ['discovery' as const, 'library' as const],
+          sources: ['library' as const, 'similar' as const],
           scoringContext: {
             ...context,
             userMood: seed.id as MoodCategory,
@@ -188,7 +189,9 @@ export class RadioGenerator {
   }
 
   /**
-   * Select tracks with variety (not all top scores)
+   * Select tracks with variety using probabilistic weighted selection
+   * Uses softmax-based weighted random to add controlled variety while
+   * still favoring higher-scored tracks
    */
   private selectWithVariety(
     sorted: Array<{ track: Track; score: number }>,
@@ -198,53 +201,43 @@ export class RadioGenerator {
       return sorted.map(s => s.track);
     }
 
-    const selected: Track[] = [];
-    const artistCounts = new Map<string, number>();
     const maxSameArtist = 2;
+    const artistCounts = new Map<string, number>();
+    const selected: Track[] = [];
 
-    // Take top tracks with artist diversity
-    for (const { track } of sorted) {
-      if (selected.length >= count) break;
+    // Filter candidates by artist diversity as we select
+    let remaining = [...sorted];
 
-      const artistId = track.artistId || 'unknown';
-      const artistCount = artistCounts.get(artistId) || 0;
+    while (selected.length < count && remaining.length > 0) {
+      // Filter out artists that have reached the limit
+      const eligible = remaining.filter(({ track }) => {
+        const artistId = track.artistId || 'unknown';
+        return (artistCounts.get(artistId) || 0) < maxSameArtist;
+      });
 
-      if (artistCount < maxSameArtist) {
-        selected.push(track);
-        artistCounts.set(artistId, artistCount + 1);
+      // If no eligible tracks, relax constraint and use remaining
+      const candidates = eligible.length > 0 ? eligible : remaining;
+
+      if (candidates.length === 0) break;
+
+      // Use weighted random selection based on scores
+      const tracks = candidates.map(c => c.track);
+      const scores = candidates.map(c => c.score);
+
+      // Select one track probabilistically
+      const [picked] = weightedRandomSelect(tracks, scores, 1);
+
+      if (picked) {
+        selected.push(picked);
+        const artistId = picked.artistId || 'unknown';
+        artistCounts.set(artistId, (artistCounts.get(artistId) || 0) + 1);
+
+        // Remove from remaining
+        remaining = remaining.filter(c => c.track.id !== picked.id);
       }
     }
 
-    // If we still need more, relax the constraint
-    if (selected.length < count) {
-      for (const { track } of sorted) {
-        if (selected.length >= count) break;
-        if (!selected.find(t => t.id === track.id)) {
-          selected.push(track);
-        }
-      }
-    }
-
-    // Shuffle slightly to avoid predictability
-    return this.shuffleWithBias(selected);
-  }
-
-  /**
-   * Shuffle with bias toward keeping high scores early
-   */
-  private shuffleWithBias(tracks: Track[]): Track[] {
-    const result = [...tracks];
-
-    // Only shuffle the middle portion
-    const fixedStart = Math.floor(tracks.length * 0.3);
-    const fixedEnd = Math.floor(tracks.length * 0.9);
-
-    for (let i = fixedStart; i < fixedEnd; i++) {
-      const j = fixedStart + Math.floor(Math.random() * (fixedEnd - fixedStart));
-      [result[i], result[j]] = [result[j], result[i]];
-    }
-
-    return result;
+    return selected;
   }
 
   /**

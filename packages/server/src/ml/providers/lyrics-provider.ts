@@ -36,7 +36,7 @@ const THEME_KEYWORDS: Record<string, string[]> = {
   rebellion: ['rebel', 'fight', 'free', 'break', 'rule', 'against', 'revolution'],
 };
 
-export class LyricsProvider {
+export class LyricsSentimentProvider {
   private model: tf.LayersModel | null = null;
   private endpoints!: MLCoreEndpoints;
   private cache: MemoryCache<LyricsFeatures>;

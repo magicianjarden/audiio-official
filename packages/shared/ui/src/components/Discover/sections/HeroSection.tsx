@@ -15,7 +15,7 @@ import { useLibraryStore } from '../../../stores/library-store';
 import { useTrackContextMenu } from '../../../contexts/ContextMenuContext';
 import { usePluginData } from '../../../hooks/usePluginData';
 import { PlayIcon, ShuffleIcon, MusicNoteIcon, RadioIcon, RefreshIcon } from '@audiio/icons';
-import { getAccentColor } from '../../../utils/theme-utils';
+import { getColorsForArtwork, getDefaultColors, type ExtractedColors } from '../../../utils/color-extraction';
 import type { StructuredSectionQuery } from '../types';
 
 export interface HeroSectionProps {
@@ -29,41 +29,6 @@ export interface HeroSectionProps {
     topGenres?: string[];
     isNewUser?: boolean;
   };
-}
-
-// Simple color extraction - average RGB from image
-async function extractDominantColor(imageUrl: string): Promise<string> {
-  const fallbackColor = getAccentColor();
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 50;
-        canvas.height = 50;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(fallbackColor);
-          return;
-        }
-        ctx.drawImage(img, 0, 0, 50, 50);
-        const data = ctx.getImageData(0, 0, 50, 50).data;
-        let r = 0, g = 0, b = 0;
-        for (let i = 0; i < data.length; i += 4) {
-          r += data[i]!;
-          g += data[i + 1]!;
-          b += data[i + 2]!;
-        }
-        const pixels = data.length / 4;
-        resolve(`rgb(${Math.round(r / pixels)}, ${Math.round(g / pixels)}, ${Math.round(b / pixels)})`);
-      } catch {
-        resolve(fallbackColor);
-      }
-    };
-    img.onerror = () => resolve(fallbackColor);
-    img.src = imageUrl;
-  });
 }
 
 // Shuffle array using Fisher-Yates algorithm
@@ -94,7 +59,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   const { showContextMenu } = useTrackContextMenu();
 
   const [refreshKey, setRefreshKey] = useState(0);
-  const [ambientColor, setAmbientColor] = useState<string>('var(--accent-primary)');
+  const [colors, setColors] = useState<ExtractedColors>(getDefaultColors());
   const [isVisible, setIsVisible] = useState(false);
 
   // Check if this mix is currently playing as radio
@@ -129,12 +94,12 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   const featuredTrack = tracks?.[0];
   const artworkUrl = featuredTrack?.artwork?.large || featuredTrack?.artwork?.medium;
 
-  // Extract ambient color from artwork
+  // Extract colors from artwork using shared utility
   useEffect(() => {
     if (artworkUrl) {
-      extractDominantColor(artworkUrl).then(setAmbientColor);
+      getColorsForArtwork(artworkUrl).then(setColors);
     } else {
-      setAmbientColor('var(--accent-primary)');
+      setColors(getDefaultColors());
     }
   }, [artworkUrl]);
 
@@ -213,14 +178,20 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
   return (
     <section
-      className={`discover-hero-section discover-hero-section--centered ${isVisible ? 'is-visible' : ''} ${isThisMixRadio ? 'is-radio-active' : ''}`}
-      style={{ '--ambient-color': ambientColor } as React.CSSProperties}
+      className={`discover-hero-section discover-hero-section--ambient-band ${isVisible ? 'is-visible' : ''} ${isThisMixRadio ? 'is-radio-active' : ''}`}
+      style={{
+        '--ambient-color': colors.dominant,
+        '--ambient-vibrant': colors.vibrant,
+        '--ambient-muted': colors.muted,
+        '--ambient-dark': colors.darkVibrant,
+        '--ambient-light': colors.lightVibrant,
+      } as React.CSSProperties}
       onContextMenu={featuredTrack ? (e) => showContextMenu(e, featuredTrack) : undefined}
     >
       {isLoading ? (
-        <div className="hero-skeleton hero-skeleton--centered">
-          <div className="hero-skeleton-artwork hero-skeleton-artwork--centered" />
-          <div className="hero-skeleton-info hero-skeleton-info--centered">
+        <div className="hero-skeleton hero-skeleton--ambient">
+          <div className="hero-skeleton-artwork" />
+          <div className="hero-skeleton-info">
             <div className="hero-skeleton-badge" />
             <div className="hero-skeleton-title" />
             <div className="hero-skeleton-subtitle" />
@@ -228,93 +199,96 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           </div>
         </div>
       ) : showEmptyState ? (
-        <div className="hero-content hero-content--centered">
-          <div className="hero-artwork hero-artwork--centered">
+        <div className="hero-content hero-content--ambient">
+          <div className="hero-artwork">
             <div className="hero-artwork-placeholder">
-              <MusicNoteIcon size={80} />
+              <MusicNoteIcon size={64} />
             </div>
           </div>
-          <div className="hero-info hero-info--centered">
-            <h1 className="hero-title hero-title--centered">{title}</h1>
-            <p className="hero-subtitle hero-subtitle--centered">Discover new music</p>
+          <div className="hero-info">
+            <h1 className="hero-title">{title}</h1>
+            <p className="hero-subtitle">Discover new music</p>
           </div>
         </div>
       ) : (
         <>
-          {/* Subtle ambient background - blurred artwork with low opacity */}
-          <div
-            className="hero-ambient-bg hero-ambient-bg--subtle"
-            style={{ backgroundImage: artworkUrl ? `url(${artworkUrl})` : 'none' }}
-          />
+          {/* Immersive blurred background */}
+          <div className="hero-ambient-backdrop">
+            {artworkUrl && <img src={artworkUrl} alt="" className="hero-ambient-image" />}
+            <div className="hero-ambient-overlay" />
+            <div className="hero-ambient-grain" />
+          </div>
 
-          {/* Centered content layout */}
-          <div className="hero-content hero-content--centered">
-            {/* Large artwork with soft glow */}
-            <div className="hero-artwork hero-artwork--centered">
-              {artworkUrl ? (
-                <img src={artworkUrl} alt={featuredTrack?.title} />
-              ) : (
-                <div className="hero-artwork-placeholder">
-                  <MusicNoteIcon size={80} />
-                </div>
-              )}
-              {/* Radio indicator overlay */}
-              {isThisMixRadio && (
-                <div className="hero-radio-indicator">
-                  <RadioIcon size={24} />
-                  <span className="radio-pulse" />
-                </div>
-              )}
+          {/* Content container */}
+          <div className="hero-content hero-content--ambient">
+            {/* Floating artwork with glow */}
+            <div className="hero-artwork-container">
+              <div className="hero-artwork-glow" />
+              <div className="hero-artwork">
+                {artworkUrl ? (
+                  <img src={artworkUrl} alt={featuredTrack?.title} />
+                ) : (
+                  <div className="hero-artwork-placeholder">
+                    <MusicNoteIcon size={64} />
+                  </div>
+                )}
+                {/* Radio indicator overlay */}
+                {isThisMixRadio && (
+                  <div className="hero-radio-indicator">
+                    <RadioIcon size={20} />
+                    <span className="radio-pulse" />
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Info section below artwork */}
-            <div className="hero-info hero-info--centered">
+            {/* Info section */}
+            <div className="hero-info">
               {isPersonalized && (
-                <span className="hero-badge hero-badge--centered">
+                <span className="hero-badge">
                   {isThisMixRadio ? 'Live Radio' : 'Made for You'}
                 </span>
               )}
-              <h1 className="hero-title hero-title--centered">{displayTitle}</h1>
-              {displaySubtitle && <p className="hero-subtitle hero-subtitle--centered">{displaySubtitle}</p>}
+              <h1 className="hero-title">{displayTitle}</h1>
+              {displaySubtitle && <p className="hero-subtitle">{displaySubtitle}</p>}
 
-              {/* Track count indicator */}
-              <div className="hero-track-info">
+              {/* Track count */}
+              <div className="hero-meta">
                 <span>{tracks.length} tracks</span>
                 <span className="hero-dot">•</span>
                 <span>Updates as you listen</span>
               </div>
 
-              {/* Pill-style action buttons */}
-              <div className="hero-actions hero-actions--centered">
-                <button className="hero-play-btn hero-play-btn--pill" onClick={handlePlay}>
-                  <PlayIcon size={20} />
+              {/* Action buttons */}
+              <div className="hero-actions">
+                <button className="pill-btn pill-btn--lg hero-play-btn" onClick={handlePlay}>
+                  <PlayIcon size={18} />
                   <span>Play</span>
                 </button>
-                <button className="hero-shuffle-btn hero-shuffle-btn--pill" onClick={handleShuffle}>
-                  <ShuffleIcon size={18} />
+                <button className="pill-btn pill-btn--glass hero-shuffle-btn" onClick={handleShuffle}>
+                  <ShuffleIcon size={16} />
                   <span>Shuffle</span>
                 </button>
                 <button
-                  className={`hero-radio-btn hero-radio-btn--pill ${isThisMixRadio ? 'active' : ''}`}
+                  className={`pill-btn pill-btn--glass hero-radio-btn ${isThisMixRadio ? 'active' : ''}`}
                   onClick={handleStartRadio}
                   title="Start endless personalized radio"
                 >
-                  <RadioIcon size={18} />
+                  <RadioIcon size={16} />
                   <span>Radio</span>
                 </button>
                 <button
-                  className="hero-refresh-btn"
+                  className="pill-btn pill-btn--glass pill-btn--icon hero-refresh-btn"
                   onClick={handleRefresh}
                   title="Refresh mix"
                 >
-                  <RefreshIcon size={16} />
+                  <RefreshIcon size={14} />
                 </button>
               </div>
             </div>
           </div>
         </>
       )}
-
     </section>
   );
 };

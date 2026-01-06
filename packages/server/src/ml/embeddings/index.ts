@@ -48,12 +48,3 @@ export {
   type PlaylistMethod,
   type PlaylistStats,
 } from './playlist-generator';
-
-// Re-export convenience types
-export type {
-  TrackEmbedding,
-  UserTasteProfile,
-  SimilarityResult,
-  EmbeddingConfig,
-  AudioFeatureWeights,
-} from './types';

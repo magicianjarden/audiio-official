@@ -12,6 +12,8 @@ import type {
   StorageEndpoint,
   EventEndpoint,
   LibraryEndpoint,
+  LibraryStats,
+  PlaylistInfo,
   ModelStorage,
   FeatureProvider,
   Track,
@@ -22,14 +24,14 @@ import type {
   TemporalPatterns,
   TrainingDataset,
   FeatureStats,
-  QueueConfig,
   ScoringContext,
-  DatasetOptions,
   HistoryOptions,
   QueueCandidateContext,
   UserEvent,
   AlgorithmScoreEntry,
 } from '../types';
+
+import { cosineSimilarity } from '../utils/vector-utils';
 
 import type { FeatureAggregator } from '../engine/feature-aggregator';
 import type { EventRecorder } from '../learning/event-recorder';
@@ -39,12 +41,39 @@ import type { AlgorithmRegistry } from '../engine/algorithm-registry';
 
 import * as tf from '@tensorflow/tfjs';
 
+/**
+ * Library data source interface - provided by the plugin system
+ */
+export interface LibraryDataSource {
+  getAllTracks(): Promise<Track[]>;
+  getTrack(trackId: string): Promise<Track | null>;
+  getTracksByArtist(artistId: string): Promise<Track[]>;
+  getTracksByGenre(genre: string): Promise<Track[]>;
+  getLikedTracks(): Promise<Track[]>;
+  getPlaylistTracks(playlistId: string): Promise<Track[]>;
+  getPlaylists(): Promise<PlaylistInfo[]>;
+  search(query: string, limit?: number): Promise<Track[]>;
+  getStats(): Promise<LibraryStats>;
+}
+
+/**
+ * Event callbacks for queue/playback changes
+ */
+export interface EventCallbacks {
+  onQueueChange?: (callback: (queue: Track[]) => void) => () => void;
+  onPlaybackChange?: (callback: (track: Track | null, isPlaying: boolean) => void) => () => void;
+}
+
 interface EndpointDependencies {
   featureAggregator: FeatureAggregator;
   eventRecorder: EventRecorder;
   preferenceStore: PreferenceStore;
   smartQueue: SmartQueue;
   registry: AlgorithmRegistry;
+  /** Library data source - provided by plugin system */
+  libraryDataSource?: LibraryDataSource;
+  /** Event callbacks for queue/playback changes */
+  eventCallbacks?: EventCallbacks;
 }
 
 /**
@@ -57,6 +86,8 @@ export function createEndpoints(deps: EndpointDependencies): MLCoreEndpoints {
     preferenceStore,
     smartQueue,
     registry,
+    libraryDataSource,
+    eventCallbacks,
   } = deps;
 
   // Storage for algorithm data
@@ -79,21 +110,16 @@ export function createEndpoints(deps: EndpointDependencies): MLCoreEndpoints {
     extract: (trackId) => featureAggregator.get(trackId), // Alias for get
     findSimilarByEmbedding: async (embedding, count = 10) => {
       // Get all cached embeddings and find similar
-      const allEmbeddings = featureAggregator.getAllEmbeddings?.() || new Map();
+      const allEmbeddings = featureAggregator.getAllEmbeddings();
       const results: Array<{ trackId: string; similarity: number }> = [];
+
+      // Convert input to Float32Array for cosineSimilarity
+      const embeddingArray = new Float32Array(embedding);
 
       for (const [trackId, trackEmbedding] of allEmbeddings) {
         if (trackEmbedding && trackEmbedding.length === embedding.length) {
-          // Cosine similarity
-          let dotProduct = 0;
-          let normA = 0;
-          let normB = 0;
-          for (let i = 0; i < embedding.length; i++) {
-            dotProduct += embedding[i] * trackEmbedding[i];
-            normA += embedding[i] * embedding[i];
-            normB += trackEmbedding[i] * trackEmbedding[i];
-          }
-          const similarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+          const trackEmbeddingArray = new Float32Array(trackEmbedding);
+          const similarity = cosineSimilarity(embeddingArray, trackEmbeddingArray);
           results.push({ trackId, similarity });
         }
       }
@@ -107,6 +133,7 @@ export function createEndpoints(deps: EndpointDependencies): MLCoreEndpoints {
     getProviders: () => featureAggregator.getProviders(),
     invalidateCache: (trackId) => featureAggregator.invalidateCache(trackId),
     prefetch: (trackIds) => featureAggregator.prefetch(trackIds),
+    getAllEmbeddings: () => featureAggregator.getAllEmbeddings(),
   };
 
   // ============================================================================
@@ -136,13 +163,24 @@ export function createEndpoints(deps: EndpointDependencies): MLCoreEndpoints {
     },
     getDislikedTracks: async () => {
       const disliked = preferenceStore.getDislikedTracks();
-      return disliked.map(d => ({
-        trackId: d.trackId,
-        track: { id: d.trackId, title: '', artist: '', duration: 0 } as Track,
-        reason: d.reason,
-        timestamp: d.timestamp,
-        artistId: d.artistId,
-      }));
+      const results = await Promise.all(
+        disliked.map(async (d) => {
+          // Try to get actual track data from library if available
+          const track = libraryDataSource
+            ? await libraryDataSource.getTrack(d.trackId)
+            : null;
+
+          return {
+            trackId: d.trackId,
+            // Use actual track data if available, otherwise create minimal placeholder
+            track: track ?? { id: d.trackId, title: '', artist: '', duration: 0 } as Track,
+            reason: d.reason,
+            timestamp: d.timestamp,
+            artistId: d.artistId,
+          };
+        })
+      );
+      return results;
     },
     getArtistAffinity: (artistId) => preferenceStore.getArtistAffinity(artistId),
     getGenreAffinity: (genre) => preferenceStore.getGenreAffinity(genre),
@@ -216,6 +254,11 @@ export function createEndpoints(deps: EndpointDependencies): MLCoreEndpoints {
     },
     getLastTrainingInfo: () =>
       Promise.resolve(eventRecorder.getLastTrainingInfo()),
+    updateTrainingResults: async (accuracy, loss) => {
+      eventRecorder.updateTrainingResults(accuracy, loss);
+    },
+    getEvents: () => Promise.resolve(eventRecorder.getEvents()),
+    getDislikeEvents: () => Promise.resolve(eventRecorder.getDislikeEvents()),
   };
 
   // ============================================================================
@@ -224,11 +267,7 @@ export function createEndpoints(deps: EndpointDependencies): MLCoreEndpoints {
 
   const queue: QueueEndpoint = {
     getCandidates: (context) => smartQueue.getCandidates(context),
-    submitRanking: (tracks) => smartQueue.submitRanking(tracks),
-    getCurrentQueue: () => smartQueue.getCurrentQueue(),
     getSessionHistory: () => smartQueue.getSessionHistory(),
-    getConfig: () => smartQueue.getConfig(),
-    isInQueue: (trackId) => smartQueue.isInQueue(trackId),
     wasPlayedInSession: (trackId) => smartQueue.wasPlayedInSession(trackId),
   };
 
@@ -297,13 +336,15 @@ export function createEndpoints(deps: EndpointDependencies): MLCoreEndpoints {
         const storage = getAlgorithmStorage();
         storage.set(key, value);
 
-        // Persist to localStorage
-        try {
-          const storageKey = `audiio-algo-${algorithmId}`;
-          const data = Object.fromEntries(storage);
-          localStorage.setItem(storageKey, JSON.stringify(data));
-        } catch (error) {
-          console.warn('[Storage] Failed to persist:', error);
+        // Persist to localStorage (browser environment only)
+        if (typeof localStorage !== 'undefined') {
+          try {
+            const storageKey = `audiio-algo-${algorithmId}`;
+            const data = Object.fromEntries(storage);
+            localStorage.setItem(storageKey, JSON.stringify(data));
+          } catch (error) {
+            console.warn('[Storage] Failed to persist:', error);
+          }
         }
       },
       delete: async (key: string) => {
@@ -378,11 +419,17 @@ export function createEndpoints(deps: EndpointDependencies): MLCoreEndpoints {
       return () => eventListeners.delete(wrappedCallback);
     },
     onQueueChange: (callback) => {
-      // TODO: Implement queue change subscription
+      // Use external callback if provided, otherwise no-op
+      if (eventCallbacks?.onQueueChange) {
+        return eventCallbacks.onQueueChange(callback);
+      }
       return () => {};
     },
     onPlaybackChange: (callback) => {
-      // TODO: Implement playback change subscription
+      // Use external callback if provided, otherwise no-op
+      if (eventCallbacks?.onPlaybackChange) {
+        return eventCallbacks.onPlaybackChange(callback);
+      }
       return () => {};
     },
   };
@@ -391,23 +438,27 @@ export function createEndpoints(deps: EndpointDependencies): MLCoreEndpoints {
   // Library Endpoint
   // ============================================================================
 
+  // Default empty stats for when no data source is provided
+  const emptyStats: LibraryStats = {
+    totalTracks: 0,
+    totalArtists: 0,
+    totalAlbums: 0,
+    totalPlaylists: 0,
+    totalDuration: 0,
+    genreDistribution: new Map(),
+  };
+
+  // Wire to external data source if provided, otherwise return empty defaults
   const library: LibraryEndpoint = {
-    getAllTracks: async () => [],
-    getTrack: async (trackId) => null,
-    getTracksByArtist: async (artistId) => [],
-    getTracksByGenre: async (genre) => [],
-    getLikedTracks: async () => [],
-    getPlaylistTracks: async (playlistId) => [],
-    getPlaylists: async () => [],
-    search: async (query, limit) => [],
-    getStats: async () => ({
-      totalTracks: 0,
-      totalArtists: 0,
-      totalAlbums: 0,
-      totalPlaylists: 0,
-      totalDuration: 0,
-      genreDistribution: new Map(),
-    }),
+    getAllTracks: async () => libraryDataSource?.getAllTracks() ?? [],
+    getTrack: async (trackId) => libraryDataSource?.getTrack(trackId) ?? null,
+    getTracksByArtist: async (artistId) => libraryDataSource?.getTracksByArtist(artistId) ?? [],
+    getTracksByGenre: async (genre) => libraryDataSource?.getTracksByGenre(genre) ?? [],
+    getLikedTracks: async () => libraryDataSource?.getLikedTracks() ?? [],
+    getPlaylistTracks: async (playlistId) => libraryDataSource?.getPlaylistTracks(playlistId) ?? [],
+    getPlaylists: async () => libraryDataSource?.getPlaylists() ?? [],
+    search: async (query, limit) => libraryDataSource?.search(query, limit) ?? [],
+    getStats: async () => libraryDataSource?.getStats() ?? emptyStats,
   };
 
   return {

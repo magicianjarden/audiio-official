@@ -14,12 +14,15 @@ import type {
   AudioFeatures,
   EmotionFeatures,
   LyricsFeatures,
+  GenreFeatures,
   FeatureProvider,
   ProviderCapabilities,
   FeatureProviderInfo,
   FeatureAggregationConfig,
 } from '../types';
-import { MemoryCache } from '../utils';
+import type { StoredFeatures } from '../storage/feature-store';
+import { MemoryCache, BatchLoader, LRUCache } from '../utils';
+import { cosineSimilarity } from '../utils/vector-utils';
 
 /**
  * Extended provider interface with mode support
@@ -37,11 +40,26 @@ export interface ExtendedAggregationConfig extends FeatureAggregationConfig {
   corePriorityThreshold: number;
 }
 
+/**
+ * Interface for persistent feature storage
+ */
+export interface FeatureStoreInterface {
+  get(trackId: string): StoredFeatures | null;
+  set(trackId: string, features: Partial<StoredFeatures>): void;
+  hasValidFeatures(trackId: string): boolean;
+  persist(): void;
+  dispose(): void;
+}
+
 export class FeatureAggregator {
   private providers: Map<string, ExtendedFeatureProvider> = new Map();
   private cache: MemoryCache<AggregatedFeatures>;
   private config: ExtendedAggregationConfig;
   private pendingRequests: Map<string, Promise<AggregatedFeatures>> = new Map();
+  private featureStore: FeatureStoreInterface | null = null;
+  private batchLoader: BatchLoader<string, AggregatedFeatures>;
+  // LRU cache for pairwise similarity scores (size-limited, no TTL)
+  private similarityCache: LRUCache<number>;
 
   constructor(config: Partial<ExtendedAggregationConfig> = {}) {
     this.config = {
@@ -56,6 +74,26 @@ export class FeatureAggregator {
     };
 
     this.cache = new MemoryCache<AggregatedFeatures>(5000, this.config.cacheDuration);
+
+    // BatchLoader collects rapid individual requests and processes them together
+    // This reduces overhead when many tracks need features simultaneously
+    this.batchLoader = new BatchLoader<string, AggregatedFeatures>(
+      async (trackIds) => this.getBatch(trackIds),
+      50, // batch up to 50 requests
+      10  // wait 10ms to collect requests before processing
+    );
+
+    // LRU cache for pairwise similarity (avoids recomputing for same track pairs)
+    // Size-limited to 10000 pairs, no time expiration
+    this.similarityCache = new LRUCache<number>(10000);
+  }
+
+  /**
+   * Set a persistent feature store for caching features across restarts
+   */
+  setFeatureStore(store: FeatureStoreInterface): void {
+    this.featureStore = store;
+    console.log('[FeatureAggregator] Persistent feature store connected');
   }
 
   /**
@@ -126,9 +164,28 @@ export class FeatureAggregator {
    * Get aggregated features for a track
    */
   async get(trackId: string): Promise<AggregatedFeatures> {
-    // Check cache
+    // Check memory cache first
     const cached = this.cache.get(trackId);
     if (cached) return cached;
+
+    // Check persistent store
+    if (this.featureStore?.hasValidFeatures(trackId)) {
+      const stored = this.featureStore.get(trackId);
+      if (stored) {
+        const features: AggregatedFeatures = {
+          trackId,
+          audio: stored.audio,
+          emotion: stored.emotion,
+          lyrics: stored.lyrics,
+          genre: stored.genre,
+          embedding: stored.embedding,
+          providers: [{ providerId: 'persistent-store', providedFeatures: ['restored'], confidence: 1.0 }],
+          lastUpdated: stored.lastUpdated,
+        };
+        this.cache.set(trackId, features);
+        return features;
+      }
+    }
 
     // Check pending requests (deduplication)
     const pending = this.pendingRequests.get(trackId);
@@ -141,6 +198,20 @@ export class FeatureAggregator {
     try {
       const result = await promise;
       this.cache.set(trackId, result);
+
+      // Persist to feature store
+      if (this.featureStore) {
+        this.featureStore.set(trackId, {
+          trackId,
+          audio: result.audio,
+          emotion: result.emotion,
+          lyrics: result.lyrics,
+          genre: result.genre,
+          embedding: result.embedding,
+          lastUpdated: result.lastUpdated,
+        });
+      }
+
       return result;
     } finally {
       this.pendingRequests.delete(trackId);
@@ -177,6 +248,20 @@ export class FeatureAggregator {
     }
 
     return results;
+  }
+
+  /**
+   * Get features with automatic batching
+   * Use this when making many individual requests in a loop - the BatchLoader
+   * will collect them and process in batches for better efficiency
+   */
+  async getWithBatching(trackId: string): Promise<AggregatedFeatures> {
+    // Check cache first (avoid batching for cached items)
+    const cached = this.cache.get(trackId);
+    if (cached) return cached;
+
+    // Use batch loader for cache misses
+    return this.batchLoader.load(trackId);
   }
 
   /**
@@ -240,6 +325,83 @@ export class FeatureAggregator {
   }
 
   /**
+   * Find similar tracks by embedding using cosine similarity
+   * @param embedding The query embedding vector
+   * @param limit Maximum number of results
+   * @param excludeIds Track IDs to exclude from results
+   * @returns Array of { trackId, similarity } sorted by similarity descending
+   */
+  findSimilarByEmbedding(
+    embedding: number[],
+    limit: number = 20,
+    excludeIds: Set<string> = new Set()
+  ): Array<{ trackId: string; similarity: number }> {
+    const results: Array<{ trackId: string; similarity: number }> = [];
+
+    // Convert query to Float32Array for efficient computation
+    const queryVector = new Float32Array(embedding);
+
+    // Iterate through all cached embeddings
+    for (const [trackId, features] of this.cache.entries()) {
+      if (excludeIds.has(trackId)) continue;
+      if (!features.embedding) continue;
+
+      const candidateVector = new Float32Array(features.embedding);
+      const similarity = cosineSimilarity(queryVector, candidateVector);
+
+      results.push({ trackId, similarity });
+    }
+
+    // Sort by similarity descending and take top N
+    results.sort((a, b) => b.similarity - a.similarity);
+    return results.slice(0, limit);
+  }
+
+  /**
+   * Get similarity between two tracks using LRU cache
+   * Caches results to avoid recomputing for the same track pairs
+   */
+  async getSimilarity(trackIdA: string, trackIdB: string): Promise<number> {
+    // Create cache key (order-independent)
+    const cacheKey = trackIdA < trackIdB
+      ? `${trackIdA}:${trackIdB}`
+      : `${trackIdB}:${trackIdA}`;
+
+    // Check LRU cache first
+    const cached = this.similarityCache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    // Get embeddings
+    const [featuresA, featuresB] = await Promise.all([
+      this.get(trackIdA),
+      this.get(trackIdB),
+    ]);
+
+    if (!featuresA.embedding || !featuresB.embedding) {
+      return 0;
+    }
+
+    // Calculate similarity
+    const vectorA = new Float32Array(featuresA.embedding);
+    const vectorB = new Float32Array(featuresB.embedding);
+    const similarity = cosineSimilarity(vectorA, vectorB);
+
+    // Cache and return
+    this.similarityCache.set(cacheKey, similarity);
+    return similarity;
+  }
+
+  /**
+   * Get genre features for a track
+   */
+  async getGenre(trackId: string): Promise<GenreFeatures | null> {
+    const features = await this.get(trackId);
+    return features.genre ?? null;
+  }
+
+  /**
    * Prefetch features for tracks
    */
   async prefetch(trackIds: string[]): Promise<void> {
@@ -270,6 +432,7 @@ export class FeatureAggregator {
     let audio: AudioFeatures | undefined;
     let emotion: EmotionFeatures | undefined;
     let lyrics: LyricsFeatures | undefined;
+    let genre: GenreFeatures | undefined;
     let embedding: number[] | undefined;
     let fingerprint: string | undefined;
 
@@ -291,6 +454,7 @@ export class FeatureAggregator {
         if (features.audio) audio = features.audio;
         if (features.emotion) emotion = features.emotion;
         if (features.lyrics) lyrics = features.lyrics;
+        if (features.genre) genre = features.genre;
         if (features.embedding) embedding = features.embedding;
         if (features.fingerprint) fingerprint = features.fingerprint;
       } else {
@@ -298,6 +462,7 @@ export class FeatureAggregator {
         if (features.audio) audio = audio ? this.mergeAudioFeatures(audio, features.audio) : features.audio;
         if (features.emotion && !emotion) emotion = features.emotion;
         if (features.lyrics && !lyrics) lyrics = features.lyrics;
+        if (features.genre && !genre) genre = features.genre;
         if (features.embedding && !embedding) embedding = features.embedding;
         if (features.fingerprint && !fingerprint) fingerprint = features.fingerprint;
       }
@@ -361,7 +526,7 @@ export class FeatureAggregator {
         const result = await this.fetchFromProvider(trackId, provider);
         applyFeatures(result, 'supplement');
         // Stop if we have all features
-        if (audio && emotion && lyrics && embedding) break;
+        if (audio && emotion && lyrics && genre && embedding) break;
       }
     }
 
@@ -370,6 +535,7 @@ export class FeatureAggregator {
       audio,
       emotion,
       lyrics,
+      genre,
       embedding,
       fingerprint,
       providers: providerInfos,
@@ -439,6 +605,18 @@ export class FeatureAggregator {
         if (embedding) {
           features.embedding = embedding;
           providedFeatures.push('embedding');
+        }
+      }
+
+      // Genre features
+      if (provider.getGenreFeatures && provider.capabilities.genreClassification) {
+        const genre = await this.withTimeout(
+          provider.getGenreFeatures(trackId),
+          timeout
+        );
+        if (genre) {
+          features.genre = genre;
+          providedFeatures.push('genre');
         }
       }
 

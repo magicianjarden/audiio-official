@@ -33,14 +33,27 @@ class PluginInstallerService {
   private tempDir: string;
   private gitAvailable: boolean | null = null;
 
-  constructor() {
-    this.pluginsDir = paths.plugins;
+  constructor(pluginsDir?: string) {
+    this.pluginsDir = pluginsDir || paths.plugins;
     this.tempDir = path.join(os.tmpdir(), 'audiio-plugin-install');
 
     // Ensure directories exist
     if (!fs.existsSync(this.pluginsDir)) {
       fs.mkdirSync(this.pluginsDir, { recursive: true });
     }
+
+    console.log(`[PluginInstaller] Plugins directory: ${this.pluginsDir}`);
+  }
+
+  /**
+   * Set the plugins directory (for when config is loaded later)
+   */
+  setPluginsDir(dir: string): void {
+    this.pluginsDir = dir;
+    if (!fs.existsSync(this.pluginsDir)) {
+      fs.mkdirSync(this.pluginsDir, { recursive: true });
+    }
+    console.log(`[PluginInstaller] Plugins directory updated: ${this.pluginsDir}`);
   }
 
   /**
@@ -505,6 +518,10 @@ class PluginInstallerService {
         console.log(`[PluginInstaller] Plugin is pre-built, skipping build step`);
       }
 
+      console.log(`[PluginInstaller] Moving plugin to plugins directory...`);
+      console.log(`[PluginInstaller] Source: ${pluginSourceDir}`);
+      console.log(`[PluginInstaller] Manifest ID: ${manifest.id}`);
+
       onProgress?.({
         phase: 'installing',
         progress: 90,
@@ -513,19 +530,27 @@ class PluginInstallerService {
 
       // Move/copy to plugins directory
       const destDir = path.join(this.pluginsDir, manifest.id);
+      console.log(`[PluginInstaller] Destination: ${destDir}`);
+
       if (fs.existsSync(destDir)) {
+        console.log(`[PluginInstaller] Removing existing plugin at destination`);
         await fs.promises.rm(destDir, { recursive: true });
       }
 
       // If using subdirectory, copy instead of rename (since we can't move across mounts)
       if (subdirectory) {
+        console.log(`[PluginInstaller] Copying from subdirectory...`);
         await this.copyDirectory(pluginSourceDir, destDir);
+        console.log(`[PluginInstaller] Copy complete, cleaning up temp dirs...`);
         // Cleanup temp directories (both clone and isolated)
         await fs.promises.rm(this.tempDir, { recursive: true }).catch(() => {});
         await fs.promises.rm(pluginSourceDir, { recursive: true }).catch(() => {});
       } else {
+        console.log(`[PluginInstaller] Renaming temp directory...`);
         await fs.promises.rename(this.tempDir, destDir);
       }
+
+      console.log(`[PluginInstaller] Plugin files moved successfully`);
 
       // Install dependencies in final location (copyDirectory skips node_modules)
       // Only if package.json has dependencies and npm is available
@@ -571,6 +596,12 @@ class PluginInstallerService {
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      console.error(`[PluginInstaller] Installation failed:`, errorMessage);
+      if (errorStack) {
+        console.error(`[PluginInstaller] Stack trace:`, errorStack);
+      }
+
       onProgress?.({
         phase: 'error',
         progress: 0,
