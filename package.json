@@ -17,6 +17,9 @@
     "dev:client": "npm run dev --workspace=@audiio/client",
     "dev:server": "npm run dev --workspace=@audiio/server",
     "dev:landing": "npm run dev --workspace=@audiio/landing",
+    "dev:ios": "npm run start --workspace=@audiio/ios",
+    "ios": "npm run ios --workspace=@audiio/ios",
+    "ios:build": "npm run build:ios --workspace=@audiio/ios",
     "build": "turbo run build",
     "build:core": "npm run build --workspace=@audiio/core",
     "build:sdk": "npm run build --workspace=@audiio/sdk",
@@ -27,6 +30,8 @@
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {
+    "@babel/plugin-transform-parameters": "^7.27.7",
+    "@babel/preset-env": "^7.28.5",
     "@vitejs/plugin-react": "^4.3.4",
     "sharp": "^0.34.5",
     "turbo": "^2.3.0",

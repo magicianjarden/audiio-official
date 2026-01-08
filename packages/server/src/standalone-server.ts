@@ -952,16 +952,71 @@ export class StandaloneServer {
     });
 
     // Stream proxy - bypasses CORS by proxying audio through the server
+    // Supports optional transcoding via ?format=aac for iOS compatibility
     this.fastify.get('/api/stream/proxy', async (request, reply) => {
-      const { url } = request.query as { url?: string };
+      const { url, format } = request.query as { url?: string; format?: string };
 
       if (!url) {
         return reply.code(400).send({ error: 'URL required' });
       }
 
       try {
+        // If format=aac requested, transcode Opus/WebM to AAC for iOS compatibility
+        if (format === 'aac' || format === 'mp4') {
+          const { spawn } = await import('child_process');
 
-        // Fetch the audio stream
+          console.log('[StreamProxy] Transcoding to AAC for iOS compatibility');
+
+          // Use FFmpeg to transcode on-the-fly
+          // Input: stream URL (Opus/WebM)
+          // Output: AAC in ADTS container (streamable, iOS compatible)
+          const ffmpeg = spawn('ffmpeg', [
+            '-reconnect', '1',            // Reconnect on network errors
+            '-reconnect_streamed', '1',   // Reconnect for streamed content
+            '-reconnect_delay_max', '5',  // Max 5 second reconnect delay
+            '-i', url,                    // Input URL
+            '-vn',                        // No video
+            '-acodec', 'aac',             // AAC codec
+            '-b:a', '192k',               // 192kbps bitrate (higher quality)
+            '-ar', '44100',               // Standard sample rate
+            '-ac', '2',                   // Stereo
+            '-profile:a', 'aac_low',      // LC-AAC profile (best compatibility)
+            '-f', 'adts',                 // ADTS container (streamable AAC)
+            '-'                           // Output to stdout
+          ], {
+            stdio: ['ignore', 'pipe', 'pipe']
+          });
+
+          // Set headers for AAC stream
+          reply.header('Access-Control-Allow-Origin', '*');
+          reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+          reply.header('Content-Type', 'audio/aac');
+          reply.header('Transfer-Encoding', 'chunked');
+
+          // Handle FFmpeg errors
+          ffmpeg.stderr.on('data', (data) => {
+            // FFmpeg outputs progress to stderr, only log actual errors
+            const msg = data.toString();
+            if (msg.includes('Error') || msg.includes('error')) {
+              console.error('[StreamProxy] FFmpeg error:', msg);
+            }
+          });
+
+          ffmpeg.on('error', (err) => {
+            console.error('[StreamProxy] FFmpeg spawn error:', err);
+          });
+
+          ffmpeg.on('close', (code) => {
+            if (code !== 0 && code !== null) {
+              console.error('[StreamProxy] FFmpeg exited with code:', code);
+            }
+          });
+
+          // Stream the transcoded output
+          return reply.send(ffmpeg.stdout);
+        }
+
+        // Default behavior: proxy without transcoding
         const response = await fetch(url, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -1080,14 +1135,16 @@ export class StandaloneServer {
           reply.header('Content-Length', chunkSize);
           reply.header('Content-Type', contentType);
 
-          const stream = fs.createReadStream(decodedPath, { start, end });
+          // Use larger buffer (256KB) to prevent audio stuttering/popping on macOS
+          const stream = fs.createReadStream(decodedPath, { start, end, highWaterMark: 256 * 1024 });
           return reply.send(stream);
         } else {
           reply.header('Content-Length', fileSize);
           reply.header('Content-Type', contentType);
           reply.header('Accept-Ranges', 'bytes');
 
-          const stream = fs.createReadStream(decodedPath);
+          // Use larger buffer (256KB) to prevent audio stuttering/popping on macOS
+          const stream = fs.createReadStream(decodedPath, { highWaterMark: 256 * 1024 });
           return reply.send(stream);
         }
       } catch (error) {
@@ -2609,7 +2666,7 @@ export class StandaloneServer {
     });
 
     this.fastify.get('/api/algo/recommendations', async (request, reply) => {
-      const { count } = request.query as { count?: string };
+      const { count, mode } = request.query as { count?: string; mode?: string };
       const limit = parseInt(count || '20', 10);
 
       if (!mlService.isAlgorithmLoaded()) {
@@ -2617,8 +2674,10 @@ export class StandaloneServer {
       }
 
       try {
-        const recommendations = await mlService.getRecommendations({ count: limit });
-        return { recommendations };
+        const trackIds = await mlService.getRecommendations({ count: limit, mode });
+        // Resolve track IDs to full track objects
+        const tracks = this.libraryDb.getTracksByIds(trackIds);
+        return { tracks };
       } catch (error) {
         console.error('[ML] Recommendations error:', error);
         return reply.code(500).send({ error: 'Failed to get recommendations' });
@@ -2635,7 +2694,9 @@ export class StandaloneServer {
       }
 
       try {
-        const tracks = await mlService.getSimilarTracks(trackId, limit);
+        const trackIds = await mlService.getSimilarTracks(trackId, limit);
+        // Resolve track IDs to full track objects
+        const tracks = this.libraryDb.getTracksByIds(trackIds);
         return { tracks };
       } catch (error) {
         console.error('[ML] Similar tracks error:', error);
@@ -2791,6 +2852,26 @@ export class StandaloneServer {
     // ========================================
     // Tracking Routes
     // ========================================
+
+    // Simple play tracking for mobile clients
+    this.fastify.post('/api/tracking/play', async (request) => {
+      const { trackId, duration } = request.body as { trackId: string; duration?: number };
+
+      if (!trackId) {
+        return { success: false, error: 'trackId required' };
+      }
+
+      // Record as a play event
+      this.trackingService.recordEvent({
+        type: 'play_start',
+        trackId,
+        timestamp: Date.now(),
+        sessionId: `mobile-${Date.now()}`,
+        metadata: { duration: duration || 0 }
+      });
+
+      return { success: true };
+    });
 
     // Record single event
     this.fastify.post('/api/tracking/event', async (request) => {

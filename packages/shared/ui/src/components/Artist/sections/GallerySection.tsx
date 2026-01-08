@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import type { ArtistImages } from '@audiio/core';
 
 interface GallerySectionProps {
@@ -72,12 +73,17 @@ export const GallerySection: React.FC<GallerySectionProps> = ({ gallery }) => {
       }
     };
 
-    // Prevent body scroll when lightbox is open
-    document.body.style.overflow = 'hidden';
+    // Prevent main-content scroll when lightbox is open
+    const mainContent = document.querySelector('.main-content') as HTMLElement;
+    if (mainContent) {
+      mainContent.style.overflow = 'hidden';
+    }
     document.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      document.body.style.overflow = '';
+      if (mainContent) {
+        mainContent.style.overflow = '';
+      }
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [lightboxIndex, handleClose, handlePrev, handleNext]);
@@ -145,8 +151,8 @@ export const GallerySection: React.FC<GallerySectionProps> = ({ gallery }) => {
         ))}
       </div>
 
-      {/* Enhanced Lightbox */}
-      {currentImage && (
+      {/* Enhanced Lightbox - portaled to main-content for proper positioning */}
+      {currentImage && document.querySelector('.main-content') && createPortal(
         <div
           className="gallery-lightbox"
           onClick={(e) => e.target === e.currentTarget && handleClose()}
@@ -212,7 +218,8 @@ export const GallerySection: React.FC<GallerySectionProps> = ({ gallery }) => {
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.querySelector('.main-content')!
       )}
     </div>
   );

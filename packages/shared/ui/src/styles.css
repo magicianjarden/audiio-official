@@ -7302,6 +7302,42 @@ input[type="radio"]:focus {
   animation: shimmer 1.5s infinite;
 }
 
+.quick-pick-like {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: all var(--transition-fast);
+}
+
+.quick-pick-tile:hover .quick-pick-like {
+  opacity: 1;
+}
+
+.quick-pick-like:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.quick-pick-like.liked {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.quick-pick-tile.skeleton {
+  background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-tertiary) 50%, var(--bg-secondary) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
 /* ----------------------------------------
    Album NEW badge
    ---------------------------------------- */
@@ -24538,14 +24574,23 @@ input[type="radio"]:focus {
 
 .gallery-lightbox {
   position: fixed;
-  inset: 0;
-  z-index: 9999;
+  top: var(--title-bar-height);
+  left: calc(var(--sidebar-width) + var(--gap-module) * 2);
+  right: var(--gap-module);
+  bottom: calc(var(--player-height) + var(--gap-module));
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.6);
+  border-radius: var(--radius-module);
   cursor: pointer;
   animation: modalOverlayIn 0.25s ease-out;
+}
+
+/* Adjust lightbox when lyrics panel is open */
+.app:has(.lyrics-panel:not(.expanded)) .gallery-lightbox {
+  right: calc(380px + var(--gap-module) * 2);
 }
 
 .gallery-lightbox-image-container {
@@ -24553,8 +24598,8 @@ input[type="radio"]:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  max-width: min(90vw, 1200px);
-  max-height: 85vh;
+  max-width: min(90%, 1200px);
+  max-height: 85%;
   padding: 24px;
   background: rgba(0, 0, 0, 0.85);
   backdrop-filter: var(--glass-blur-strong);
@@ -24567,8 +24612,8 @@ input[type="radio"]:focus {
 }
 
 .gallery-lightbox-image {
-  max-width: min(85vw, 1100px);
-  max-height: 75vh;
+  max-width: min(85%, 1100px);
+  max-height: 75%;
   object-fit: contain;
   border-radius: var(--radius-md);
 }
@@ -32064,4 +32109,117 @@ input[type="radio"]:focus {
 
 .unified-search-dropdown-item:hover .unified-search-dropdown-item-chevron {
   opacity: 1;
+}
+
+/* ============================================
+   DISCOVER SECTIONS - Additional Styles
+   ============================================ */
+
+/* Section visibility animation */
+.discover-section.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Section icon styling */
+.discover-section-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.discover-section-icon--gem {
+  color: #a855f7;
+}
+
+/* Pill button - reusable action button */
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-full);
+  color: var(--text-on-accent);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.pill-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: scale(1.02);
+}
+
+.pill-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.pill-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pill-btn--sm {
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-xs);
+}
+
+.pill-btn--glass {
+  background: var(--glass-bg-subtle);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+}
+
+.pill-btn--glass:hover:not(:disabled) {
+  background: var(--glass-bg);
+  border-color: var(--glass-border-strong);
+}
+
+/* ----------------------------------------
+   Mood Selector Pills
+   ---------------------------------------- */
+.mood-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+}
+
+.mood-pill {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.mood-pill:hover {
+  background: var(--bg-hover);
+  border-color: var(--mood-color, var(--border-strong));
+}
+
+.mood-pill.active {
+  background: color-mix(in srgb, var(--mood-color, var(--accent)) 20%, transparent);
+  border-color: var(--mood-color, var(--accent));
+}
+
+.mood-pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mood-color, var(--accent));
+  flex-shrink: 0;
+}
+
+.mood-pill-label {
+  white-space: nowrap;
 }

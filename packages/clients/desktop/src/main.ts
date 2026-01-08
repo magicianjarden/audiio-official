@@ -13,6 +13,14 @@ import { Bonjour, Browser, Service } from 'bonjour-service';
 import { ServerClient, getServerClient, DeviceIdentity } from './server-client';
 
 // ========================================
+// Chromium Audio Flags (macOS audio fix)
+// ========================================
+
+// These flags help prevent audio crackling/popping on macOS
+app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess');
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
+// ========================================
 // Configuration
 // ========================================
 

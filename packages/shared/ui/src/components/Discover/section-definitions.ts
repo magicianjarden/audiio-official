@@ -1,12 +1,17 @@
 /**
  * Section Definitions - Register sections with the SectionRegistry
- * Simplified to only include Hero and TrendingTracks sections
+ * Includes Hero, TrendingTracks, and 5 new discovery sections
  */
 
 import { sectionRegistry, type SectionDefinition } from './section-registry';
 import {
   HeroSection,
   TrendingTracksSection,
+  BecauseYouLikedSection,
+  NewReleasesSection,
+  MoodRingSection,
+  HiddenGemsSection,
+  QuickPickSection,
 } from './sections';
 
 // ============================================
@@ -79,6 +84,144 @@ const trendingTracksSectionDef: SectionDefinition = {
 };
 
 // ============================================
+// Because You Liked Section Definition
+// ============================================
+
+const becauseYouLikedSectionDef: SectionDefinition = {
+  type: 'because-you-like',
+  component: BecauseYouLikedSection as React.ComponentType<any>,
+  displayName: 'Because You Liked',
+  description: 'Recommendations based on tracks you love',
+  requirements: {
+    minLikedTracks: 1,
+  },
+  constraints: {
+    maxPerPage: 2,
+    preferredPosition: 'middle',
+    cooldownSections: 3,
+  },
+  weights: {
+    base: 85,
+    personalizedBoost: 15,
+  },
+  generateConfig: (ctx) => ({
+    title: 'Because you liked',
+    isPersonalized: true,
+    whyExplanation: 'Based on your liked tracks',
+  }),
+};
+
+// ============================================
+// New Releases Section Definition
+// ============================================
+
+const newReleasesSectionDef: SectionDefinition = {
+  type: 'new-releases',
+  component: NewReleasesSection as React.ComponentType<any>,
+  displayName: 'New Releases',
+  description: 'Fresh drops from this week',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    preferredPosition: 'middle',
+  },
+  weights: {
+    base: 80,
+    personalizedBoost: 5,
+    newUserBoost: 15,
+  },
+  generateConfig: () => ({
+    title: 'New Releases',
+    subtitle: 'Fresh drops this week',
+    isPersonalized: false,
+  }),
+};
+
+// ============================================
+// Mood Ring Section Definition
+// ============================================
+
+const moodRingSectionDef: SectionDefinition = {
+  type: 'mood-gradient',
+  component: MoodRingSection as React.ComponentType<any>,
+  displayName: 'Mood Ring',
+  description: 'Match your vibe with mood-based discovery',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    preferredPosition: 'middle',
+  },
+  weights: {
+    base: 75,
+    personalizedBoost: 10,
+    timeRelevance: (hour) => {
+      // Boost in evening hours when mood exploration is common
+      if (hour >= 18 || hour <= 2) return 10;
+      return 0;
+    },
+  },
+  generateConfig: () => ({
+    title: 'Mood Ring',
+    subtitle: 'Match your vibe',
+    isPersonalized: true,
+  }),
+};
+
+// ============================================
+// Hidden Gems Section Definition
+// ============================================
+
+const hiddenGemsSectionDef: SectionDefinition = {
+  type: 'deep-cuts',
+  component: HiddenGemsSection as React.ComponentType<any>,
+  displayName: 'Hidden Gems',
+  description: 'Underrated tracks worth discovering',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    preferredPosition: 'middle',
+  },
+  weights: {
+    base: 70,
+    personalizedBoost: 10,
+  },
+  generateConfig: (ctx) => ({
+    title: 'Hidden Gems',
+    subtitle: ctx.isNewUser
+      ? 'Discover underrated tracks'
+      : 'Underrated tracks you might love',
+    isPersonalized: !ctx.isNewUser,
+    whyExplanation: 'Low play count, high quality',
+  }),
+};
+
+// ============================================
+// Quick Pick Section Definition
+// ============================================
+
+const quickPickSectionDef: SectionDefinition = {
+  type: 'quick-picks',
+  component: QuickPickSection as React.ComponentType<any>,
+  displayName: 'Quick Pick',
+  description: 'Swipe to discover new music fast',
+  requirements: {},
+  constraints: {
+    maxPerPage: 1,
+    preferredPosition: 'bottom',
+  },
+  weights: {
+    base: 65,
+    personalizedBoost: 5,
+    newUserBoost: 20, // Great for new users to build preferences
+  },
+  generateConfig: () => ({
+    title: 'Quick Pick',
+    subtitle: 'Swipe to discover',
+    isPersonalized: true,
+  }),
+};
+
+// ============================================
 // Register All Sections
 // ============================================
 
@@ -89,8 +232,16 @@ export function registerAllSections(): void {
     return;
   }
 
+  // Primary sections
   sectionRegistry.register(heroSectionDef);
   sectionRegistry.register(trendingTracksSectionDef);
+
+  // New discovery sections
+  sectionRegistry.register(becauseYouLikedSectionDef);
+  sectionRegistry.register(newReleasesSectionDef);
+  sectionRegistry.register(moodRingSectionDef);
+  sectionRegistry.register(hiddenGemsSectionDef);
+  sectionRegistry.register(quickPickSectionDef);
 
   sectionsRegistered = true;
   console.log('[SectionRegistry] Registered', sectionRegistry.getAll().length, 'sections');

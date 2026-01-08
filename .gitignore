@@ -71,3 +71,9 @@ nul
 
 # Claude Code
 .claude/
+
+# Expo
+.expo/
+
+# iOS (managed separately)
+packages/clients/ios/

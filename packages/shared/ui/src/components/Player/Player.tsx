@@ -424,10 +424,13 @@ export const Player: React.FC = () => {
       <audio
         ref={audioRefCallback}
         crossOrigin="anonymous"
+        preload="auto"
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
         onError={handleError}
+        onWaiting={() => console.log('[Player] Audio buffering...')}
+        onCanPlayThrough={() => console.log('[Player] Audio ready to play through')}
       />
 
       {/* Track Info */}
